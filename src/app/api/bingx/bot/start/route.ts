@@ -1,23 +1,32 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/inngest/client';
 import { requireAuth } from '@/services/auth.service';
-import {
-  hasBingxKeys,
-  createBot,
-  getBotById,
-  setBotStatus,
-  getUserBots,
-} from '@/services/bingx.service';
+import { hasBingxKeys, createBot, getBotById, setBotStatus } from '@/services/bingx.service';
 
 export async function POST(request: Request) {
   try {
     const user = await requireAuth();
     const body = await request.json();
-    const { botId, symbol, priceMin, priceMax } = body as {
+    const {
+      botId,
+      symbol,
+      priceMin,
+      priceMax,
+      positionSizeUsdt,
+      takeProfitPercentage,
+      gridCount,
+      leverage,
+      marginType,
+    } = body as {
       botId?: string;
       symbol?: string;
       priceMin?: string | number;
       priceMax?: string | number;
+      positionSizeUsdt?: string | number;
+      takeProfitPercentage?: string | number;
+      gridCount?: number;
+      leverage?: number;
+      marginType?: string;
     };
 
     if (!(await hasBingxKeys(user.id))) {
@@ -27,54 +36,81 @@ export async function POST(request: Request) {
       );
     }
 
+    if (botId) {
+      const bot = await getBotById(botId, user.id);
+      if (!bot) {
+        return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
+      }
+      await setBotStatus(botId, user.id, 'RUNNING');
+
+      await inngest.send({
+        name: 'trading/bot.start',
+        data: { userId: user.id, botId: bot.id },
+      });
+
+      return NextResponse.json({ success: true, botId: bot.id });
+    }
+
     const priceMinStr = String(priceMin ?? '').trim();
     const priceMaxStr = String(priceMax ?? '').trim();
     const symbolStr = String(symbol ?? '').trim();
+    const positionSizeStr = String(positionSizeUsdt ?? '').trim();
+    const takeProfitStr = String(takeProfitPercentage ?? '').trim();
+    const gridCountNum = Math.floor(Number(gridCount ?? 1));
+    const leverageNum = Math.max(1, Math.min(125, Math.floor(Number(leverage ?? 1))));
+    const marginTypeStr = String(marginType ?? 'SEPARATE_ISOLATED').trim().toUpperCase() || 'SEPARATE_ISOLATED';
 
-    if (!symbolStr || !priceMinStr || !priceMaxStr) {
+    if (!symbolStr || !priceMinStr || !priceMaxStr || !positionSizeStr || !takeProfitStr) {
       return NextResponse.json(
-        { error: 'symbol, priceMin, and priceMax are required' },
+        {
+          error:
+            'symbol, priceMin, priceMax, positionSizeUsdt, and takeProfitPercentage are required',
+        },
         { status: 400 }
       );
     }
 
     const min = parseFloat(priceMinStr);
     const max = parseFloat(priceMaxStr);
+    const posSize = parseFloat(positionSizeStr);
+    const tpPct = parseFloat(takeProfitStr);
+
     if (isNaN(min) || isNaN(max) || min >= max) {
       return NextResponse.json(
         { error: 'priceMin must be less than priceMax' },
         { status: 400 }
       );
     }
-
-    let bot;
-    if (botId) {
-      bot = await getBotById(botId, user.id);
-      if (!bot) {
-        return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
-      }
-      await setBotStatus(botId, user.id, 'RUNNING');
-    } else {
-      const existing = await getUserBots(user.id);
-      const match = existing.find(
-        (b) =>
-          b.symbol === symbolStr &&
-          String(b.priceMin) === priceMinStr &&
-          String(b.priceMax) === priceMaxStr &&
-          b.status === 'STOPPED'
+    if (isNaN(posSize) || posSize <= 0) {
+      return NextResponse.json(
+        { error: 'positionSizeUsdt must be a positive number' },
+        { status: 400 }
       );
-      if (match) {
-        await setBotStatus(match.id, user.id, 'RUNNING');
-        bot = match;
-      } else {
-        bot = await createBot(user.id, {
-          symbol: symbolStr,
-          priceMin: priceMinStr,
-          priceMax: priceMaxStr,
-        });
-        await setBotStatus(bot.id, user.id, 'RUNNING');
-      }
     }
+    if (isNaN(tpPct) || tpPct <= 0 || tpPct > 100) {
+      return NextResponse.json(
+        { error: 'takeProfitPercentage must be between 0 and 100' },
+        { status: 400 }
+      );
+    }
+    if (gridCountNum < 1 || gridCountNum > 100) {
+      return NextResponse.json(
+        { error: 'gridCount must be between 1 and 100' },
+        { status: 400 }
+      );
+    }
+
+    const bot = await createBot(user.id, {
+      symbol: symbolStr,
+      priceMin: priceMinStr,
+      priceMax: priceMaxStr,
+      positionSizeUsdt: positionSizeStr,
+      takeProfitPercentage: takeProfitStr,
+      gridCount: gridCountNum,
+      leverage: leverageNum,
+      marginType: marginTypeStr,
+    });
+    await setBotStatus(bot.id, user.id, 'RUNNING');
 
     await inngest.send({
       name: 'trading/bot.start',

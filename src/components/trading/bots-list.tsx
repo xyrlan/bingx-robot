@@ -8,8 +8,8 @@ type Bot = {
   symbol: string;
   priceMin: string;
   priceMax: string;
+  gridCount: number;
   status: 'STOPPED' | 'RUNNING';
-  currentOrderId: string | null;
   createdAt: string;
 };
 
@@ -71,7 +71,7 @@ export function BotsList() {
               <div>
                 <p className="font-medium">{bot.symbol}</p>
                 <p className="text-sm text-default-500">
-                  {bot.priceMin} – {bot.priceMax} • {bot.status}
+                  {bot.priceMin} – {bot.priceMax} • {bot.gridCount ?? 1} grids • {bot.status}
                 </p>
               </div>
               {bot.status === 'RUNNING' && (

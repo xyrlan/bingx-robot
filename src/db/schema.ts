@@ -6,6 +6,8 @@ import {
   timestamp,
   pgEnum,
   decimal,
+  integer,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 // ==========================================
@@ -93,11 +95,36 @@ export const tradingBots = pgTable('trading_bots', {
   symbol: text('symbol').notNull(),
   priceMin: decimal('price_min', { precision: 18, scale: 8 }).notNull(),
   priceMax: decimal('price_max', { precision: 18, scale: 8 }).notNull(),
+  positionSizeUsdt: decimal('position_size_usdt', { precision: 18, scale: 8 }).notNull().default('10'),
+  takeProfitPercentage: decimal('take_profit_percentage', { precision: 8, scale: 4 }).notNull().default('1'),
+  gridCount: integer('grid_count').notNull().default(1),
+  leverage: integer('leverage').notNull().default(1),
+  marginType: text('margin_type').notNull().default('SEPARATE_ISOLATED'),
   status: botStatusEnum('status').notNull().default('STOPPED'),
-  currentOrderId: text('current_order_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// ==========================================
+// 5b. GRID LEVELS
+// ==========================================
+
+export const gridLevels = pgTable(
+  'grid_levels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    botId: uuid('bot_id')
+      .references(() => tradingBots.id, { onDelete: 'cascade' })
+      .notNull(),
+    priceLevel: decimal('price_level', { precision: 18, scale: 8 }).notNull(),
+    orderId: text('order_id'),
+    tpOrderId: text('tp_order_id'),
+    positionSide: text('position_side').notNull().default('LONG'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex('grid_levels_bot_price_idx').on(table.botId, table.priceLevel)]
+);
 
 // ==========================================
 // 6. RELATIONS (BingX)
@@ -110,9 +137,17 @@ export const bingxApiKeysRelations = relations(bingxApiKeys, ({ one }) => ({
   }),
 }));
 
-export const tradingBotsRelations = relations(tradingBots, ({ one }) => ({
+export const tradingBotsRelations = relations(tradingBots, ({ one, many }) => ({
   user: one(users, {
     fields: [tradingBots.userId],
     references: [users.id],
+  }),
+  gridLevels: many(gridLevels),
+}));
+
+export const gridLevelsRelations = relations(gridLevels, ({ one }) => ({
+  bot: one(tradingBots, {
+    fields: [gridLevels.botId],
+    references: [tradingBots.id],
   }),
 }));

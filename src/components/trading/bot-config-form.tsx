@@ -7,6 +7,10 @@ export function BotConfigForm() {
   const [symbol, setSymbol] = useState('BTC-USDT');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
+  const [positionSizeUsdt, setPositionSizeUsdt] = useState('10');
+  const [takeProfitPercentage, setTakeProfitPercentage] = useState('2');
+  const [gridCount, setGridCount] = useState('5');
+  const [leverage, setLeverage] = useState('1');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -22,6 +26,10 @@ export function BotConfigForm() {
           symbol: symbol.trim(),
           priceMin: priceMin.trim(),
           priceMax: priceMax.trim(),
+          positionSizeUsdt: positionSizeUsdt.trim(),
+          takeProfitPercentage: takeProfitPercentage.trim(),
+          gridCount: parseInt(gridCount, 10) || 5,
+          leverage: parseInt(leverage, 10) || 1,
         }),
       });
       const data = await res.json();
@@ -40,7 +48,7 @@ export function BotConfigForm() {
   return (
     <Card variant="default" className="w-full">
       <Card.Content className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Start Trading Bot</h3>
+        <h3 className="text-lg font-semibold mb-4">Start Grid Trading Bot</h3>
         <form onSubmit={handleStart} className="space-y-4">
           {message && (
             <div
@@ -63,28 +71,78 @@ export function BotConfigForm() {
               placeholder="BTC-USDT"
             />
           </TextField>
+          <div className="grid grid-cols-2 gap-4">
+            <TextField variant="primary" isDisabled={loading}>
+              <Label>Price Min</Label>
+              <Input
+                name="priceMin"
+                type="text"
+                inputMode="decimal"
+                value={priceMin}
+                onChange={(e) => setPriceMin(e.target.value)}
+                placeholder="85000"
+              />
+            </TextField>
+            <TextField variant="primary" isDisabled={loading}>
+              <Label>Price Max</Label>
+              <Input
+                name="priceMax"
+                type="text"
+                inputMode="decimal"
+                value={priceMax}
+                onChange={(e) => setPriceMax(e.target.value)}
+                placeholder="95000"
+              />
+            </TextField>
+          </div>
           <TextField variant="primary" isDisabled={loading}>
-            <Label>Price Min</Label>
+            <Label>Position Size (USDT) per grid</Label>
             <Input
-              name="priceMin"
+              name="positionSizeUsdt"
               type="text"
               inputMode="decimal"
-              value={priceMin}
-              onChange={(e) => setPriceMin(e.target.value)}
-              placeholder="85000"
+              value={positionSizeUsdt}
+              onChange={(e) => setPositionSizeUsdt(e.target.value)}
+              placeholder="10"
             />
           </TextField>
           <TextField variant="primary" isDisabled={loading}>
-            <Label>Price Max</Label>
+            <Label>Take Profit (%)</Label>
             <Input
-              name="priceMax"
+              name="takeProfitPercentage"
               type="text"
               inputMode="decimal"
-              value={priceMax}
-              onChange={(e) => setPriceMax(e.target.value)}
-              placeholder="95000"
+              value={takeProfitPercentage}
+              onChange={(e) => setTakeProfitPercentage(e.target.value)}
+              placeholder="2"
             />
           </TextField>
+          <div className="grid grid-cols-2 gap-4">
+            <TextField variant="primary" isDisabled={loading}>
+              <Label>Grid Count</Label>
+              <Input
+                name="gridCount"
+                type="number"
+                min={1}
+                max={100}
+                value={gridCount}
+                onChange={(e) => setGridCount(e.target.value)}
+                placeholder="5"
+              />
+            </TextField>
+            <TextField variant="primary" isDisabled={loading}>
+              <Label>Leverage</Label>
+              <Input
+                name="leverage"
+                type="number"
+                min={1}
+                max={125}
+                value={leverage}
+                onChange={(e) => setLeverage(e.target.value)}
+                placeholder="1"
+              />
+            </TextField>
+          </div>
           <Button type="submit" variant="primary" isDisabled={loading}>
             {loading ? 'Starting...' : 'Start Bot'}
           </Button>

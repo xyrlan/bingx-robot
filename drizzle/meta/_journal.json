@@ -15,6 +15,20 @@
       "when": 1772246757648,
       "tag": "0001_outstanding_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772252003778,
+      "tag": "0002_awesome_stepford_cuckoos",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772255665684,
+      "tag": "0003_heavy_wolfsbane",
+      "breakpoints": true
     }
   ]
 }

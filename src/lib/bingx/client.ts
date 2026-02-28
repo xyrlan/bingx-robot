@@ -1,4 +1,4 @@
-import { signParams } from './signature';
+import { signParams, buildSigningString, buildQueryStringForUrl } from './signature';
 
 const BASE_URL = 'https://open-api.bingx.com';
 
@@ -7,21 +7,6 @@ type BingxApiResponse<T = unknown> = {
   msg?: string;
   data?: T;
 };
-
-/**
- * Per BingX v3: only URL-encode param values when signing string contains '[' or '{'.
- * Otherwise values do not need URL encoding.
- */
-function buildQueryString(params: Record<string, string | number | undefined>): string {
-  const pairs: string[] = [];
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === '') continue;
-    const str = String(v);
-    const needsEncode = str.includes('[') || str.includes('{');
-    pairs.push(`${k}=${needsEncode ? encodeURIComponent(str) : str}`);
-  }
-  return pairs.join('&');
-}
 
 export function createBingxClient(apiKey: string, secretKey: string, recvWindow = 60000) {
   const headers: Record<string, string> = {
@@ -39,22 +24,32 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
     const url = new URL(path.startsWith('http') ? path : `${BASE_URL}${path}`);
 
     const paramsToSign =
-      method === 'GET' || useQueryParams ? params ?? {} : (body as Record<string, string | number | undefined>) ?? {};
+      method === 'GET' ? (params ?? {}) : (body as Record<string, string | number | undefined>) ?? {};
     const signedParams = signParams(paramsToSign, secretKey.trim(), recvWindow);
 
     if (method === 'GET' || useQueryParams) {
-      url.search = buildQueryString(signedParams);
+      const { signature, ...paramsForQuery } = signedParams;
+      const paramsForUrl = paramsForQuery as Record<string, string | number | undefined>;
+      const queryWithoutSig = buildQueryStringForUrl(paramsForUrl);
+      url.search = `${queryWithoutSig}&signature=${encodeURIComponent(signature)}`;
     }
 
+    const requestHeaders = { ...headers };
+    if (method === 'POST' && useQueryParams) {
+      delete requestHeaders['Content-Type'];
+    }
     const options: RequestInit = {
       method,
-      headers: { ...headers },
+      headers: requestHeaders,
     };
 
     if (method !== 'GET' && !useQueryParams && body) {
       options.body = JSON.stringify({ ...body, ...signedParams });
     } else if (method === 'POST' && useQueryParams) {
-      url.search = buildQueryString(signedParams);
+      const { signature, ...paramsForQuery } = signedParams;
+      const paramsForUrl = paramsForQuery as Record<string, string | number | undefined>;
+      const queryWithoutSig = buildQueryStringForUrl(paramsForUrl);
+      url.search = `${queryWithoutSig}&signature=${encodeURIComponent(signature)}`;
     }
 
     const res = await fetch(url.toString(), options);
