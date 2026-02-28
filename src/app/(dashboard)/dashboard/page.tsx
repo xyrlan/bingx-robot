@@ -5,6 +5,10 @@ import { eq } from 'drizzle-orm';
 import { Button } from '@heroui/react';
 import Link from 'next/link';
 import { signOutAction } from './actions';
+import { ConnectKeysForm } from '@/components/trading/connect-keys-form';
+import { BalanceDisplay } from '@/components/trading/balance-display';
+import { BotConfigForm } from '@/components/trading/bot-config-form';
+import { BotsList } from '@/components/trading/bots-list';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -22,11 +26,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen p-8">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto space-y-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <form action={signOutAction}>
-            <Button type="submit" variant="outline" color="danger" as="button">
+            <Button type="submit" variant="outline">
               Sign out
             </Button>
           </form>
@@ -44,7 +48,17 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        <p className="mt-6 text-sm text-default-500">
+        <section>
+          <h2 className="text-xl font-semibold mb-4">Trading Bot</h2>
+          <div className="space-y-6">
+            <ConnectKeysForm />
+            <BalanceDisplay />
+            <BotConfigForm />
+            <BotsList />
+          </div>
+        </section>
+
+        <p className="text-sm text-default-500">
           <Link href="/" className="text-primary hover:underline">
             Back to home
           </Link>
