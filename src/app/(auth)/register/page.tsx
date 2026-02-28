@@ -40,7 +40,7 @@ export default function RegisterPage() {
 
             <TextField variant="primary" isDisabled={isPending} isRequired>
               <Label>{t('password')}</Label>
-              <Input name="password" type="password" placeholder="••••••••" />
+              <Input name="password" type="password" placeholder={t('passwordPlaceholder')} />
             </TextField>
 
             <Button

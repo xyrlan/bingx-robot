@@ -9,7 +9,8 @@
       "submit": "Criar Conta",
       "hasAccount": "Já tem uma conta?",
       "login": "Fazer login",
-      "submitting": "Criando conta..."
+      "submitting": "Criando conta...",
+      "passwordPlaceholder": "Sua senha"
     },
     "Login": {
       "title": "Entrar",
