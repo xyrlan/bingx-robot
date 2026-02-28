@@ -1,0 +1,73 @@
+{
+  "Auth": {
+    "Register": {
+      "title": "Create Account",
+      "subtitle": "Sign up to get started",
+      "fullName": "Full Name",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Create Account",
+      "hasAccount": "Already have an account?",
+      "login": "Sign in",
+      "submitting": "Creating account..."
+    },
+    "Login": {
+      "title": "Sign In",
+      "subtitle": "Welcome back",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign In",
+      "noAccount": "Don't have an account?",
+      "register": "Create an account",
+      "submitting": "Signing in..."
+    },
+    "VerifyEmail": {
+      "title": "Verify Your Email",
+      "description": "We've sent a confirmation link to your email. Click the link to activate your account.",
+      "resend": "Resend Email",
+      "success": "Email successfully resent!",
+      "checkSpam": "Didn't receive it? Check your spam folder.",
+      "backToLogin": "Back to Login",
+      "footer": "After confirming your email, you will be able to sign in.",
+      "userHeader": {
+        "logout": "Logout",
+        "pendingVerification": "Email pending verification"
+      },
+      "states": {
+        "verifying": {
+          "title": "Verifying your email...",
+          "description": "Processing your verification, please wait a moment."
+        },
+        "verified": {
+          "title": "Email verified successfully!",
+          "description": "Your email has been verified. You will be redirected automatically.",
+          "redirecting": "Redirecting..."
+        },
+        "error": {
+          "title": "Verification error",
+          "canRetry": "You can request a new verification email:"
+        },
+        "waiting": {
+          "title": "Verify your email",
+          "noReceived": "Didn't receive the email? Check your spam folder or request a new one:"
+        },
+        "tokenExpired": {
+          "title": "Token expired",
+          "description": "Your verification token has expired. We have automatically requested a new verification email for you.",
+          "checkInbox": "Check your inbox or request a new email:"
+        }
+      },
+      "resendButton": {
+        "waiting": "Wait {seconds}s",
+        "ready": "Resend email"
+      }
+    },
+    "Errors": {
+      "tokenInvalid": "Invalid or expired token",
+      "connectionError": "Connection error. Check your internet and try again."
+    }
+  },
+  "Theme": {
+    "toggle": "Toggle light/dark theme"
+  }
+}

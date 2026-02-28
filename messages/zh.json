@@ -1,0 +1,73 @@
+{
+  "Auth": {
+    "Register": {
+      "title": "创建账户",
+      "subtitle": "注册以开始使用",
+      "fullName": "全名",
+      "email": "电子邮件",
+      "password": "密码",
+      "submit": "创建账户",
+      "hasAccount": "已有账户？",
+      "login": "登录",
+      "submitting": "创建中..."
+    },
+    "Login": {
+      "title": "登录",
+      "subtitle": "欢迎回来",
+      "email": "电子邮件",
+      "password": "密码",
+      "submit": "登录",
+      "noAccount": "还没有账户？",
+      "register": "创建账户",
+      "submitting": "登录中..."
+    },
+    "VerifyEmail": {
+      "title": "验证您的电子邮件",
+      "description": "我们已向您的电子邮件发送了确认链接。点击链接激活您的账户。",
+      "resend": "重新发送电子邮件",
+      "success": "电子邮件已成功重新发送！",
+      "checkSpam": "没有收到？请检查您的垃圾邮件文件夹。",
+      "backToLogin": "返回登录",
+      "footer": "确认电子邮件后，您将能够登录系统。",
+      "userHeader": {
+        "logout": "退出",
+        "pendingVerification": "电子邮件待验证"
+      },
+      "states": {
+        "verifying": {
+          "title": "正在验证您的电子邮件...",
+          "description": "正在处理您的验证，请稍候。"
+        },
+        "verified": {
+          "title": "电子邮件验证成功！",
+          "description": "您的电子邮件已通过验证。几秒钟后将自动重定向。",
+          "redirecting": "正在重定向..."
+        },
+        "error": {
+          "title": "验证错误",
+          "canRetry": "您可以请求新的验证电子邮件："
+        },
+        "waiting": {
+          "title": "验证您的电子邮件",
+          "noReceived": "没有收到电子邮件？请检查垃圾邮件文件夹或请求新的："
+        },
+        "tokenExpired": {
+          "title": "令牌已过期",
+          "description": "您的验证令牌已过期。我们已自动为您请求新的验证电子邮件。",
+          "checkInbox": "请查看收件箱或请求新的电子邮件："
+        }
+      },
+      "resendButton": {
+        "waiting": "请等待 {seconds} 秒",
+        "ready": "重新发送电子邮件"
+      }
+    },
+    "Errors": {
+      "tokenInvalid": "令牌无效或已过期",
+      "connectionError": "连接错误。请检查网络后重试。"
+    }
+  },
+  "Theme": {
+    "toggle": "切换明/暗主题"
+  }
+}

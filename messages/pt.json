@@ -1,0 +1,73 @@
+{
+  "Auth": {
+    "Register": {
+      "title": "Criar Conta",
+      "subtitle": "Cadastre-se para começar",
+      "fullName": "Nome Completo",
+      "email": "E-mail",
+      "password": "Senha",
+      "submit": "Criar Conta",
+      "hasAccount": "Já tem uma conta?",
+      "login": "Fazer login",
+      "submitting": "Criando conta..."
+    },
+    "Login": {
+      "title": "Entrar",
+      "subtitle": "Bem-vindo de volta",
+      "email": "E-mail",
+      "password": "Senha",
+      "submit": "Entrar",
+      "noAccount": "Não tem uma conta?",
+      "register": "Criar conta",
+      "submitting": "Entrando..."
+    },
+    "VerifyEmail": {
+      "title": "Verifique seu e-mail",
+      "description": "Enviamos um link de confirmação para seu e-mail. Clique no link para ativar sua conta.",
+      "resend": "Reenviar e-mail",
+      "success": "E-mail reenviado com sucesso!",
+      "checkSpam": "Não recebeu? Verifique sua caixa de spam.",
+      "backToLogin": "Voltar para o Login",
+      "footer": "Após confirmar seu e-mail, você poderá fazer login.",
+      "userHeader": {
+        "logout": "Sair",
+        "pendingVerification": "E-mail pendente de verificação"
+      },
+      "states": {
+        "verifying": {
+          "title": "Verificando seu e-mail...",
+          "description": "Processando sua verificação, aguarde um momento."
+        },
+        "verified": {
+          "title": "E-mail verificado com sucesso!",
+          "description": "Seu e-mail foi verificado. Você será redirecionado automaticamente.",
+          "redirecting": "Redirecionando..."
+        },
+        "error": {
+          "title": "Erro na verificação",
+          "canRetry": "Você pode solicitar um novo e-mail de verificação:"
+        },
+        "waiting": {
+          "title": "Verifique seu e-mail",
+          "noReceived": "Não recebeu o e-mail? Verifique sua caixa de spam ou solicite um novo:"
+        },
+        "tokenExpired": {
+          "title": "Token expirado",
+          "description": "Seu token de verificação expirou. Solicitamos automaticamente um novo e-mail para você.",
+          "checkInbox": "Verifique sua caixa de mensagens ou solicite um novo e-mail:"
+        }
+      },
+      "resendButton": {
+        "waiting": "Aguarde {seconds}s",
+        "ready": "Reenviar e-mail"
+      }
+    },
+    "Errors": {
+      "tokenInvalid": "Token inválido ou expirado",
+      "connectionError": "Erro de conexão. Verifique sua internet e tente novamente."
+    }
+  },
+  "Theme": {
+    "toggle": "Alternar tema claro/escuro"
+  }
+}

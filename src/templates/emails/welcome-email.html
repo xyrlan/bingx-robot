@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Bem-vindo à </title>
+  <style>
+    /* Reset styles */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+    
+    /* Base styles */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f3f4f6;
+      color: #1f2937;
+    }
+    
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    
+    .header-title {
+      color: #ffffff;
+      font-size: 28px;
+      font-weight: bold;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .content {
+      padding: 40px 30px;
+    }
+    
+    .greeting {
+      font-size: 20px;
+      font-weight: 600;
+      color: #1f2937;
+      margin: 0 0 20px 0;
+    }
+    
+    .message {
+      font-size: 16px;
+      line-height: 1.6;
+      color: #4b5563;
+      margin: 0 0 20px 0;
+    }
+    
+    .highlight-box {
+      background-color: #f0fdf4;
+      border-left: 4px solid #10b981;
+      padding: 16px;
+      margin: 30px 0;
+      border-radius: 4px;
+    }
+    
+    .highlight-text {
+      font-size: 15px;
+      color: #047857;
+      margin: 0;
+      line-height: 1.5;
+    }
+    
+    .footer {
+      background-color: #f9fafb;
+      padding: 30px;
+      text-align: center;
+      border-top: 1px solid #e5e7eb;
+    }
+    
+    .footer-text {
+      font-size: 13px;
+      color: #6b7280;
+      margin: 0 0 8px 0;
+      line-height: 1.6;
+    }
+    
+    .footer-brand {
+      font-size: 14px;
+      font-weight: 600;
+      color: #10b981;
+      margin: 10px 0 0 0;
+    }
+    
+    /* Mobile responsive */
+    @media only screen and (max-width: 600px) {
+      .email-container {
+        width: 100% !important;
+      }
+      .content {
+        padding: 30px 20px !important;
+      }
+      .header {
+        padding: 30px 20px !important;
+      }
+      .header-title {
+        font-size: 24px !important;
+      }
+      .greeting {
+        font-size: 18px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tr>
+      <td align="center" style="padding: 20px 0;">
+        <!-- Email Container -->
+        <table class="email-container" role="presentation" cellspacing="0" cellpadding="0" border="0">
+          <!-- Header -->
+          <tr>
+            <td class="header">
+              <h1 class="header-title">🌍 SoulGlobal</h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td class="content">
+              <h2 class="greeting">Olá, {{fullName}}!</h2>
+              
+              <p class="message">
+                Sua conta na SoulGlobal foi ativada com sucesso! Estamos muito felizes em tê-lo conosco.
+              </p>
+              
+              <p class="message">
+                A partir de agora você tem acesso completo à nossa plataforma de gestão de importações.
+              </p>
+              
+              <!-- Highlight Box -->
+              <div class="highlight-box">
+                <p class="highlight-text">
+                  💡 Dica: Complete seu perfil e configure os endereços da sua empresa para começar a importar com facilidade.
+                </p>
+              </div>
+              
+              <p class="message">
+                Se você tiver qualquer dúvida ou precisar de ajuda, nossa equipe de suporte está sempre disponível.
+              </p>
+              
+              <p class="message">
+                Obrigado por escolher a SoulGlobal!
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td class="footer">
+              <p class="footer-text">
+                Este e-mail foi enviado para <strong>{{email}}</strong>
+              </p>
+              <p class="footer-text">
+                Se você tiver alguma dúvida, entre em contato conosco através do nosso suporte.
+              </p>
+              <p class="footer-brand">SoulGlobal © {{year}}</p>
+              <p class="footer-text">
+                Plataforma de Gestão de Importações para o Brasil
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
