@@ -24,10 +24,12 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
     const url = new URL(path.startsWith('http') ? path : `${BASE_URL}${path}`);
 
     const paramsToSign =
-      method === 'GET' ? (params ?? {}) : (body as Record<string, string | number | undefined>) ?? {};
+      method === 'GET' || method === 'DELETE'
+        ? (params ?? {})
+        : (body as Record<string, string | number | undefined>) ?? {};
     const signedParams = signParams(paramsToSign, secretKey.trim(), recvWindow);
 
-    if (method === 'GET' || useQueryParams) {
+    if (method === 'GET' || method === 'DELETE' || useQueryParams) {
       const { signature, ...paramsForQuery } = signedParams;
       const paramsForUrl = paramsForQuery as Record<string, string | number | undefined>;
       const queryWithoutSig = buildQueryStringForUrl(paramsForUrl);

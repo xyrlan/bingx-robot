@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/inngest/client';
 import { requireAuth } from '@/services/auth.service';
-import { getBotById, setBotStatus } from '@/services/bingx.service';
+import {
+  getBotById,
+  setBotStatus,
+  getGridLevelsByBotId,
+  getBingxClient,
+  cancelBatchOrders,
+  clearGridLevelOrderIds,
+} from '@/services/bingx.service';
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +23,27 @@ export async function POST(request: Request) {
     const bot = await getBotById(botId, user.id);
     if (!bot) {
       return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
+    }
+
+    const symbol = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
+    const levels = await getGridLevelsByBotId(botId);
+
+    const orderIds: string[] = [];
+    for (const level of levels) {
+      if (level.orderId?.trim()) orderIds.push(level.orderId.trim());
+      if (level.tpOrderId?.trim()) orderIds.push(level.tpOrderId.trim());
+    }
+
+    if (orderIds.length > 0) {
+      const client = await getBingxClient(user.id);
+      if (client) {
+        try {
+          await cancelBatchOrders(client, symbol, orderIds);
+        } catch (cancelErr) {
+          console.warn('[BingX] Some orders may already be filled/cancelled:', cancelErr);
+        }
+      }
+      await clearGridLevelOrderIds(botId);
     }
 
     await setBotStatus(botId, user.id, 'STOPPED');
