@@ -1,7 +1,21 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/services/auth.service';
-import { saveBingxKeys, deleteBingxKeys } from '@/services/bingx.service';
+import { saveBingxKeys, deleteBingxKeys, hasBingxKeys } from '@/services/bingx.service';
 import { createBingxClient } from '@/lib/bingx/client';
+
+export async function GET() {
+  try {
+    const user = await requireAuth();
+    const connected = await hasBingxKeys(user.id);
+    return NextResponse.json({ connected });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to check keys';
+    if (message.includes('Authentication required')) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {
