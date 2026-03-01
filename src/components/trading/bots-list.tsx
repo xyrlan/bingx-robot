@@ -119,7 +119,7 @@ export function BotsList() {
               return (
                 <Accordion.Item key={bot.id} id={bot.id}>
                   <Accordion.Heading>
-                    <div className="flex flex-wrap items-center justify-between gap-3 py-3 pr-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3 py-3 pr-2 w-full">
                       <Accordion.Trigger className="flex-1 min-w-0 text-left">
                         <div>
                           <p className="font-medium">{bot.symbol}</p>
@@ -157,6 +157,8 @@ export function BotsList() {
                           variant="outline"
                           onPress={() => handleStop(bot.id)}
                           isDisabled={stoppingId === bot.id}
+                className="text-danger border-danger/50 hover:bg-danger/10"
+
                         >
                           {stoppingId === bot.id ? <Spinner size="sm" /> : 'Stop'}
                         </Button>
