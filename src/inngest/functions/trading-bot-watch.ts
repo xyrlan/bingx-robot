@@ -135,7 +135,6 @@ export const tradingBotWatch = inngest.createFunction(
         levels,
         openOrderIds,
         positions,
-        orders,
         pricePrecision,
         quantityPrecision,
         minQty,
@@ -166,12 +165,26 @@ export const tradingBotWatch = inngest.createFunction(
             `fallback-tp-${bot.id}-${levelId}`,
             async () => {
               const client = await getBingxClient(bot.userId);
-              if (!client) return { placed: 0 };
+              if (!client) return { placed: 0, positionClosed: false };
+
+              const freshPositions = await getOpenPositions(client, symbol);
+              const freshPositionsAtLevel = freshPositions.filter((p) => {
+                const side = p.positionSide.toUpperCase();
+                const isLong = side === 'LONG' || side === 'BOTH';
+                return isLong && positionMatchesLevel(p.entryPrice, priceLevel);
+              });
+
+              if (freshPositionsAtLevel.length === 0) {
+                return { placed: 0, positionClosed: true };
+              }
+
+              const freshOrders = await getOpenOrders(client, symbol);
+              const freshOpenOrderIds = new Set(freshOrders.map((o) => String(o.orderId)));
 
               const positionsWithTpCheck = new Set<string | number>();
               let placed = 0;
 
-              for (const positionAtLevel of positionsAtLevel) {
+              for (const positionAtLevel of freshPositionsAtLevel) {
                 if (!isClosestLevelForPosition(positionAtLevel.entryPrice, priceLevel, levels)) continue;
                 const posKey = positionAtLevel.positionId ?? `${positionAtLevel.entryPrice}-${positionAtLevel.positionAmt}`;
                 if (positionsWithTpCheck.has(posKey)) continue;
@@ -183,9 +196,9 @@ export const tradingBotWatch = inngest.createFunction(
                 if (currentPrice != null && stopPrice <= currentPrice) continue;
 
                 const hasTp =
-                  (level.tpOrderId && openOrderIdsSet.has(level.tpOrderId)) ||
+                  (level.tpOrderId && freshOpenOrderIds.has(level.tpOrderId)) ||
                   hasTakeProfitForPosition(
-                    orders,
+                    freshOrders,
                     symbol,
                     posSide,
                     stopPrice,
@@ -209,12 +222,16 @@ export const tradingBotWatch = inngest.createFunction(
                   }
                 }
               }
-              return { placed };
+              return { placed, positionClosed: false };
             }
           );
 
-          if (fallbackResult?.placed) processed += fallbackResult.placed;
-          continue;
+          if (fallbackResult?.positionClosed) {
+            // Position was closed (TP triggered) - fall through to place-entry
+          } else {
+            if (fallbackResult?.placed) processed += fallbackResult.placed;
+            continue;
+          }
         }
 
         if (positionSizeUsdt < minUsdt) {
