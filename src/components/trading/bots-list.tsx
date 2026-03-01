@@ -84,14 +84,16 @@ export function BotsList() {
   }, []);
 
   // Auto-refresh active bots every 30 seconds (silent, no loading spinner)
+  const hasRunning = bots.some((b) => b.bot.status === 'RUNNING');
   useEffect(() => {
-    const hasRunning = bots.some((b) => b.bot.status === 'RUNNING');
     if (!hasRunning) return;
     const interval = setInterval(() => fetchBots(true), 30_000);
     return () => clearInterval(interval);
-  }, [bots]);
+  }, [hasRunning]);
 
-  if (bots.length === 0 && !loading) {
+  const activeBots = bots.filter((b) => b.bot.status === 'RUNNING');
+
+  if (activeBots.length === 0 && !loading) {
     return null;
   }
 
@@ -105,13 +107,13 @@ export function BotsList() {
           </Button>
         </div>
 
-        {loading && bots.length === 0 ? (
+        {loading && activeBots.length === 0 ? (
           <div className="flex justify-center py-8">
             <Spinner />
           </div>
         ) : (
           <Accordion className="w-full" allowsMultipleExpanded variant="surface">
-            {bots.map((item) => {
+            {activeBots.map((item) => {
               const { bot, runtime, orders, positions, unrealizedPnl, realizedPnl } = item;
 
               return (
@@ -122,7 +124,7 @@ export function BotsList() {
                         <div>
                           <p className="font-medium">{bot.symbol}</p>
                           <p className="text-sm text-default-500">
-                            {bot.priceMin} – {bot.priceMax} • {bot.gridCount ?? 1} grids • {bot.status}
+                            {Number(bot.priceMin).toFixed(2)} – {Number(bot.priceMax).toFixed(2)} • {bot.gridCount ?? 1} grids • {bot.status}
                             {bot.status === 'RUNNING' && (
                               <span className="ml-2">• Running for {runtime}</span>
                             )}
@@ -173,7 +175,7 @@ export function BotsList() {
                                 className="flex justify-between items-center py-1"
                               >
                                 <span>
-                                  {o.type} @ {o.priceLevel}
+                                  {o.type} @ {Number(o.priceLevel).toFixed(2)}
                                   {o.stopPrice != null && ` (TP: ${o.stopPrice.toFixed(2)})`}
                                 </span>
                                 <span

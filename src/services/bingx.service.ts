@@ -699,6 +699,7 @@ export async function getBotDetails(
           status: openOrderIds.has(level.orderId) ? 'OPEN' : 'FILLED',
           price: openOrder ? Number(openOrder.price ?? 0) : priceLevel,
           quantity: openOrder ? Number((openOrder as { origQty?: string }).origQty ?? 0) : undefined,
+          stopPrice: tpStopPrice,
         });
       }
       if (level.tpOrderId) {

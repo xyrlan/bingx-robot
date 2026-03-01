@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, TextField, Input, Label, Button } from '@heroui/react';
+import { Card, TextField, Input, Label, Button, Description } from '@heroui/react';
 
 export function BotConfigForm() {
   const [symbol, setSymbol] = useState('BTC-USDT');
@@ -69,7 +69,9 @@ export function BotConfigForm() {
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               placeholder="BTC-USDT"
+              readOnly
             />
+            <Description>For now, only BTC-USDT is supported.</Description>
           </TextField>
           <div className="grid grid-cols-2 gap-4">
             <TextField variant="primary" isDisabled={loading}>
@@ -107,7 +109,7 @@ export function BotConfigForm() {
             />
           </TextField>
           <TextField variant="primary" isDisabled={loading}>
-            <Label>Take Profit (%)</Label>
+            <Label>Take Profit (%) per grid</Label>
             <Input
               name="takeProfitPercentage"
               type="text"
