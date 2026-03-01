@@ -134,6 +134,7 @@ export const tradingBotWatch = inngest.createFunction(
         symbol,
         levels,
         openOrderIds,
+        orders,
         positions,
         pricePrecision,
         quantityPrecision,
@@ -149,14 +150,26 @@ export const tradingBotWatch = inngest.createFunction(
 
       for (const level of levels) {
         const priceLevel = Number(level.priceLevel);
-        const orderStillOpen = level.orderId && openOrderIdsSet.has(level.orderId);
+        let orderStillOpen = false;
+        if (level.orderId && openOrderIdsSet.has(level.orderId)) {
+          const order = orders.find((o) => String(o.orderId) === level.orderId);
+          const isEntryOrder =
+            order &&
+            ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
+            String(order.side ?? '').toUpperCase() === 'BUY';
+          orderStillOpen = !!isEntryOrder;
+        }
 
         if (orderStillOpen) continue;
 
         const positionsAtLevel = positions.filter((p) => {
           const side = p.positionSide.toUpperCase();
           const isLong = side === 'LONG' || side === 'BOTH';
-          return isLong && positionMatchesLevel(p.entryPrice, priceLevel);
+          return (
+            isLong &&
+            positionMatchesLevel(p.entryPrice, priceLevel) &&
+            isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
+          );
         });
 
         if (positionsAtLevel.length > 0) {
@@ -171,7 +184,11 @@ export const tradingBotWatch = inngest.createFunction(
               const freshPositionsAtLevel = freshPositions.filter((p) => {
                 const side = p.positionSide.toUpperCase();
                 const isLong = side === 'LONG' || side === 'BOTH';
-                return isLong && positionMatchesLevel(p.entryPrice, priceLevel);
+                return (
+                  isLong &&
+                  positionMatchesLevel(p.entryPrice, priceLevel) &&
+                  isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
+                );
               });
 
               if (freshPositionsAtLevel.length === 0) {
@@ -257,7 +274,12 @@ export const tradingBotWatch = inngest.createFunction(
             const freshOrders = await getOpenOrders(client, symbol);
             const freshIds = new Set(freshOrders.map((o) => String(o.orderId)));
             if (level.orderId && freshIds.has(level.orderId)) {
-              return { orderId: level.orderId, skipped: true };
+              const order = freshOrders.find((o) => String(o.orderId) === level.orderId);
+              const isEntryOrder =
+                order &&
+                ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
+                String(order.side ?? '').toUpperCase() === 'BUY';
+              if (isEntryOrder) return { orderId: level.orderId, skipped: true };
             }
 
             const orphanOrder = freshOrders.find((o) => {
