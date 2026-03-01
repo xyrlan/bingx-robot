@@ -165,6 +165,32 @@ export function BotsList() {
                   </Accordion.Heading>
                   <Accordion.Panel>
                     <Accordion.Body className="space-y-4">
+
+                    {positions.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium mb-2">Positions</p>
+                          <div className="space-y-1 text-sm">
+                            {positions.map((p, i) => (
+                              <div
+                                key={i}
+                                className="flex justify-between items-center py-1"
+                              >
+                                <span>
+                                  Entry {p.entryPrice.toFixed(2)} × {p.positionAmt}
+                                </span>
+                                <span
+                                  className={
+                                    p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'
+                                  }
+                                >
+                               {formatPnl(p.unrealizedPnl)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {orders.length > 0 && (
                         <div>
                           <p className="text-sm font-medium mb-2">Orders</p>
@@ -195,30 +221,7 @@ export function BotsList() {
                         </div>
                       )}
 
-                      {positions.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium mb-2">Positions</p>
-                          <div className="space-y-1 text-sm">
-                            {positions.map((p, i) => (
-                              <div
-                                key={i}
-                                className="flex justify-between items-center py-1"
-                              >
-                                <span>
-                                  Entry {p.entryPrice.toFixed(2)} × {p.positionAmt}
-                                </span>
-                                <span
-                                  className={
-                                    p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'
-                                  }
-                                >
-                                  PnL: {formatPnl(p.unrealizedPnl)} | Est: {formatPnl(p.estimatedProfit)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                     
 
                       {orders.length === 0 && positions.length === 0 && (
                         <p className="text-sm text-default-500">

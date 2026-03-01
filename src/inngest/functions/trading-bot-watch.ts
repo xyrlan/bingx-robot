@@ -260,12 +260,17 @@ export const tradingBotWatch = inngest.createFunction(
               return { orderId: level.orderId, skipped: true };
             }
 
-            const orphanOrder = freshOrders.find(
-              (o) =>
-                String(o.side ?? '').toUpperCase() === 'BUY' &&
-                String(o.positionSide ?? '').toUpperCase() === positionSide.toUpperCase() &&
-                Math.abs(Number(o.price ?? 0) - priceLevel) < 0.0001
-            );
+            const orphanOrder = freshOrders.find((o) => {
+              if (String(o.side ?? '').toUpperCase() !== 'BUY') return false;
+              if (String(o.positionSide ?? '').toUpperCase() !== positionSide.toUpperCase()) return false;
+              const orderType = String(o.type ?? '').toUpperCase();
+              if (orderType !== 'LIMIT' && orderType !== 'TRIGGER_LIMIT') return false;
+              const price = Number(o.price ?? 0);
+              const stopPrice = Number(o.stopPrice ?? 0);
+              const priceMatch = Math.abs(price - priceLevel) < 0.0001;
+              const stopPriceMatch = Math.abs(stopPrice - priceLevel) < 0.0001;
+              return priceMatch || stopPriceMatch;
+            });
             if (orphanOrder) {
               const orderIdRecuperado = orphanOrder.orderId;
               await updateGridLevelOrderId(bot.id, String(level.priceLevel), orderIdRecuperado);
