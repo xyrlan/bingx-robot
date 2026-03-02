@@ -268,12 +268,13 @@ export function toPrecision(value: number, decimals: number): string {
 }
 
 /**
- * Rounds quantity to nearest step (avoids truncating e.g. 10 USDT at 60k → 0.0001667 BTC
- * was becoming 0.0001 instead of 0.0002). Use Math.round so we don't consistently under-order.
+ * Rounds quantity UP to the nearest step so we always meet at least the desired USDT per order.
+ * At higher price levels (e.g. TRIGGER_LIMIT), quantityBtc is smaller; round() would give 0.0001
+ * ($7) instead of 0.0002 ($12). Using ceil ensures consistent sizing across all grid levels.
  */
 export function toQuantityPrecision(value: number, decimals: number): string {
   const factor = 10 ** decimals;
-  return (Math.round(value * factor) / factor).toFixed(decimals);
+  return (Math.ceil(value * factor) / factor).toFixed(decimals);
 }
 
 /**
