@@ -4,9 +4,8 @@ import { requireAuth } from '@/services/auth.service';
 import {
   getBotById,
   setBotStatus,
-  getGridLevelsByBotId,
   getBingxClient,
-  cancelBatchOrders,
+  cancelAllOpenOrders,
   clearGridLevelOrderIds,
 } from '@/services/bingx.service';
 
@@ -26,27 +25,19 @@ export async function POST(request: Request) {
     }
 
     const symbol = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
-    const levels = await getGridLevelsByBotId(botId);
-
-    const orderIds: string[] = [];
-    for (const level of levels) {
-      if (level.orderId?.trim()) orderIds.push(level.orderId.trim());
-      if (level.tpOrderId?.trim()) orderIds.push(level.tpOrderId.trim());
-    }
-
-    if (orderIds.length > 0) {
-      const client = await getBingxClient(user.id);
-      if (client) {
-        try {
-          await cancelBatchOrders(client, symbol, orderIds);
-        } catch (cancelErr) {
-          console.warn('[BingX] Some orders may already be filled/cancelled:', cancelErr);
-        }
-      }
-      await clearGridLevelOrderIds(botId);
-    }
 
     await setBotStatus(botId, user.id, 'STOPPED');
+
+    const client = await getBingxClient(user.id);
+    if (client) {
+      try {
+        await cancelAllOpenOrders(client, symbol);
+      } catch (cancelErr) {
+        console.warn('[BingX] Some orders may already be filled/cancelled:', cancelErr);
+      }
+    }
+
+    await clearGridLevelOrderIds(botId);
 
     await inngest.send({
       name: 'trading/bot.stop',

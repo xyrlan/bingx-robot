@@ -268,6 +268,15 @@ export function toPrecision(value: number, decimals: number): string {
 }
 
 /**
+ * Rounds quantity to nearest step (avoids truncating e.g. 10 USDT at 60k → 0.0001667 BTC
+ * was becoming 0.0001 instead of 0.0002). Use Math.round so we don't consistently under-order.
+ */
+export function toQuantityPrecision(value: number, decimals: number): string {
+  const factor = 10 ** decimals;
+  return (Math.round(value * factor) / factor).toFixed(decimals);
+}
+
+/**
  * Converts positionId/orderId to exact string without precision loss.
  * NEVER use parseInt() or Number() - exchange IDs can exceed JS safe integer range.
  */
@@ -454,7 +463,7 @@ export async function placeGridEntryOrder(params: PlaceGridEntryOrderParams): Pr
   } = params;
 
   const priceStr = toPrecision(priceLevel, pricePrecision);
-  const quantityStr = toPrecision(quantity, quantityPrecision);
+  const quantityStr = toQuantityPrecision(quantity, quantityPrecision);
   // BUY LONG: priceLevel < currentPrice → LIMIT (below market, sits in book).
   //           priceLevel > currentPrice → TRIGGER_LIMIT (above market, avoids sweeping book).
   const useTriggerLimit = currentPrice != null && priceLevel > currentPrice;
@@ -535,6 +544,20 @@ export async function placeTakeProfitOrder(
     console.error('[BingX] placeTakeProfitOrder failed:', err);
     return null;
   }
+}
+
+/**
+ * Cancel all open orders for a symbol via BingX allOpenOrders API.
+ * Use this when stopping a bot to cancel all entry and TP orders at once.
+ * @see https://bingx-api.github.io/docs-v3/#/en/Swap/Trades%20Endpoints/Cancel%20All%20Open%20Orders
+ */
+export async function cancelAllOpenOrders(
+  client: BingxClient,
+  symbol: string
+): Promise<void> {
+  const sym = symbol.toUpperCase().replace(/\s/g, '');
+  if (!sym) return;
+  await client.delete('/openApi/swap/v2/trade/allOpenOrders', { symbol: sym });
 }
 
 /**

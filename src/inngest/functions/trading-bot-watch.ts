@@ -1,6 +1,7 @@
 import { inngest } from '@/inngest/client';
 import {
   getRunningBots,
+  getBotById,
   getBingxClient,
   setBotStatus,
   getGridLevelsByBotId,
@@ -66,6 +67,11 @@ export const tradingBotWatch = inngest.createFunction(
 
     for (const bot of bots) {
       const setup = await step.run(`setup-bot-${bot.id}`, async () => {
+        const freshBot = await getBotById(bot.id, bot.userId);
+        if (!freshBot || freshBot.status !== 'RUNNING') {
+          return { ok: false as const };
+        }
+
         const client = await getBingxClient(bot.userId);
         if (!client) {
           logger.warn(`No BingX keys for user ${bot.userId}, stopping bot ${bot.id}`);
