@@ -106,6 +106,7 @@ export function BalanceDisplay() {
         {error && (
           <p className="text-sm text-danger mb-4">{error}</p>
         )}
+        
         {balance != null && !error && (
           hasItems ? (
             <div className="space-y-4">
