@@ -38,6 +38,8 @@ export async function GET() {
   }
 }
 
+const VALID_MARGIN_TYPES = ['ISOLATED', 'CROSSED', 'SEPARATE_ISOLATED'] as const;
+
 export async function POST(request: Request) {
   try {
     const user = await requireAuth();
@@ -52,6 +54,14 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const leverage = Math.max(1, Math.min(125, Math.floor(Number(body.leverage ?? 1))));
+    const marginTypeRaw = String(body.marginType ?? '').trim().toUpperCase();
+
+    if (marginTypeRaw && VALID_MARGIN_TYPES.includes(marginTypeRaw as (typeof VALID_MARGIN_TYPES)[number])) {
+      await client.post('/openApi/swap/v2/trade/marginType', {
+        symbol: SYMBOL,
+        marginType: marginTypeRaw,
+      });
+    }
 
     await client.post(
       '/openApi/swap/v2/trade/leverage',
@@ -63,9 +73,13 @@ export async function POST(request: Request) {
       true
     );
 
-    return NextResponse.json({ success: true, leverage });
+    return NextResponse.json({
+      success: true,
+      leverage,
+      marginType: marginTypeRaw || undefined,
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update leverage';
+    const message = err instanceof Error ? err.message : 'Failed to update symbol config';
     if (message.includes('Authentication required')) {
       return NextResponse.json({ error: message }, { status: 401 });
     }

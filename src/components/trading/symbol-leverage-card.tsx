@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, TextField, Input, Label, Button, toast } from '@heroui/react';
+import {
+  Card,
+  TextField,
+  Input,
+  Label,
+  Button,
+  Description,
+  Select,
+  ListBox,
+  toast,
+} from '@heroui/react';
 
 type SymbolConfig = {
   symbol: string;
@@ -9,8 +19,15 @@ type SymbolConfig = {
   leverage: number;
 };
 
+const MARGIN_TYPE_OPTIONS = [
+  { value: 'SEPARATE_ISOLATED', label: 'Separated Isolated (recomendado)' },
+  { value: 'ISOLATED', label: 'Isolated' },
+  { value: 'CROSSED', label: 'Cross' },
+] as const;
+
 export function SymbolLeverageCard() {
   const [config, setConfig] = useState<SymbolConfig | null>(null);
+  const [marginTypeInput, setMarginTypeInput] = useState('SEPARATE_ISOLATED');
   const [leverageInput, setLeverageInput] = useState('1');
   const [loading, setLoading] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
@@ -22,6 +39,7 @@ export function SymbolLeverageCard() {
       const data = await res.json();
       if (res.ok) {
         setConfig(data);
+        setMarginTypeInput(data.marginType ?? 'SEPARATE_ISOLATED');
         setLeverageInput(String(data.leverage ?? 1));
       } else {
         setConfig(null);
@@ -37,23 +55,26 @@ export function SymbolLeverageCard() {
     fetchConfig();
   }, []);
 
-  async function handleUpdateLeverage(e: React.FormEvent) {
+  async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     const lev = Math.max(1, Math.min(125, parseInt(leverageInput, 10) || 1));
+    const marginType = marginTypeInput || 'SEPARATE_ISOLATED';
     setLoading(true);
     try {
       const res = await fetch('/api/bingx/symbol-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leverage: lev }),
+        body: JSON.stringify({ leverage: lev, marginType }),
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.danger(data.error ?? 'Failed to update leverage');
+        toast.danger(data.error ?? 'Failed to update');
         return;
       }
-      toast.success('Leverage updated');
-      setConfig((prev) => (prev ? { ...prev, leverage: lev } : null));
+      toast.success('Settings updated');
+      setConfig((prev) =>
+        prev ? { ...prev, leverage: lev, marginType: data.marginType ?? marginType } : null
+      );
     } catch {
       toast.danger('Network error');
     } finally {
@@ -89,16 +110,37 @@ export function SymbolLeverageCard() {
     <Card variant="default" className="w-full">
       <Card.Content className="p-6">
         <h3 className="text-lg font-semibold mb-4">Symbol & Leverage</h3>
-        <form onSubmit={handleUpdateLeverage} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <TextField variant="primary" isDisabled>
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <TextField className={"col-span-2"} variant="primary" isDisabled>
               <Label>Symbol</Label>
               <Input name="symbol" type="text" value={config.symbol} readOnly />
             </TextField>
-            <TextField variant="primary" isDisabled>
+            <Select
+              className="w-full"
+              variant="primary"
+              placeholder="Select margin type"
+              value={marginTypeInput}
+              onChange={(value) => setMarginTypeInput((value as string) ?? 'SEPARATE_ISOLATED')}
+              isDisabled={loading}
+            >
               <Label>Margin Type</Label>
-              <Input name="marginType" type="text" value={config.marginType} readOnly />
-            </TextField>
+              <Select.Trigger>
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Description>Recomendamos SEPARATE_ISOLATED para grid trading.</Description>
+              <Select.Popover>
+                <ListBox>
+                  {MARGIN_TYPE_OPTIONS.map((opt) => (
+                    <ListBox.Item key={opt.value} id={opt.value} textValue={opt.label}>
+                      {opt.label}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
+            </Select>
             <TextField variant="primary" isDisabled={loading}>
               <Label>Leverage</Label>
               <Input
@@ -113,11 +155,12 @@ export function SymbolLeverageCard() {
             </TextField>
           </div>
           <Button type="submit" variant="primary" isDisabled={loading}>
-            {loading ? 'Updating...' : 'Update Leverage'}
+            {loading ? 'Updating...' : 'Update'}
           </Button>
         </form>
         <p className="text-xs text-default-500 mt-3">
-          Cannot change leverage with active positions. Close positions first if you see an error.
+          Não é possível alterar margin type ou leverage com posições ou ordens ativas. Feche-as
+          primeiro se aparecer erro.
         </p>
       </Card.Content>
     </Card>
