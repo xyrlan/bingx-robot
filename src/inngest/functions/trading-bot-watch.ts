@@ -6,7 +6,6 @@ import {
   setBotStatus,
   getGridLevelsByBotId,
   createGridLevels,
-  ensureMarginTypeAndLeverage,
   getContractInfo,
   getCurrentPrice,
   getOpenPositions,
@@ -97,13 +96,6 @@ export const tradingBotWatch = inngest.createFunction(
             bot.gridCount
           );
         }
-
-        await ensureMarginTypeAndLeverage(
-          client,
-          symbol,
-          bot.marginType,
-          bot.leverage
-        );
 
         const contractInfo = await getContractInfo(client, symbol);
         const pricePrecision = contractInfo?.pricePrecision ?? 4;

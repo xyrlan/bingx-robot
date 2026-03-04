@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { signOutAction } from './actions';
 import { ConnectKeysForm } from '@/components/trading/connect-keys-form';
 import { BalanceDisplay } from '@/components/trading/balance-display';
+import { SymbolLeverageCard } from '@/components/trading/symbol-leverage-card';
 import { BotConfigForm } from '@/components/trading/bot-config-form';
 import { BotsList } from '@/components/trading/bots-list';
 
@@ -34,6 +35,7 @@ export default async function DashboardPage() {
           <div className="space-y-6">
               <ConnectKeysForm />
               <BalanceDisplay />
+              <SymbolLeverageCard />
             <BotConfigForm />
             <BotsList />
           </div>

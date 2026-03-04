@@ -1,47 +1,54 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, TextField, Input, Label, Button, Description, toast } from '@heroui/react';
+import { Card, TextField, Input, Label, Button, toast } from '@heroui/react';
 import { getAvailableMargin } from '@/lib/balance';
 
 function formatUsdt(value: number): string {
   return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
 }
 
+type SymbolConfig = {
+  symbol: string;
+  marginType: string;
+  leverage: number;
+};
+
 export function BotConfigForm() {
-  const [symbol, setSymbol] = useState('BTC-USDT');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [positionSizeUsdt, setPositionSizeUsdt] = useState('10');
   const [takeProfitPercentage, setTakeProfitPercentage] = useState('2');
   const [gridCount, setGridCount] = useState('5');
-  const [leverage, setLeverage] = useState('1');
   const [loading, setLoading] = useState(false);
   const [availableMargin, setAvailableMargin] = useState<number | null>(null);
+  const [symbolConfig, setSymbolConfig] = useState<SymbolConfig | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchBalance() {
+    async function fetchData() {
       setBalanceLoading(true);
       try {
-        const res = await fetch('/api/bingx/balance');
-        const data = await res.json();
-        if (res.ok) {
-          setAvailableMargin(getAvailableMargin(data));
-        } else {
-          setAvailableMargin(null);
-        }
+        const [balanceRes, configRes] = await Promise.all([
+          fetch('/api/bingx/balance'),
+          fetch('/api/bingx/symbol-config'),
+        ]);
+        const balanceData = await balanceRes.json();
+        const configData = await configRes.json();
+        setAvailableMargin(balanceRes.ok ? getAvailableMargin(balanceData) : null);
+        setSymbolConfig(configRes.ok ? configData : null);
       } catch {
         setAvailableMargin(null);
+        setSymbolConfig(null);
       } finally {
         setBalanceLoading(false);
       }
     }
-    fetchBalance();
+    fetchData();
   }, []);
 
   const posSize = parseFloat(positionSizeUsdt) || 0;
-  const lev = Math.max(1, Math.min(125, parseInt(leverage, 10) || 1));
+  const lev = symbolConfig?.leverage ?? 1;
   const gridNum = Math.max(1, Math.min(100, parseInt(gridCount, 10) || 1));
   const marginPerGrid = lev > 0 ? posSize / lev : 0;
   const totalMarginNeeded = marginPerGrid * gridNum;
@@ -50,6 +57,7 @@ export function BotConfigForm() {
   const canSubmit =
     !loading &&
     !balanceLoading &&
+    symbolConfig !== null &&
     availableMargin !== null &&
     hasEnoughMargin &&
     posSize > 0 &&
@@ -71,19 +79,22 @@ export function BotConfigForm() {
       return;
     }
 
+    if (!symbolConfig) {
+      toast.danger('Could not fetch symbol config. Please refresh and try again.');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/bingx/bot/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          symbol: symbol.trim(),
           priceMin: priceMin.trim(),
           priceMax: priceMax.trim(),
           positionSizeUsdt: positionSizeUsdt.trim(),
           takeProfitPercentage: takeProfitPercentage.trim(),
           gridCount: gridNum,
-          leverage: lev,
         }),
       });
       const data = await res.json();
@@ -104,18 +115,6 @@ export function BotConfigForm() {
       <Card.Content className="p-6">
         <h3 className="text-lg font-semibold mb-4">Start Grid Trading Bot</h3>
         <form onSubmit={handleStart} className="space-y-4">
-          <TextField variant="primary" isDisabled={loading}>
-            <Label>Symbol</Label>
-            <Input
-              name="symbol"
-              type="text"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="BTC-USDT"
-              readOnly
-            />
-            <Description>For now, only BTC-USDT is supported.</Description>
-          </TextField>
           <div className="grid grid-cols-2 gap-4">
             <TextField variant="primary" isDisabled={loading}>
               <Label>Price Min</Label>
@@ -151,32 +150,18 @@ export function BotConfigForm() {
               placeholder="10"
             />
           </TextField>
-          <div className="grid grid-cols-2 gap-4">
-            <TextField variant="primary" isDisabled={loading}>
-              <Label>Leverage</Label>
-              <Input
-                name="leverage"
-                type="number"
-                min={1}
-                max={125}
-                value={leverage}
-                onChange={(e) => setLeverage(e.target.value)}
-                placeholder="1"
-              />
-            </TextField>
-            <TextField variant="primary" isDisabled={loading}>
-              <Label>Grid Count</Label>
-              <Input
-                name="gridCount"
-                type="number"
-                min={1}
-                max={100}
-                value={gridCount}
-                onChange={(e) => setGridCount(e.target.value)}
-                placeholder="5"
-              />
-            </TextField>
-          </div>
+          <TextField variant="primary" isDisabled={loading}>
+            <Label>Grid Count</Label>
+            <Input
+              name="gridCount"
+              type="number"
+              min={1}
+              max={100}
+              value={gridCount}
+              onChange={(e) => setGridCount(e.target.value)}
+              placeholder="5"
+            />
+          </TextField>
           <TextField variant="primary" isDisabled={loading}>
             <Label>Take Profit (%) per grid</Label>
             <Input
@@ -189,7 +174,7 @@ export function BotConfigForm() {
             />
           </TextField>
 
-          {!balanceLoading && posSize > 0 && lev >= 1 && gridNum >= 1 && (
+          {!balanceLoading && symbolConfig && posSize > 0 && lev >= 1 && gridNum >= 1 && (
             <div className="rounded-lg bg-default-100 p-4 space-y-2">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <span className="text-default-600">
@@ -200,6 +185,9 @@ export function BotConfigForm() {
                   <strong>
                     {availableMargin !== null ? formatUsdt(availableMargin) : '—'}
                   </strong>
+                </span>
+                <span className="text-default-600">
+                  Leverage: <strong>{lev}x</strong> (from Symbol & Leverage card)
                 </span>
               </div>
               {availableMargin !== null && !hasEnoughMargin && (
@@ -214,12 +202,14 @@ export function BotConfigForm() {
           <span
             title={
               balanceLoading
-                ? 'Loading balance...'
-                : availableMargin === null
-                  ? 'Balance unavailable. Connect keys and refresh.'
-                  : !hasEnoughMargin
-                    ? 'Insufficient margin'
-                    : undefined
+                ? 'Loading...'
+                : symbolConfig === null
+                  ? 'Symbol config unavailable. Connect keys and refresh.'
+                  : availableMargin === null
+                    ? 'Balance unavailable. Connect keys and refresh.'
+                    : !hasEnoughMargin
+                      ? 'Insufficient margin'
+                      : undefined
             }
           >
             <Button type="submit" variant="primary" isDisabled={loading || !canSubmit}>
