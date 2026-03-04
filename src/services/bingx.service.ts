@@ -575,7 +575,7 @@ export async function cancelBatchOrders(
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const chunk = ids.slice(i, i + BATCH_SIZE);
     
-    const orderIdList = `[${chunk.join(',')}]`;
+    const orderIdList = `[${chunk.join(', ')}]`;
 
     console.log(`Tentando cancelar no par: ${formattedSymbol}`);
     console.log(`Lista de IDs formatada: ${orderIdList}`);
