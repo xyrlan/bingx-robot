@@ -29,16 +29,27 @@ type EditBotModalProps = {
   onSave: (botId: string, params: EditBotSaveParams) => Promise<string | null>;
 };
 
+/** Remove trailing zeros from decimal string (e.g. "10.00000000" → "10") */
+function trimDecimal(s: string | undefined, fallback: string): string {
+  if (s == null || s === '') return fallback;
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? fallback : String(n);
+}
+
 export function EditBotModal({ item, onClose, onSave }: EditBotModalProps) {
   const bot = item.bot;
   const [positionSizeUsdt, setPositionSizeUsdt] = useState(
-    () => String(bot.positionSizeUsdt ?? '10')
+    () => trimDecimal(bot.positionSizeUsdt, '10')
   );
   const [takeProfitPercentage, setTakeProfitPercentage] = useState(
-    () => String(bot.takeProfitPercentage ?? '2')
+    () => trimDecimal(bot.takeProfitPercentage, '2')
   );
-  const [priceMin, setPriceMin] = useState(() => String(bot.priceMin ?? ''));
-  const [priceMax, setPriceMax] = useState(() => String(bot.priceMax ?? ''));
+  const [priceMin, setPriceMin] = useState(
+    () => trimDecimal(bot.priceMin, '')
+  );
+  const [priceMax, setPriceMax] = useState(
+    () => trimDecimal(bot.priceMax, '')
+  );
   const [gridCount, setGridCount] = useState(
     () => String(bot.gridCount ?? 5)
   );
