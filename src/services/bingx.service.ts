@@ -564,15 +564,23 @@ export async function cancelBatchOrders(
   orderIds: string[]
 ): Promise<void> {
   const BATCH_SIZE = 10;
+  
   const ids = orderIds.filter((id) => id && id.trim());
   if (ids.length === 0) return;
 
+  let formattedSymbol = symbol.toUpperCase().trim();
+  if (!formattedSymbol.includes('-')) {
+    formattedSymbol = formattedSymbol.replace(/(USDT|USDC|ETH|BTC)$/, '-$1');
+  }
+
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const chunk = ids.slice(i, i + BATCH_SIZE);
+    
     const orderIdList = `[${chunk.join(',')}]`;
+
     await client.delete('/openApi/swap/v2/trade/batchOrders', {
-      symbol: symbol.toUpperCase().replace(/\s/g, ''),
-      orderIdList,
+      symbol: formattedSymbol,
+      orderIdList: orderIdList,
     });
   }
 }
