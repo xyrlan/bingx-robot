@@ -1,5 +1,4 @@
 import { signParams, buildSigningString, buildQueryStringForUrl } from './signature';
-import JSONBig from 'json-bigint';
 
 const BASE_URL = 'https://open-api.bingx.com';
 
@@ -56,8 +55,7 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
     }
 
     const res = await fetch(url.toString(), options);
-    const responseText = await res.text();
-    const json = JSONBig({ storeAsString: true }).parse(responseText) as BingxApiResponse<T>;
+    const json = (await res.json()) as BingxApiResponse<T>;
 
     if (!res.ok) {
       throw new Error(json.msg || `BingX API error: ${res.status}`);
