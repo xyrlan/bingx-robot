@@ -20,7 +20,8 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
     path: string,
     params?: Record<string, string | number | undefined>,
     body?: Record<string, unknown>,
-    useQueryParams = false
+    useQueryParams = false,
+    omitRecvWindow = false
   ): Promise<T> {
     const url = new URL(path.startsWith('http') ? path : `${BASE_URL}${path}`);
 
@@ -28,7 +29,12 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
       method === 'GET' || method === 'DELETE'
         ? (params ?? {})
         : (body as Record<string, string | number | undefined>) ?? {};
-    const signedParams = signParams(paramsToSign, secretKey.trim(), recvWindow);
+    const signedParams = signParams(
+      paramsToSign,
+      secretKey.trim(),
+      recvWindow,
+      omitRecvWindow
+    );
 
     if (method === 'GET' || method === 'DELETE' || useQueryParams) {
       const { signature, ...paramsForQuery } = signedParams;
@@ -38,7 +44,7 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
     }
 
     const requestHeaders = { ...headers };
-    if (method === 'POST' && useQueryParams) {
+    if ((method === 'POST' && useQueryParams) || method === 'DELETE') {
       delete requestHeaders['Content-Type'];
     }
     const options: RequestInit = {
@@ -83,8 +89,19 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
       return request<T>('POST', path, undefined, body, useQueryParams);
     },
 
-    delete<T = unknown>(path: string, params?: Record<string, string | number | undefined>) {
-      return request<T>('DELETE', path, params);
+    delete<T = unknown>(
+      path: string,
+      params?: Record<string, string | number | undefined>,
+      options?: { omitRecvWindow?: boolean }
+    ) {
+      return request<T>(
+        'DELETE',
+        path,
+        params,
+        undefined,
+        false,
+        options?.omitRecvWindow ?? false
+      );
     },
   };
 }

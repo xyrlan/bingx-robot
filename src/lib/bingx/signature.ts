@@ -54,11 +54,13 @@ export function generateSignature(signingString: string, secretKey: string): str
 /**
  * Add timestamp and signature to params. Excludes signature from signing.
  * Normalizes all param values (trim strings) before signing so URL and signing string match.
+ * @param omitRecvWindow - When true, omit recvWindow (matches BingX batchOrders sample: orderIdList, symbol, timestamp only)
  */
 export function signParams(
   params: Record<string, string | number | undefined>,
   secretKey: string,
-  recvWindow = 60000
+  recvWindow = 60000,
+  omitRecvWindow = false
 ): Record<string, string | number> {
   const normalized: Record<string, string | number | undefined> = {};
   for (const [k, v] of Object.entries(params)) {
@@ -66,7 +68,9 @@ export function signParams(
     if (nv !== undefined) normalized[k] = nv;
   }
   const timestamp = Date.now();
-  const paramsWithTime = { ...normalized, recvWindow, timestamp };
+  const paramsWithTime = omitRecvWindow
+    ? { ...normalized, timestamp }
+    : { ...normalized, recvWindow, timestamp };
 
   const signingString = buildSigningString(paramsWithTime);
   const signature = generateSignature(signingString, secretKey);

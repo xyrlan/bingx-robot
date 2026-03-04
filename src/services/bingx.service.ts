@@ -580,10 +580,14 @@ export async function cancelBatchOrders(
     console.log(`Tentando cancelar no par: ${formattedSymbol}`);
     console.log(`Lista de IDs formatada: ${orderIdList}`);
 
-    await client.delete('/openApi/swap/v2/trade/batchOrders', {
-      symbol: formattedSymbol,
-      orderIdList: orderIdList,
-    });
+    await client.delete(
+      '/openApi/swap/v2/trade/batchOrders',
+      {
+        symbol: formattedSymbol,
+        orderIdList: orderIdList,
+      },
+      { omitRecvWindow: true }
+    );
 
   }
 }
