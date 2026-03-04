@@ -7,6 +7,7 @@ import {
   pgEnum,
   decimal,
   integer,
+  boolean,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
@@ -119,6 +120,7 @@ export const gridLevels = pgTable(
     priceLevel: decimal('price_level', { precision: 18, scale: 8 }).notNull(),
     orderId: text('order_id'),
     tpOrderId: text('tp_order_id'),
+    isActive: boolean('is_active').default(true).notNull(),
     positionSide: text('position_side').notNull().default('LONG'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

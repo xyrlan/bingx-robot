@@ -257,6 +257,11 @@ export const tradingBotWatch = inngest.createFunction(
           }
         }
 
+        // Legacy level: monitor TP but never place new entry orders
+        if (level.isActive === false) {
+          continue;
+        }
+
         if (positionSizeUsdt < minUsdt) {
           logger.warn(`USDT ${positionSizeUsdt} below min ${minUsdt} for ${symbol}, skipping level ${priceLevel}`);
           continue;

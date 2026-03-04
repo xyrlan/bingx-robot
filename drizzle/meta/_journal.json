@@ -29,6 +29,13 @@
       "when": 1772255665684,
       "tag": "0003_heavy_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772582621906,
+      "tag": "0004_talented_aaron_stack",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { bingxApiKeys, tradingBots, gridLevels } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
@@ -136,7 +136,8 @@ export async function createGridLevels(
   botId: string,
   priceMin: string,
   priceMax: string,
-  gridCount: number
+  gridCount: number,
+  options?: { onConflictDoNothing?: boolean }
 ): Promise<GridLevel[]> {
   const min = parseFloat(priceMin);
   const max = parseFloat(priceMax);
@@ -146,8 +147,14 @@ export async function createGridLevels(
     priceLevel: String(priceLevel),
     positionSide: 'LONG',
   }));
-  const result = await db.insert(gridLevels).values(inserts).returning();
-  return result;
+  if (options?.onConflictDoNothing) {
+    return await db
+      .insert(gridLevels)
+      .values(inserts)
+      .onConflictDoNothing({ target: [gridLevels.botId, gridLevels.priceLevel] })
+      .returning();
+  }
+  return await db.insert(gridLevels).values(inserts).returning();
 }
 
 export async function getGridLevelsByBotId(botId: string): Promise<GridLevel[]> {
@@ -548,20 +555,6 @@ export async function placeTakeProfitOrder(
 }
 
 /**
- * Cancel all open orders for a symbol via BingX allOpenOrders API.
- * Use this when stopping a bot to cancel all entry and TP orders at once.
- * @see https://bingx-api.github.io/docs-v3/#/en/Swap/Trades%20Endpoints/Cancel%20All%20Open%20Orders
- */
-export async function cancelAllOpenOrders(
-  client: BingxClient,
-  symbol: string
-): Promise<void> {
-  const sym = symbol.toUpperCase().replace(/\s/g, '');
-  if (!sym) return;
-  await client.delete('/openApi/swap/v2/trade/allOpenOrders', { symbol: sym });
-}
-
-/**
  * Cancel multiple orders via BingX batchOrders API (up to 10 per request).
  * Splits into chunks if orderIds.length > 10.
  */
@@ -585,13 +578,98 @@ export async function cancelBatchOrders(
 }
 
 /**
- * Clear orderId and tpOrderId for all grid levels of a bot (after orders are cancelled).
+ * Clear only orderId (entry orders) for all grid levels of a bot.
+ * Does NOT clear tpOrderId — Take Profits stay active on BingX ("Let it Ride").
  */
-export async function clearGridLevelOrderIds(botId: string): Promise<void> {
+export async function clearGridLevelEntryOrders(botId: string): Promise<void> {
   await db
     .update(gridLevels)
-    .set({ orderId: null, tpOrderId: null, updatedAt: new Date() })
+    .set({ orderId: null, updatedAt: new Date() })
     .where(eq(gridLevels.botId, botId));
+}
+
+/**
+ * Stop bot with surgical cancellation: cancel only entry orders (Buy Limits),
+ * leave positions and Take Profit orders active on BingX ("Let it Ride").
+ */
+export async function stopBotAndCancelEntries(
+  client: BingxClient,
+  botId: string,
+  symbol: string
+): Promise<void> {
+  const levels = await getGridLevelsByBotId(botId);
+  const entryOrderIds = levels
+    .map((l) => l.orderId)
+    .filter((id): id is string => id != null && id.trim() !== '');
+
+  if (entryOrderIds.length > 0) {
+    try {
+      await cancelBatchOrders(client, symbol, entryOrderIds);
+    } catch (err) {
+      console.warn('[BingX] Some entry orders may already be filled/cancelled:', err);
+    }
+  }
+
+  await clearGridLevelEntryOrders(botId);
+}
+
+export type EditBotParams = {
+  priceMin: string;
+  priceMax: string;
+  gridCount: number;
+  positionSizeUsdt: string;
+  takeProfitPercentage: string;
+};
+
+export async function editActiveBot(
+  userId: string,
+  botId: string,
+  params: EditBotParams
+): Promise<void> {
+  const client = await getBingxClient(userId);
+  const bot = await getBotById(botId, userId);
+
+  if (!client || !bot) {
+    throw new Error('Bot or API Client not found');
+  }
+
+  if (bot.status !== 'RUNNING') {
+    throw new Error('Bot must be RUNNING to edit');
+  }
+
+  const symbol = String(bot.symbol ?? '').trim().toUpperCase() || bot.symbol;
+
+  // 1. Cancel all entry orders on BingX and clear orderId in DB
+  await stopBotAndCancelEntries(client, botId, symbol);
+
+  // 2. Delete empty levels (no position/TP running)
+  await db
+    .delete(gridLevels)
+    .where(and(eq(gridLevels.botId, botId), isNull(gridLevels.tpOrderId)));
+
+  // 3. Mark remaining levels (with open positions) as legacy (isActive = false)
+  await db
+    .update(gridLevels)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(eq(gridLevels.botId, botId));
+
+  // 4. Update bot config with new params
+  await db
+    .update(tradingBots)
+    .set({
+      priceMin: params.priceMin,
+      priceMax: params.priceMax,
+      gridCount: params.gridCount,
+      positionSizeUsdt: params.positionSizeUsdt,
+      takeProfitPercentage: params.takeProfitPercentage,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)));
+
+  // 5. Generate and insert new grid levels (skip conflicts with legacy levels)
+  await createGridLevels(botId, params.priceMin, params.priceMax, params.gridCount, {
+    onConflictDoNothing: true,
+  });
 }
 
 export async function getUserBots(userId: string): Promise<TradingBot[]> {

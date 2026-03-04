@@ -5,8 +5,7 @@ import {
   getBotById,
   setBotStatus,
   getBingxClient,
-  cancelAllOpenOrders,
-  clearGridLevelOrderIds,
+  stopBotAndCancelEntries,
 } from '@/services/bingx.service';
 
 export async function POST(request: Request) {
@@ -31,13 +30,11 @@ export async function POST(request: Request) {
     const client = await getBingxClient(user.id);
     if (client) {
       try {
-        await cancelAllOpenOrders(client, symbol);
+        await stopBotAndCancelEntries(client, botId, symbol);
       } catch (cancelErr) {
         console.warn('[BingX] Some orders may already be filled/cancelled:', cancelErr);
       }
     }
-
-    await clearGridLevelOrderIds(botId);
 
     await inngest.send({
       name: 'trading/bot.stop',
