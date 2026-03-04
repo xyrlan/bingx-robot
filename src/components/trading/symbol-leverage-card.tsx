@@ -159,8 +159,7 @@ export function SymbolLeverageCard() {
           </Button>
         </form>
         <p className="text-xs text-default-500 mt-3">
-          Não é possível alterar margin type ou leverage com posições ou ordens ativas. Feche-as
-          primeiro se aparecer erro.
+          It&apos;s not possible to change margin type or leverage with active positions or orders. Close them first if you get an error.
         </p>
       </Card.Content>
     </Card>
