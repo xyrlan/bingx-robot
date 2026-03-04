@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, TextField, Input, Label, Button, Description } from '@heroui/react';
+import { Card, TextField, Input, Label, Button, Description, toast } from '@heroui/react';
 
 export function BotConfigForm() {
   const [symbol, setSymbol] = useState('BTC-USDT');
@@ -12,12 +12,10 @@ export function BotConfigForm() {
   const [gridCount, setGridCount] = useState('5');
   const [leverage, setLeverage] = useState('1');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   async function handleStart(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setMessage(null);
     try {
       const res = await fetch('/api/bingx/bot/start', {
         method: 'POST',
@@ -34,12 +32,12 @@ export function BotConfigForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage({ type: 'error', text: data.error ?? 'Failed to start bot' });
+        toast.danger(data.error ?? 'Failed to start bot');
         return;
       }
-      setMessage({ type: 'success', text: `Bot started (ID: ${data.botId})` });
+      toast.success(`Bot started (ID: ${data.botId})`);
     } catch {
-      setMessage({ type: 'error', text: 'Network error' });
+      toast.danger('Network error');
     } finally {
       setLoading(false);
     }
@@ -50,17 +48,6 @@ export function BotConfigForm() {
       <Card.Content className="p-6">
         <h3 className="text-lg font-semibold mb-4">Start Grid Trading Bot</h3>
         <form onSubmit={handleStart} className="space-y-4">
-          {message && (
-            <div
-              className={`p-3 rounded-lg text-sm ${
-                message.type === 'success'
-                  ? 'bg-success/10 border border-success/30 text-success'
-                  : 'bg-danger/10 border border-danger/30 text-danger'
-              }`}
-            >
-              {message.text}
-            </div>
-          )}
           <TextField variant="primary" isDisabled={loading}>
             <Label>Symbol</Label>
             <Input

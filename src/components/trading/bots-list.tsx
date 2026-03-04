@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Button, Spinner, Accordion } from '@heroui/react';
+import { Card, Button, Spinner, Accordion, toast } from '@heroui/react';
 import { EditBotModal } from './edit-bot-modal';
 
 type BotOrderInfo = {
@@ -85,13 +85,18 @@ export function BotsList() {
       });
       const data = await res.json();
       if (!res.ok) {
-        return data.error ?? 'Failed to update bot';
+        const err = data.error ?? 'Failed to update bot';
+        toast.danger(err);
+        return err;
       }
       closeEditModal();
       fetchBots();
+      toast.success('Bot updated');
       return null;
     } catch {
-      return 'Network error';
+      const err = 'Network error';
+      toast.danger(err);
+      return err;
     }
   }
 
@@ -116,11 +121,15 @@ export function BotsList() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ botId }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        toast.success('Bot stopped');
         fetchBots();
+      } else {
+        toast.danger(data.error ?? 'Failed to stop bot');
       }
     } catch {
-      // ignore
+      toast.danger('Network error');
     } finally {
       setStoppingId(null);
     }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, TextField, Input, Label, Button } from '@heroui/react';
+import { Card, TextField, Input, Label, Button, toast } from '@heroui/react';
 
 export function ConnectKeysForm() {
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -9,7 +9,6 @@ export function ConnectKeysForm() {
   const [apiKey, setApiKey] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   async function fetchConnectionStatus() {
     try {
@@ -28,7 +27,6 @@ export function ConnectKeysForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setMessage(null);
     try {
       const res = await fetch('/api/bingx/keys', {
         method: 'POST',
@@ -37,16 +35,16 @@ export function ConnectKeysForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessage({ type: 'error', text: data.error ?? 'Failed to save keys' });
+        toast.danger(data.error ?? 'Failed to save keys');
         return;
       }
-      setMessage({ type: 'success', text: 'Keys saved successfully' });
+      toast.success('Keys saved successfully');
       setApiKey('');
       setSecretKey('');
       setConnected(true);
       setEditing(false);
     } catch {
-      setMessage({ type: 'error', text: 'Network error' });
+      toast.danger('Network error');
     } finally {
       setLoading(false);
     }
@@ -54,19 +52,18 @@ export function ConnectKeysForm() {
 
   async function handleDisconnect() {
     setLoading(true);
-    setMessage(null);
     try {
       const res = await fetch('/api/bingx/keys', { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json();
-        setMessage({ type: 'error', text: data.error ?? 'Failed to disconnect' });
+        toast.danger(data.error ?? 'Failed to disconnect');
         return;
       }
+      toast.success('Keys removed. Connect again to use.');
       setConnected(false);
       setEditing(true);
-      setMessage({ type: 'success', text: 'Keys removed. Connect again to use.' });
     } catch {
-      setMessage({ type: 'error', text: 'Network error' });
+      toast.danger('Network error');
     } finally {
       setLoading(false);
     }
@@ -78,17 +75,6 @@ export function ConnectKeysForm() {
     <Card variant="default" className="w-full">
       <Card.Content className="p-6">
         <h3 className="text-lg font-semibold mb-4">BingX Connection</h3>
-        {message && (
-          <div
-            className={`mb-4 p-3 rounded-lg text-sm ${
-              message.type === 'success'
-                ? 'bg-success/10 border border-success/30 text-success'
-                : 'bg-danger/10 border border-danger/30 text-danger'
-            }`}
-          >
-            {message.text}
-          </div>
-        )}
         {connected === null ? (
           <p className="text-default-500 text-sm">Loading...</p>
         ) : connected && !showForm ? (
@@ -146,10 +132,7 @@ export function ConnectKeysForm() {
                 <Button
                   type="button"
                   variant="outline"
-                  onPress={() => {
-                    setEditing(false);
-                    setMessage(null);
-                  }}
+                  onPress={() => setEditing(false)}
                   isDisabled={loading}
                 >
                   Cancel

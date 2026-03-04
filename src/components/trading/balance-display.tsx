@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Button } from '@heroui/react';
+import { Card, Button, toast } from '@heroui/react';
 
 type BalanceItem = {
   asset?: string;
@@ -74,14 +74,17 @@ export function BalanceDisplay() {
       const res = await fetch('/api/bingx/balance');
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? 'Failed to fetch balance');
+        const err = data.error ?? 'Failed to fetch balance';
+        setError(err);
         setBalance(null);
+        toast.danger(err);
         return;
       }
       setBalance(data);
     } catch {
       setError('Network error');
       setBalance(null);
+      toast.danger('Network error');
     } finally {
       setLoading(false);
     }
@@ -103,10 +106,6 @@ export function BalanceDisplay() {
             {loading ? 'Loading...' : 'Refresh'}
           </Button>
         </div>
-        {error && (
-          <p className="text-sm text-danger mb-4">{error}</p>
-        )}
-        
         {balance != null && !error && (
           hasItems ? (
             <div className="space-y-4">
