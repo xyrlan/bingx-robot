@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/inngest/client';
 import { requireAuth } from '@/services/auth.service';
-import { hasBingxKeys, createBot, getBotById, setBotStatus } from '@/services/bingx.service';
+import {
+  hasBingxKeys,
+  getBingxClient,
+  createBot,
+  getBotById,
+  setBotStatus,
+} from '@/services/bingx.service';
+import { getAvailableMargin } from '@/lib/balance';
 
 export async function POST(request: Request) {
   try {
@@ -98,6 +105,25 @@ export async function POST(request: Request) {
         { error: 'gridCount must be between 1 and 100' },
         { status: 400 }
       );
+    }
+
+    const totalMarginNeeded = (posSize / leverageNum) * gridCountNum;
+    const client = await getBingxClient(user.id);
+    if (client) {
+      try {
+        const balanceData = await client.get('/openApi/swap/v2/user/balance');
+        const availableMargin = getAvailableMargin(balanceData);
+        if (availableMargin !== null && availableMargin < totalMarginNeeded) {
+          return NextResponse.json(
+            {
+              error: `Insufficient margin. Required: ${totalMarginNeeded.toFixed(2)} USDT, available: ${availableMargin.toFixed(2)} USDT`,
+            },
+            { status: 400 }
+          );
+        }
+      } catch {
+        // If balance fetch fails, proceed - frontend validation is primary
+      }
     }
 
     const bot = await createBot(user.id, {

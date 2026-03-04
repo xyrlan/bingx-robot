@@ -2,34 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card, Button, toast } from '@heroui/react';
-
-type BalanceItem = {
-  asset?: string;
-  balance?: number;
-  availableMargin?: number;
-  available_margin?: number;
-  equity?: number;
-  freezedMargin?: number;
-  freezed_margin?: number;
-  realizedProfit?: number;
-  realized_profit?: number;
-  unrealizedProfit?: number;
-  unrealized_profit?: number;
-  usedMargin?: number;
-  used_margin?: number;
-};
-
-function getNum(obj: BalanceItem, ...keys: (keyof BalanceItem)[]): number {
-  for (const k of keys) {
-    const v = obj[k];
-    if (typeof v === 'number' && !Number.isNaN(v)) return v;
-    if (typeof v === 'string') {
-      const n = parseFloat(v);
-      if (!Number.isNaN(n)) return n;
-    }
-  }
-  return 0;
-}
+import { parseBalanceData, getNum } from '@/lib/balance';
 
 function formatUsdt(value: number): string {
   return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
@@ -38,28 +11,6 @@ function formatUsdt(value: number): string {
 function formatPnl(value: number): string {
   const sign = value >= 0 ? '+' : '';
   return `${sign}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
-}
-
-function parseBalanceData(data: unknown): BalanceItem[] {
-  if (!data || typeof data !== 'object') return [];
-  const obj = data as Record<string, unknown>;
-  if (Array.isArray(obj)) {
-    return obj as BalanceItem[];
-  }
-  if (Array.isArray(obj.balance)) {
-    return obj.balance as BalanceItem[];
-  }
-  if (typeof obj.balance === 'object' && obj.balance !== null) {
-    const bal = obj.balance as Record<string, unknown>;
-    if (Array.isArray(bal.balance)) {
-      return bal.balance as BalanceItem[];
-    }
-    return [obj.balance as BalanceItem];
-  }
-  if (obj.asset !== undefined || (typeof obj.balance === 'number') || obj.equity !== undefined) {
-    return [obj as BalanceItem];
-  }
-  return [];
 }
 
 export function BalanceDisplay() {
