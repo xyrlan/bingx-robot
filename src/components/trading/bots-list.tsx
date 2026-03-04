@@ -306,7 +306,7 @@ export function BotsList() {
               onOpenChange={(open) => !open && setEditBot(null)}
             >
               <Modal.Container placement="center">
-                <Modal.Dialog className="sm:max-w-md">
+                <Modal.Dialog >
                   <Modal.CloseTrigger />
                   <Modal.Header>
                     <Modal.Heading>Edit Bot – {editBot.bot.symbol}</Modal.Heading>
