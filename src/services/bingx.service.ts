@@ -569,7 +569,7 @@ export async function cancelBatchOrders(
 
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const chunk = ids.slice(i, i + BATCH_SIZE);
-    const orderIdList = JSON.stringify(chunk);
+    const orderIdList = `[${chunk.join(',')}]`;
     await client.delete('/openApi/swap/v2/trade/batchOrders', {
       symbol: symbol.toUpperCase().replace(/\s/g, ''),
       orderIdList,
