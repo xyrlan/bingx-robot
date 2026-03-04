@@ -577,15 +577,14 @@ export async function cancelBatchOrders(
     
     const orderIdList = `[${chunk.join(',')}]`;
 
-    try {
-      await client.delete('/openApi/swap/v2/trade/batchOrders', {
-        symbol: formattedSymbol,
-        orderIdList: orderIdList,
-      });
-    } catch (error) {
-      console.error(`Error canceling batch orders:`, error);
-      throw error;
-    }
+    console.log(`Tentando cancelar no par: ${formattedSymbol}`);
+    console.log(`Lista de IDs formatada: ${orderIdList}`);
+
+    await client.delete('/openApi/swap/v2/trade/batchOrders', {
+      symbol: formattedSymbol,
+      orderIdList: orderIdList,
+    });
+
   }
 }
 
