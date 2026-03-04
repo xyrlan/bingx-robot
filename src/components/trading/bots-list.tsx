@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Button, Spinner, Accordion, Modal, TextField, Input, Label } from '@heroui/react';
+import { Card, Button, Spinner, Accordion } from '@heroui/react';
+import { EditBotModal } from './edit-bot-modal';
 
 type BotOrderInfo = {
   priceLevel: string;
@@ -49,55 +50,48 @@ export function BotsList() {
   const [bots, setBots] = useState<BotDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
-  const [editBot, setEditBot] = useState<BotDetails | null>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [editForm, setEditForm] = useState({
-    priceMin: '',
-    priceMax: '',
-    gridCount: '',
-    positionSizeUsdt: '',
-    takeProfitPercentage: '',
-  });
+  const [editingBot, setEditingBot] = useState<BotDetails | null>(null);
 
   function openEditModal(item: BotDetails) {
-    setEditBot(item);
-    setEditForm({
-      priceMin: String(item.bot.priceMin ?? ''),
-      priceMax: String(item.bot.priceMax ?? ''),
-      gridCount: String(item.bot.gridCount ?? ''),
-      positionSizeUsdt: String(item.bot.positionSizeUsdt ?? ''),
-      takeProfitPercentage: String(item.bot.takeProfitPercentage ?? ''),
-    });
+    setEditingBot(item);
   }
 
-  async function handleEditSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editBot) return;
-    setEditLoading(true);
+  function closeEditModal() {
+    setEditingBot(null);
+  }
+
+  async function handleUpdate(
+    botId: string,
+    params: {
+      positionSizeUsdt: string;
+      takeProfitPercentage: string;
+      priceMin: string;
+      priceMax: string;
+      gridCount: number;
+    }
+  ): Promise<string | null> {
     try {
       const res = await fetch('/api/bingx/bot/edit', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          botId: editBot.bot.id,
-          priceMin: editForm.priceMin.trim(),
-          priceMax: editForm.priceMax.trim(),
-          gridCount: parseInt(editForm.gridCount, 10) || 1,
-          positionSizeUsdt: editForm.positionSizeUsdt.trim(),
-          takeProfitPercentage: editForm.takeProfitPercentage.trim(),
+          botId,
+          priceMin: params.priceMin,
+          priceMax: params.priceMax,
+          gridCount: params.gridCount,
+          positionSizeUsdt: params.positionSizeUsdt,
+          takeProfitPercentage: params.takeProfitPercentage,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error ?? 'Failed to edit bot');
-        return;
+        return data.error ?? 'Failed to update bot';
       }
-      setEditBot(null);
+      closeEditModal();
       fetchBots();
+      return null;
     } catch {
-      alert('Network error');
-    } finally {
-      setEditLoading(false);
+      return 'Network error';
     }
   }
 
@@ -299,107 +293,12 @@ export function BotsList() {
           </Accordion>
         )}
 
-        {editBot && (
-          <Modal>
-            <Modal.Backdrop
-              isOpen={!!editBot}
-              onOpenChange={(open) => !open && setEditBot(null)}
-            >
-              <Modal.Container placement="center">
-                <Modal.Dialog >
-                  <Modal.CloseTrigger />
-                  <Modal.Header>
-                    <Modal.Heading>Edit Bot – {editBot.bot.symbol}</Modal.Heading>
-                  </Modal.Header>
-                  <form onSubmit={handleEditSubmit}>
-                    <Modal.Body className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <TextField variant="primary" isDisabled={editLoading}>
-                          <Label>Price Min</Label>
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            value={editForm.priceMin}
-                            onChange={(e) =>
-                              setEditForm((f) => ({ ...f, priceMin: e.target.value }))
-                            }
-                            placeholder="85000"
-                          />
-                        </TextField>
-                        <TextField variant="primary" isDisabled={editLoading}>
-                          <Label>Price Max</Label>
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            value={editForm.priceMax}
-                            onChange={(e) =>
-                              setEditForm((f) => ({ ...f, priceMax: e.target.value }))
-                            }
-                            placeholder="95000"
-                          />
-                        </TextField>
-                      </div>
-                      <TextField variant="primary" isDisabled={editLoading}>
-                        <Label>Grid Count</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={100}
-                          value={editForm.gridCount}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, gridCount: e.target.value }))
-                          }
-                          placeholder="5"
-                        />
-                      </TextField>
-                      <TextField variant="primary" isDisabled={editLoading}>
-                        <Label>Position Size (USDT) per grid</Label>
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          value={editForm.positionSizeUsdt}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              positionSizeUsdt: e.target.value,
-                            }))
-                          }
-                          placeholder="10"
-                        />
-                      </TextField>
-                      <TextField variant="primary" isDisabled={editLoading}>
-                        <Label>Take Profit (%) per grid</Label>
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          value={editForm.takeProfitPercentage}
-                          onChange={(e) =>
-                            setEditForm((f) => ({
-                              ...f,
-                              takeProfitPercentage: e.target.value,
-                            }))
-                          }
-                          placeholder="2"
-                        />
-                      </TextField>
-                    </Modal.Body>
-                    <Modal.Footer>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onPress={() => setEditBot(null)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button type="submit" variant="primary" isDisabled={editLoading}>
-                        {editLoading ? 'Saving...' : 'Save'}
-                      </Button>
-                    </Modal.Footer>
-                  </form>
-                </Modal.Dialog>
-              </Modal.Container>
-            </Modal.Backdrop>
-          </Modal>
+        {editingBot && (
+          <EditBotModal
+            item={editingBot}
+            onClose={closeEditModal}
+            onSave={handleUpdate}
+          />
         )}
       </Card.Content>
     </Card>
