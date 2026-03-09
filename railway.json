@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "bun run worker",
+    "startCommand": "npx tsx src/worker.ts",
     "healthcheckPath": "/ready",
     "healthcheckTimeout": 10,
     "restartPolicyType": "ON_FAILURE",
