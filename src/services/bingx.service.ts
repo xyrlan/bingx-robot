@@ -194,21 +194,29 @@ export type ContractInfo = {
   tradeMinUSDT: number;
 };
 
+/** In-memory cache for contracts list (reduces Fast Origin Transfer - avoids fetching full list every call) */
+const CONTRACT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+let contractCache: { contracts: unknown[]; fetchedAt: number } | null = null;
+
 export async function getContractInfo(
   client: BingxClient,
   symbol: string
 ): Promise<ContractInfo | null> {
   try {
-    const data = (await client.get('/openApi/swap/v2/quote/contracts')) as unknown;
-    let contracts: unknown[] = [];
-    if (Array.isArray(data)) {
-      contracts = data;
-    } else if (data && typeof data === 'object') {
-      const o = data as Record<string, unknown>;
-      contracts = (Array.isArray(o.contracts) ? o.contracts : Array.isArray(o.data) ? o.data : []) as unknown[];
+    const now = Date.now();
+    if (!contractCache || now - contractCache.fetchedAt > CONTRACT_CACHE_TTL_MS) {
+      const data = (await client.get('/openApi/swap/v2/quote/contracts')) as unknown;
+      let contracts: unknown[] = [];
+      if (Array.isArray(data)) {
+        contracts = data;
+      } else if (data && typeof data === 'object') {
+        const o = data as Record<string, unknown>;
+        contracts = (Array.isArray(o.contracts) ? o.contracts : Array.isArray(o.data) ? o.data : []) as unknown[];
+      }
+      contractCache = { contracts, fetchedAt: now };
     }
     const sym = symbol.toUpperCase().replace(/\s/g, '');
-    const contract = contracts.find((c) => {
+    const contract = contractCache.contracts.find((c) => {
       const s = String((c as { symbol?: string })?.symbol ?? '').toUpperCase().replace(/\s/g, '');
       return s === sym || s.includes(sym) || sym.includes(s);
     }) as {

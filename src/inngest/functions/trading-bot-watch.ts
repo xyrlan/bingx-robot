@@ -40,9 +40,14 @@ function isClosestLevelForPosition(
   return true;
 }
 
-function sanitizeLevelId(priceLevel: string): string {
-  return String(priceLevel).replace(/\./g, '_');
-}
+/** Minimal level fields for step payload (reduces Fast Origin Transfer) */
+type MinimalLevel = { priceLevel: string; orderId: string | null; tpOrderId: string | null; isActive: boolean };
+
+/** Minimal position fields for step payload */
+type MinimalPosition = { positionId?: string; entryPrice: number; positionAmt: number; positionSide: string };
+
+/** Minimal order fields for step payload */
+type MinimalOrder = { orderId: string; type?: string; side?: string; price?: number | string; stopPrice?: number | string; positionId?: string };
 
 export const tradingBotWatch = inngest.createFunction(
   {
@@ -51,7 +56,7 @@ export const tradingBotWatch = inngest.createFunction(
     retries: 3,
     concurrency: {limit: 1}
   },
-  { cron: '*/1 * * * *' },
+  { cron: '*/5 * * * *' },
   async ({ step, logger }) => {
     const bots = await step.run('fetch-running-bots', async () => {
       return getRunningBots();
@@ -108,13 +113,35 @@ export const tradingBotWatch = inngest.createFunction(
         const orders = await getOpenOrders(client, symbol);
         const openOrderIds = new Set(orders.map((o) => String(o.orderId)));
 
+        // Minimal payload to reduce Fast Origin Transfer (CDN to Compute)
+        const levelsMin: MinimalLevel[] = levels.map((l) => ({
+          priceLevel: String(l.priceLevel),
+          orderId: l.orderId ?? null,
+          tpOrderId: l.tpOrderId ?? null,
+          isActive: l.isActive ?? true,
+        }));
+        const positionsMin: MinimalPosition[] = positions.map((p) => ({
+          positionId: p.positionId,
+          entryPrice: p.entryPrice,
+          positionAmt: p.positionAmt,
+          positionSide: p.positionSide,
+        }));
+        const ordersMin: MinimalOrder[] = orders.map((o) => ({
+          orderId: o.orderId,
+          type: o.type,
+          side: o.side,
+          price: o.price,
+          stopPrice: o.stopPrice,
+          positionId: o.positionId,
+        }));
+
         return {
           ok: true as const,
           symbol,
-          levels,
+          levels: levelsMin,
           openOrderIds: Array.from(openOrderIds),
-          positions,
-          orders,
+          positions: positionsMin,
+          orders: ordersMin,
           pricePrecision,
           quantityPrecision,
           minQty,
@@ -128,76 +155,72 @@ export const tradingBotWatch = inngest.createFunction(
 
       if (!setup.ok) continue;
 
-      const {
-        symbol,
-        levels,
-        openOrderIds,
-        orders,
-        positions,
-        pricePrecision,
-        quantityPrecision,
-        minQty,
-        minUsdt,
-        currentPrice,
-        positionSizeUsdt,
-        takeProfitPct,
-        positionSide,
-      } = setup;
+      // Single step per bot: process all levels (reduces round-trips / Fast Origin Transfer)
+      const processResult = await step.run(`process-levels-${bot.id}`, async () => {
+        const {
+          symbol,
+          levels,
+          openOrderIds,
+          orders,
+          positions,
+          pricePrecision,
+          quantityPrecision,
+          minQty,
+          minUsdt,
+          currentPrice,
+          positionSizeUsdt,
+          takeProfitPct,
+          positionSide,
+        } = setup;
 
-      const openOrderIdsSet = new Set(openOrderIds);
+        const client = await getBingxClient(bot.userId);
+        if (!client) return { processed: 0 };
 
-      for (const level of levels) {
-        const priceLevel = Number(level.priceLevel);
-        let orderStillOpen = false;
-        if (level.orderId && openOrderIdsSet.has(level.orderId)) {
-          const order = orders.find((o) => String(o.orderId) === level.orderId);
-          const isEntryOrder =
-            order &&
-            ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
-            String(order.side ?? '').toUpperCase() === 'BUY';
-          orderStillOpen = !!isEntryOrder;
-        }
+        const openOrderIdsSet = new Set(openOrderIds);
+        let botProcessed = 0;
 
-        if (orderStillOpen) continue;
+        for (const level of levels) {
+          const priceLevel = Number(level.priceLevel);
+          let orderStillOpen = false;
+          if (level.orderId && openOrderIdsSet.has(level.orderId)) {
+            const order = orders.find((o) => String(o.orderId) === level.orderId);
+            const isEntryOrder =
+              order &&
+              ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
+              String(order.side ?? '').toUpperCase() === 'BUY';
+            orderStillOpen = !!isEntryOrder;
+          }
 
-        const positionsAtLevel = positions.filter((p) => {
-          const side = p.positionSide.toUpperCase();
-          const isLong = side === 'LONG' || side === 'BOTH';
-          return (
-            isLong &&
-            positionMatchesLevel(p.entryPrice, priceLevel) &&
-            isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
-          );
-        });
+          if (orderStillOpen) continue;
 
-        if (positionsAtLevel.length > 0) {
-          const levelId = sanitizeLevelId(String(level.priceLevel));
-          const fallbackResult = await step.run(
-            `fallback-tp-${bot.id}-${levelId}`,
-            async () => {
-              const client = await getBingxClient(bot.userId);
-              if (!client) return { placed: 0, positionClosed: false };
+          const positionsAtLevel = positions.filter((p) => {
+            const side = p.positionSide.toUpperCase();
+            const isLong = side === 'LONG' || side === 'BOTH';
+            return (
+              isLong &&
+              positionMatchesLevel(p.entryPrice, priceLevel) &&
+              isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
+            );
+          });
 
-              const freshPositions = await getOpenPositions(client, symbol);
-              const freshPositionsAtLevel = freshPositions.filter((p) => {
-                const side = p.positionSide.toUpperCase();
-                const isLong = side === 'LONG' || side === 'BOTH';
-                return (
-                  isLong &&
-                  positionMatchesLevel(p.entryPrice, priceLevel) &&
-                  isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
-                );
-              });
+          if (positionsAtLevel.length > 0) {
+            const freshPositions = await getOpenPositions(client, symbol);
+            const freshPositionsAtLevel = freshPositions.filter((p) => {
+              const side = p.positionSide.toUpperCase();
+              const isLong = side === 'LONG' || side === 'BOTH';
+              return (
+                isLong &&
+                positionMatchesLevel(p.entryPrice, priceLevel) &&
+                isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
+              );
+            });
 
-              if (freshPositionsAtLevel.length === 0) {
-                return { placed: 0, positionClosed: true };
-              }
-
+            if (freshPositionsAtLevel.length === 0) {
+              // Position closed (TP triggered) - fall through to place-entry
+            } else {
               const freshOrders = await getOpenOrders(client, symbol);
               const freshOpenOrderIds = new Set(freshOrders.map((o) => String(o.orderId)));
-
               const positionsWithTpCheck = new Set<string | number>();
-              let placed = 0;
 
               for (const positionAtLevel of freshPositionsAtLevel) {
                 if (!isClosestLevelForPosition(positionAtLevel.entryPrice, priceLevel, levels)) continue;
@@ -233,102 +256,79 @@ export const tradingBotWatch = inngest.createFunction(
                   );
                   if (tpOrderId) {
                     await updateGridLevelTpOrderId(bot.id, String(level.priceLevel), tpOrderId);
-                    placed++;
+                    botProcessed++;
                   }
                 }
               }
-              return { placed, positionClosed: false };
+              continue;
             }
-          );
+          }
 
-          if (fallbackResult?.positionClosed) {
-            // Position was closed (TP triggered) - fall through to place-entry
-          } else {
-            if (fallbackResult?.placed) processed += fallbackResult.placed;
+          if (level.isActive === false) continue;
+
+          if (positionSizeUsdt < minUsdt) {
+            logger.warn(`USDT ${positionSizeUsdt} below min ${minUsdt} for ${symbol}, skipping level ${priceLevel}`);
             continue;
           }
-        }
-
-        // Legacy level: monitor TP but never place new entry orders
-        if (level.isActive === false) {
-          continue;
-        }
-
-        if (positionSizeUsdt < minUsdt) {
-          logger.warn(`USDT ${positionSizeUsdt} below min ${minUsdt} for ${symbol}, skipping level ${priceLevel}`);
-          continue;
-        }
-
-        const quantityBtc = positionSizeUsdt / priceLevel;
-        if (quantityBtc < minQty) {
-          logger.warn(
-            `Quantity ${quantityBtc} below min ${minQty} for ${symbol} at ${priceLevel} (need ~${Math.ceil(minQty * priceLevel)} USDT)`
-          );
-          continue;
-        }
-
-        const levelId = sanitizeLevelId(String(level.priceLevel));
-        const orderResult = await step.run(
-          `place-entry-${bot.id}-${levelId}`,
-          async () => {
-            const client = await getBingxClient(bot.userId);
-            if (!client) throw new Error(`No BingX client for bot ${bot.id}`);
-
-            const freshOrders = await getOpenOrders(client, symbol);
-            const freshIds = new Set(freshOrders.map((o) => String(o.orderId)));
-            if (level.orderId && freshIds.has(level.orderId)) {
-              const order = freshOrders.find((o) => String(o.orderId) === level.orderId);
-              const isEntryOrder =
-                order &&
-                ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
-                String(order.side ?? '').toUpperCase() === 'BUY';
-              if (isEntryOrder) return { orderId: level.orderId, skipped: true };
-            }
-
-            const orphanOrder = freshOrders.find((o) => {
-              if (String(o.side ?? '').toUpperCase() !== 'BUY') return false;
-              if (String(o.positionSide ?? '').toUpperCase() !== positionSide.toUpperCase()) return false;
-              const orderType = String(o.type ?? '').toUpperCase();
-              if (orderType !== 'LIMIT' && orderType !== 'TRIGGER_LIMIT') return false;
-              const price = Number(o.price ?? 0);
-              const stopPrice = Number(o.stopPrice ?? 0);
-              const priceMatch = Math.abs(price - priceLevel) < 0.0001;
-              const stopPriceMatch = Math.abs(stopPrice - priceLevel) < 0.0001;
-              return priceMatch || stopPriceMatch;
-            });
-            if (orphanOrder) {
-              const orderIdRecuperado = orphanOrder.orderId;
-              await updateGridLevelOrderId(bot.id, String(level.priceLevel), orderIdRecuperado);
-              await updateGridLevelTpOrderId(bot.id, String(level.priceLevel), null);
-              return { orderId: orderIdRecuperado, skipped: true };
-            }
-
-            const newOrderId = await placeGridEntryOrder({
-              client,
-              symbol,
-              priceLevel,
-              quantity: quantityBtc,
-              takeProfitPct,
-              pricePrecision,
-              quantityPrecision,
-              positionSide,
-              currentPrice,
-            });
-
-            if (newOrderId) {
-              await updateGridLevelOrderId(bot.id, String(level.priceLevel), String(newOrderId));
-              await updateGridLevelTpOrderId(bot.id, String(level.priceLevel), null);
-              return { orderId: newOrderId, skipped: false };
-            }
-            return { orderId: null, skipped: false };
+          const quantityBtc = positionSizeUsdt / priceLevel;
+          if (quantityBtc < minQty) {
+            logger.warn(
+              `Quantity ${quantityBtc} below min ${minQty} for ${symbol} at ${priceLevel} (need ~${Math.ceil(minQty * priceLevel)} USDT)`
+            );
+            continue;
           }
-        );
 
-        if (orderResult?.orderId && orderResult.skipped === false) {
-          processed++;
-          logger.info(`Placed entry order ${orderResult.orderId} at ${priceLevel} for bot ${bot.id}`);
+          const freshOrders = await getOpenOrders(client, symbol);
+          const freshIds = new Set(freshOrders.map((o) => String(o.orderId)));
+          if (level.orderId && freshIds.has(level.orderId)) {
+            const order = freshOrders.find((o) => String(o.orderId) === level.orderId);
+            const isEntryOrder =
+              order &&
+              ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
+              String(order.side ?? '').toUpperCase() === 'BUY';
+            if (isEntryOrder) continue;
+          }
+
+          const orphanOrder = freshOrders.find((o) => {
+            if (String(o.side ?? '').toUpperCase() !== 'BUY') return false;
+            if (String(o.positionSide ?? '').toUpperCase() !== positionSide.toUpperCase()) return false;
+            const orderType = String(o.type ?? '').toUpperCase();
+            if (orderType !== 'LIMIT' && orderType !== 'TRIGGER_LIMIT') return false;
+            const price = Number(o.price ?? 0);
+            const stopPrice = Number(o.stopPrice ?? 0);
+            const priceMatch = Math.abs(price - priceLevel) < 0.0001;
+            const stopPriceMatch = Math.abs(stopPrice - priceLevel) < 0.0001;
+            return priceMatch || stopPriceMatch;
+          });
+          if (orphanOrder) {
+            await updateGridLevelOrderId(bot.id, String(level.priceLevel), orphanOrder.orderId);
+            await updateGridLevelTpOrderId(bot.id, String(level.priceLevel), null);
+            continue;
+          }
+
+          const newOrderId = await placeGridEntryOrder({
+            client,
+            symbol,
+            priceLevel,
+            quantity: quantityBtc,
+            takeProfitPct,
+            pricePrecision,
+            quantityPrecision,
+            positionSide,
+            currentPrice,
+          });
+
+          if (newOrderId) {
+            await updateGridLevelOrderId(bot.id, String(level.priceLevel), String(newOrderId));
+            await updateGridLevelTpOrderId(bot.id, String(level.priceLevel), null);
+            botProcessed++;
+          }
         }
-      }
+
+        return { processed: botProcessed };
+      });
+
+      processed += processResult?.processed ?? 0;
     }
 
     return { processed };

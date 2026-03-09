@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: inngest-worker
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npx tsx src/worker.ts
+    healthCheckPath: /ready
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        sync: false
+      - key: INNGEST_SIGNING_KEY
+        sync: false
+      - key: INNGEST_EVENT_KEY
+        sync: false
