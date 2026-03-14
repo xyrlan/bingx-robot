@@ -5,6 +5,7 @@ import {
   getBotById,
   setBotStatus,
   getBingxClient,
+  getBingxClientByApiKeyId,
   stopBotAndCancelEntries,
 } from '@/services/bingx.service';
 
@@ -27,7 +28,9 @@ export async function POST(request: Request) {
 
     await setBotStatus(botId, user.id, 'STOPPED');
 
-    const client = await getBingxClient(user.id);
+    const client = bot.apiKeyId
+      ? await getBingxClientByApiKeyId(bot.apiKeyId)
+      : await getBingxClient(user.id);
     if (client) {
       try {
         await stopBotAndCancelEntries(client, botId, symbol);

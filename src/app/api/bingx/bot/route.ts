@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/services/auth.service';
-import { getUserBots, getBotsDetailsBatched } from '@/services/bingx.service';
+import { getUserBots, getUserBotsByApiKey, getBotsDetailsBatched } from '@/services/bingx.service';
 
 function formatRuntime(createdAt: Date): string {
   const ms = Date.now() - new Date(createdAt).getTime();
@@ -19,8 +19,11 @@ export async function GET(request: Request) {
     const user = await requireAuth();
     const { searchParams } = new URL(request.url);
     const details = searchParams.get('details') === 'true';
+    const apiKeyId = searchParams.get('apiKeyId');
 
-    const bots = await getUserBots(user.id);
+    const bots = apiKeyId
+      ? await getUserBotsByApiKey(user.id, apiKeyId)
+      : await getUserBots(user.id);
 
     if (!details) {
       return NextResponse.json({ bots });

@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/services/auth.service';
-import { getBingxClient } from '@/services/bingx.service';
+import { getBingxClient, getBingxClientByApiKeyId } from '@/services/bingx.service';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await requireAuth();
-    const client = await getBingxClient(user.id);
+    const url = new URL(request.url);
+    const apiKeyId = url.searchParams.get('apiKeyId');
+
+    const client = apiKeyId
+      ? await getBingxClientByApiKeyId(apiKeyId)
+      : await getBingxClient(user.id);
 
     if (!client) {
       return NextResponse.json(

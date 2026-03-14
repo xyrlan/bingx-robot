@@ -4,13 +4,12 @@ import { requireAuth } from '@/services/auth.service';
 import {
   hasBingxKeys,
   getBingxClient,
+  getBingxClientByApiKeyId,
   createBot,
   getBotById,
   setBotStatus,
 } from '@/services/bingx.service';
 import { getAvailableMargin } from '@/lib/balance';
-
-const SYMBOL = 'BTC-USDT';
 
 export async function POST(request: Request) {
   try {
@@ -18,6 +17,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       botId,
+      apiKeyId,
+      symbol: bodySymbol,
       priceMin,
       priceMax,
       positionSizeUsdt,
@@ -25,12 +26,16 @@ export async function POST(request: Request) {
       gridCount,
     } = body as {
       botId?: string;
+      apiKeyId?: string;
+      symbol?: string;
       priceMin?: string | number;
       priceMax?: string | number;
       positionSizeUsdt?: string | number;
       takeProfitPercentage?: string | number;
       gridCount?: number;
     };
+
+    const symbol = bodySymbol ?? 'BTC-USDT';
 
     if (!(await hasBingxKeys(user.id))) {
       return NextResponse.json(
@@ -100,7 +105,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const client = await getBingxClient(user.id);
+    const client = apiKeyId
+      ? await getBingxClientByApiKeyId(apiKeyId)
+      : await getBingxClient(user.id);
     if (!client) {
       return NextResponse.json(
         { error: 'BingX API keys not configured. Connect your keys first.' },
@@ -112,8 +119,8 @@ export async function POST(request: Request) {
     let marginTypeStr = 'SEPARATE_ISOLATED';
     try {
       const [marginRes, leverageRes] = await Promise.all([
-        client.get('/openApi/swap/v2/trade/marginType', { symbol: SYMBOL }) as Promise<{ marginType?: string }>,
-        client.get('/openApi/swap/v2/trade/leverage', { symbol: SYMBOL }) as Promise<{ longLeverage?: number; shortLeverage?: number }>,
+        client.get('/openApi/swap/v2/trade/marginType', { symbol }) as Promise<{ marginType?: string }>,
+        client.get('/openApi/swap/v2/trade/leverage', { symbol }) as Promise<{ longLeverage?: number; shortLeverage?: number }>,
       ]);
       marginTypeStr = String(marginRes?.marginType ?? 'SEPARATE_ISOLATED').trim().toUpperCase() || 'SEPARATE_ISOLATED';
       leverageNum = Math.max(1, Math.min(125, leverageRes?.longLeverage ?? leverageRes?.shortLeverage ?? 1));
@@ -141,7 +148,7 @@ export async function POST(request: Request) {
     }
 
     const bot = await createBot(user.id, {
-      symbol: SYMBOL,
+      symbol,
       priceMin: priceMinStr,
       priceMax: priceMaxStr,
       positionSizeUsdt: positionSizeStr,
@@ -149,6 +156,7 @@ export async function POST(request: Request) {
       gridCount: gridCountNum,
       leverage: leverageNum,
       marginType: marginTypeStr,
+      apiKeyId,
     });
     await setBotStatus(bot.id, user.id, 'RUNNING');
 
