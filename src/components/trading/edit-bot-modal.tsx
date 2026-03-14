@@ -80,17 +80,17 @@ export function EditBotModal({ item, onClose, onSave }: EditBotModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/50"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <Card
         variant="default"
-        className="w-full max-w-md mx-4"
+        className="w-full rounded-t-2xl md:rounded-xl md:max-w-md md:mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <Card.Content className="p-6">
+        <Card.Content className="p-6 safe-area-pb">
           <h3 className="text-lg font-semibold mb-4">Edit Bot</h3>
           <p className="text-sm text-default-500 mb-4">
             {bot.symbol} • Orders will be cancelled and new ones placed with these values within ~1 minute
@@ -101,7 +101,7 @@ export function EditBotModal({ item, onClose, onSave }: EditBotModalProps) {
                 {error}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <TextField variant="primary" isDisabled={loading}>
                 <Label>Price Min</Label>
                 <Input

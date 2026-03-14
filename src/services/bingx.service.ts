@@ -795,7 +795,7 @@ export async function getBotDetails(
 
   const client = await getBingxClient(userId);
   const orders: BotOrderInfo[] = [];
-  let positions: BotPositionInfo[] = [];
+  const positions: BotPositionInfo[] = [];
   let unrealizedPnl = 0;
   let realizedPnl = 0;
   const openOrderIds = new Set<string>();

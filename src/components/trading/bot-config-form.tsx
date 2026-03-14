@@ -115,7 +115,7 @@ export function BotConfigForm() {
       <Card.Content className="p-6">
         <h3 className="text-lg font-semibold mb-4">Start Grid Trading Bot</h3>
         <form onSubmit={handleStart} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <TextField variant="primary" isDisabled={loading}>
               <Label>Price Min</Label>
               <Input
