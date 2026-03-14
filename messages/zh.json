@@ -69,5 +69,23 @@
   },
   "Theme": {
     "toggle": "切换明/暗主题"
+  },
+  "Nav": {
+    "overview": "概览",
+    "bots": "机器人",
+    "accounts": "账户",
+    "settings": "设置",
+    "signOut": "退出"
+  },
+  "Dashboard": {
+    "balance": "余额",
+    "equity": "权益",
+    "unrealizedPnl": "未实现盈亏",
+    "available": "可用",
+    "bots": "机器人",
+    "viewAll": "查看全部",
+    "running": "运行中",
+    "stopped": "已停止",
+    "grids": "网格"
   }
 }

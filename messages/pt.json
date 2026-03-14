@@ -70,5 +70,23 @@
   },
   "Theme": {
     "toggle": "Alternar tema claro/escuro"
+  },
+  "Nav": {
+    "overview": "Visão Geral",
+    "bots": "Bots",
+    "accounts": "Contas",
+    "settings": "Configurações",
+    "signOut": "Sair"
+  },
+  "Dashboard": {
+    "balance": "Saldo",
+    "equity": "Patrimônio",
+    "unrealizedPnl": "P&L Não Realizado",
+    "available": "Disponível",
+    "bots": "Bots",
+    "viewAll": "Ver todos",
+    "running": "Rodando",
+    "stopped": "Parados",
+    "grids": "grids"
   }
 }

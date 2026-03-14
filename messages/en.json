@@ -70,5 +70,23 @@
   },
   "Theme": {
     "toggle": "Toggle light/dark theme"
+  },
+  "Nav": {
+    "overview": "Overview",
+    "bots": "Bots",
+    "accounts": "Accounts",
+    "settings": "Settings",
+    "signOut": "Sign out"
+  },
+  "Dashboard": {
+    "balance": "Balance",
+    "equity": "Equity",
+    "unrealizedPnl": "Unrealized P&L",
+    "available": "Available",
+    "bots": "Bots",
+    "viewAll": "View all",
+    "running": "Running",
+    "stopped": "Stopped",
+    "grids": "grids"
   }
 }
