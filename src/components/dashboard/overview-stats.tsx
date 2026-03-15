@@ -4,18 +4,12 @@ import { Card, Spinner } from '@heroui/react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useActiveAccount } from '@/contexts/active-account';
-
-type BalanceData = {
-  balance: string;
-  equity: string;
-  unrealizedProfit: string;
-  availableMargin: string;
-};
+import { parseBalanceData, getNum } from '@/lib/balance';
 
 export function OverviewStats() {
   const t = useTranslations('Dashboard');
   const { activeAccountId } = useActiveAccount();
-  const [data, setData] = useState<BalanceData | null>(null);
+  const [data, setData] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,15 +34,24 @@ export function OverviewStats() {
 
   if (!data) return null;
 
+  const items = parseBalanceData(data);
+  const item = items.find((i) => (i.asset as string)?.toUpperCase() === 'USDT') ?? items[0];
+  if (!item) return null;
+
+  const balance = getNum(item, 'balance');
+  const equity = getNum(item, 'equity');
+  const unrealized = getNum(item, 'unrealizedProfit', 'unrealized_profit');
+  const available = getNum(item, 'availableMargin', 'available_margin');
+
   const stats = [
-    { labelKey: 'balance' as const, value: `$${Number(data.balance).toFixed(2)}` },
-    { labelKey: 'equity' as const, value: `$${Number(data.equity).toFixed(2)}` },
+    { labelKey: 'balance' as const, value: `$${balance.toFixed(2)}` },
+    { labelKey: 'equity' as const, value: `$${equity.toFixed(2)}` },
     {
       labelKey: 'unrealizedPnl' as const,
-      value: `$${Number(data.unrealizedProfit).toFixed(2)}`,
-      color: Number(data.unrealizedProfit) >= 0 ? 'text-success' : 'text-danger',
+      value: `$${unrealized.toFixed(2)}`,
+      color: unrealized >= 0 ? 'text-success' : 'text-danger',
     },
-    { labelKey: 'available' as const, value: `$${Number(data.availableMargin).toFixed(2)}` },
+    { labelKey: 'available' as const, value: `$${available.toFixed(2)}` },
   ];
 
   return (
