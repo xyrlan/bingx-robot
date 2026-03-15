@@ -1,8 +1,6 @@
 export type BotType = 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
 
-export type GridConfig = {
-  // Uses existing tradingBots columns (priceMin, priceMax, gridCount, etc.)
-};
+export type GridConfig = object; // Uses existing tradingBots columns (priceMin, priceMax, gridCount, etc.)
 
 export type DCAConfig = {
   intervalMinutes: number;

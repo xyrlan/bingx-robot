@@ -33,6 +33,8 @@ type BotDetails = {
     positionSizeUsdt?: string;
     takeProfitPercentage?: string;
     status: 'STOPPED' | 'RUNNING';
+    botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
+    config?: Record<string, unknown>;
     createdAt: string;
   };
   runtime: string;
@@ -180,7 +182,23 @@ export function BotsList() {
                     <div className="flex flex-wrap items-center justify-between gap-3 py-3 pr-2 w-full">
                       <Accordion.Trigger className="flex-1 min-w-0 text-left">
                         <div>
-                          <p className="font-medium">{bot.symbol}</p>
+                          <p className="font-medium">
+                            {bot.symbol}
+                            {' '}
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              bot.botType === 'GRID_LONG' ? 'bg-success/10 text-success' :
+                              bot.botType === 'GRID_SHORT' ? 'bg-danger/10 text-danger' :
+                              bot.botType === 'DCA' ? 'bg-accent/10 text-accent' :
+                              bot.botType === 'TRAILING_STOP' ? 'bg-warning/10 text-warning' :
+                              'bg-success/10 text-success'
+                            }`}>
+                              {bot.botType === 'GRID_LONG' ? 'Grid Long' :
+                               bot.botType === 'GRID_SHORT' ? 'Grid Short' :
+                               bot.botType === 'DCA' ? 'DCA' :
+                               bot.botType === 'TRAILING_STOP' ? 'Trailing Stop' :
+                               'Grid Long'}
+                            </span>
+                          </p>
                           <p className="text-sm text-default-500">
                             {Number(bot.priceMin).toFixed(2)} – {Number(bot.priceMax).toFixed(2)} • {bot.gridCount ?? 1} grids • {bot.status}
                             {bot.status === 'RUNNING' && (
@@ -205,6 +223,16 @@ export function BotsList() {
                                 Realized: {formatPnl(realizedPnl)}
                               </span>
                             </p>
+                          )}
+                          {bot.botType === 'DCA' && bot.config && (
+                            <span className="text-xs text-muted">
+                              {(bot.config as Record<string, unknown>).ordersPlaced as number ?? 0}/{(bot.config as Record<string, unknown>).totalOrders as number ?? 0} orders
+                            </span>
+                          )}
+                          {bot.botType === 'TRAILING_STOP' && bot.config && (
+                            <span className="text-xs text-muted">
+                              {(bot.config as Record<string, unknown>).isActivated ? 'Trailing active' : 'Waiting for activation'}
+                            </span>
                           )}
                         </div>
                         <Accordion.Indicator />
