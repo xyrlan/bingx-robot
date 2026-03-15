@@ -77,6 +77,17 @@
     "settings": "设置",
     "signOut": "退出"
   },
+  "Accounts": {
+    "title": "账户",
+    "addAccount": "添加账户",
+    "editAccount": "编辑账户",
+    "deleteAccount": "删除账户",
+    "label": "账户名称",
+    "apiKey": "API 密钥",
+    "secretKey": "密钥",
+    "connected": "已连接",
+    "confirmDelete": "确定吗？使用此账户的机器人将停止工作。"
+  },
   "Dashboard": {
     "balance": "余额",
     "equity": "权益",

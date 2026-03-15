@@ -3,6 +3,7 @@ import {
   getRunningBots,
   getBotById,
   getBingxClient,
+  getBingxClientByApiKeyId,
   setBotStatus,
   getGridLevelsByBotId,
   createGridLevels,
@@ -76,7 +77,9 @@ export const tradingBotWatch = inngest.createFunction(
           return { ok: false as const };
         }
 
-        const client = await getBingxClient(bot.userId);
+        const client = bot.apiKeyId
+          ? await getBingxClientByApiKeyId(bot.apiKeyId)
+          : await getBingxClient(bot.userId);
         if (!client) {
           logger.warn(`No BingX keys for user ${bot.userId}, stopping bot ${bot.id}`);
           await setBotStatus(bot.id, bot.userId, 'STOPPED');
@@ -173,7 +176,9 @@ export const tradingBotWatch = inngest.createFunction(
           positionSide,
         } = setup;
 
-        const client = await getBingxClient(bot.userId);
+        const client = bot.apiKeyId
+          ? await getBingxClientByApiKeyId(bot.apiKeyId)
+          : await getBingxClient(bot.userId);
         if (!client) return { processed: 0 };
 
         const openOrderIdsSet = new Set(openOrderIds);
