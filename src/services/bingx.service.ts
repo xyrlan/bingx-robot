@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, or, desc, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { bingxApiKeys, tradingBots, gridLevels } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
@@ -760,7 +760,10 @@ export async function getUserBots(userId: string): Promise<TradingBot[]> {
 
 export async function getUserBotsByApiKey(userId: string, apiKeyId: string): Promise<TradingBot[]> {
   return db.query.tradingBots.findMany({
-    where: and(eq(tradingBots.userId, userId), eq(tradingBots.apiKeyId, apiKeyId)),
+    where: and(
+      eq(tradingBots.userId, userId),
+      or(eq(tradingBots.apiKeyId, apiKeyId), isNull(tradingBots.apiKeyId))
+    ),
     orderBy: [desc(tradingBots.createdAt)],
   });
 }
