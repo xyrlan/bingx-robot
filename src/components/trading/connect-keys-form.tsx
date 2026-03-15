@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { Card, TextField, Input, Label, Button, toast } from '@heroui/react';
+import { useActiveAccount } from '@/contexts/active-account';
 
 export function ConnectKeysForm() {
+  const { refreshAccounts } = useActiveAccount();
   const [connected, setConnected] = useState<boolean | null>(null);
   const [editing, setEditing] = useState(false);
   const [apiKey, setApiKey] = useState('');
@@ -43,6 +45,7 @@ export function ConnectKeysForm() {
       setSecretKey('');
       setConnected(true);
       setEditing(false);
+      await refreshAccounts();
     } catch {
       toast.danger('Network error');
     } finally {

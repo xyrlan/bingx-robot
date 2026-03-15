@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, Button, Spinner, Accordion, toast } from '@heroui/react';
 import { EditBotModal } from './edit-bot-modal';
+import { useActiveAccount } from '@/contexts/active-account';
 
 type BotOrderInfo = {
   priceLevel: string;
@@ -47,6 +48,7 @@ function formatPnl(value: number): string {
 }
 
 export function BotsList() {
+  const { activeAccountId } = useActiveAccount();
   const [bots, setBots] = useState<BotDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export function BotsList() {
   async function fetchBots(silent = false) {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch('/api/bingx/bot?details=true');
+      const res = await fetch(`/api/bingx/bot?details=true${activeAccountId ? `&apiKeyId=${activeAccountId}` : ''}`);
       const data = await res.json();
       if (res.ok) {
         setBots(data.bots ?? []);
@@ -137,7 +139,7 @@ export function BotsList() {
 
   useEffect(() => {
     fetchBots();
-  }, []);
+  }, [activeAccountId]);
 
   // Auto-refresh active bots every 30 seconds (silent, no loading spinner)
   const hasRunning = bots.some((b) => b.bot.status === 'RUNNING');

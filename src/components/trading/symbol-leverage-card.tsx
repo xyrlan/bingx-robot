@@ -12,6 +12,7 @@ import {
   ListBox,
   toast,
 } from '@heroui/react';
+import { useActiveAccount } from '@/contexts/active-account';
 
 type SymbolConfig = {
   symbol: string;
@@ -26,6 +27,7 @@ const MARGIN_TYPE_OPTIONS = [
 ] as const;
 
 export function SymbolLeverageCard() {
+  const { activeAccountId } = useActiveAccount();
   const [config, setConfig] = useState<SymbolConfig | null>(null);
   const [marginTypeInput, setMarginTypeInput] = useState('SEPARATE_ISOLATED');
   const [leverageInput, setLeverageInput] = useState('1');
@@ -35,7 +37,7 @@ export function SymbolLeverageCard() {
   async function fetchConfig() {
     setConfigLoading(true);
     try {
-      const res = await fetch('/api/bingx/symbol-config');
+      const res = await fetch(`/api/bingx/symbol-config${activeAccountId ? `?apiKeyId=${activeAccountId}` : ''}`);
       const data = await res.json();
       if (res.ok) {
         setConfig(data);
@@ -53,7 +55,7 @@ export function SymbolLeverageCard() {
 
   useEffect(() => {
     fetchConfig();
-  }, []);
+  }, [activeAccountId]);
 
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
@@ -64,7 +66,7 @@ export function SymbolLeverageCard() {
       const res = await fetch('/api/bingx/symbol-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leverage: lev, marginType }),
+        body: JSON.stringify({ leverage: lev, marginType, apiKeyId: activeAccountId }),
       });
       const data = await res.json();
       if (!res.ok) {

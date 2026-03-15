@@ -9,6 +9,7 @@ import {
   KeyRound,
   Settings,
 } from 'lucide-react';
+import { AccountSwitcher } from './account-switcher';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, labelKey: 'overview' },
@@ -33,6 +34,7 @@ export function Sidebar() {
         <div className="flex items-center h-16 px-6 border-b border-default-200">
           <span className="text-lg font-bold text-foreground">BingX Bot</span>
         </div>
+        <AccountSwitcher />
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => {
             const active = isActive(item.href);

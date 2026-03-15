@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { signOutAction } from '@/app/(dashboard)/dashboard/actions';
 import { THEME_COOKIE_NAME } from '@/lib/theme';
+import { ActiveAccountProvider } from '@/contexts/active-account';
 
 export default async function DashboardLayout({
   children,
@@ -33,11 +34,13 @@ export default async function DashboardLayout({
           initialTheme={theme}
           fontVariableClass=""
         />
-        <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
-          <div className="max-w-5xl mx-auto">
-            {children}
-          </div>
-        </main>
+        <ActiveAccountProvider>
+          <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+            <div className="max-w-5xl mx-auto">
+              {children}
+            </div>
+          </main>
+        </ActiveAccountProvider>
       </div>
     </div>
   );

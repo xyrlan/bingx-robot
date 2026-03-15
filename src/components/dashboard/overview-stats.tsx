@@ -3,6 +3,7 @@
 import { Card, Spinner } from '@heroui/react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { useActiveAccount } from '@/contexts/active-account';
 
 type BalanceData = {
   balance: string;
@@ -13,16 +14,17 @@ type BalanceData = {
 
 export function OverviewStats() {
   const t = useTranslations('Dashboard');
+  const { activeAccountId } = useActiveAccount();
   const [data, setData] = useState<BalanceData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/bingx/balance')
+    fetch(`/api/bingx/balance${activeAccountId ? `?apiKeyId=${activeAccountId}` : ''}`)
       .then((r) => r.json())
       .then((d) => setData(d))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeAccountId]);
 
   if (loading) {
     return (

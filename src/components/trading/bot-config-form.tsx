@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, TextField, Input, Label, Button, toast } from '@heroui/react';
 import { getAvailableMargin } from '@/lib/balance';
+import { useActiveAccount } from '@/contexts/active-account';
 
 function formatUsdt(value: number): string {
   return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
@@ -15,6 +16,7 @@ type SymbolConfig = {
 };
 
 export function BotConfigForm() {
+  const { activeAccountId } = useActiveAccount();
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [positionSizeUsdt, setPositionSizeUsdt] = useState('10');
@@ -29,9 +31,10 @@ export function BotConfigForm() {
     async function fetchData() {
       setBalanceLoading(true);
       try {
+        const apiKeyParam = activeAccountId ? `?apiKeyId=${activeAccountId}` : '';
         const [balanceRes, configRes] = await Promise.all([
-          fetch('/api/bingx/balance'),
-          fetch('/api/bingx/symbol-config'),
+          fetch(`/api/bingx/balance${apiKeyParam}`),
+          fetch(`/api/bingx/symbol-config${apiKeyParam}`),
         ]);
         const balanceData = await balanceRes.json();
         const configData = await configRes.json();
@@ -45,7 +48,7 @@ export function BotConfigForm() {
       }
     }
     fetchData();
-  }, []);
+  }, [activeAccountId]);
 
   const posSize = parseFloat(positionSizeUsdt) || 0;
   const lev = symbolConfig?.leverage ?? 1;
@@ -95,6 +98,7 @@ export function BotConfigForm() {
           positionSizeUsdt: positionSizeUsdt.trim(),
           takeProfitPercentage: takeProfitPercentage.trim(),
           gridCount: gridNum,
+          apiKeyId: activeAccountId,
         }),
       });
       const data = await res.json();
