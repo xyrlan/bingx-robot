@@ -19,9 +19,13 @@ export function OverviewStats() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/bingx/balance${activeAccountId ? `?apiKeyId=${activeAccountId}` : ''}`)
+    if (!activeAccountId) return;
+    setLoading(true);
+    fetch(`/api/bingx/balance?apiKeyId=${activeAccountId}`)
       .then((r) => r.json())
-      .then((d) => setData(d))
+      .then((d) => {
+        if (!d.error) setData(d);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [activeAccountId]);

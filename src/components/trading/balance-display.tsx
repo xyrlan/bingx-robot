@@ -24,8 +24,7 @@ export function BalanceDisplay() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/bingx/balance${activeAccountId ? `?apiKeyId=${activeAccountId}` : ''}`);
-      const data = await res.json();
+      const res = await fetch(`/api/bingx/balance${activeAccountId ? `?apiKeyId=${activeAccountId}` : ''}`);      const data = await res.json();
       if (!res.ok) {
         const err = data.error ?? 'Failed to fetch balance';
         setError(err);
@@ -44,7 +43,7 @@ export function BalanceDisplay() {
   }
 
   useEffect(() => {
-    fetchBalance();
+    if (activeAccountId) fetchBalance();
   }, [activeAccountId]);
 
   const items = parseBalanceData(balance);

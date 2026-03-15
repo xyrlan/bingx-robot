@@ -26,6 +26,9 @@ export async function GET(request: Request) {
     if (message.includes('Authentication required')) {
       return NextResponse.json({ error: message }, { status: 401 });
     }
+    if (message.includes('frequency limit') || message.includes('disabled period')) {
+      return NextResponse.json({ error: 'Rate limited by BingX. Please wait a moment and try again.' }, { status: 429 });
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
