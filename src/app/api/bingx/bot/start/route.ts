@@ -24,6 +24,8 @@ export async function POST(request: Request) {
       positionSizeUsdt,
       takeProfitPercentage,
       gridCount,
+      botType,
+      config,
     } = body as {
       botId?: string;
       apiKeyId?: string;
@@ -33,6 +35,8 @@ export async function POST(request: Request) {
       positionSizeUsdt?: string | number;
       takeProfitPercentage?: string | number;
       gridCount?: number;
+      botType?: string;
+      config?: Record<string, unknown>;
     };
 
     const symbol = bodySymbol ?? 'BTC-USDT';
@@ -50,6 +54,43 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
       }
       await setBotStatus(botId, user.id, 'RUNNING');
+
+      await inngest.send({
+        name: 'trading/bot.start',
+        data: { userId: user.id, botId: bot.id },
+      });
+
+      return NextResponse.json({ success: true, botId: bot.id });
+    }
+
+    // --- DCA Bot creation ---
+    if (botType === 'DCA') {
+      const dcaConfig = config as { intervalMinutes?: number; totalOrders?: number; orderSizeUsdt?: number; ordersPlaced?: number; side?: string } | undefined;
+      if (!dcaConfig || !dcaConfig.intervalMinutes || !dcaConfig.totalOrders || !dcaConfig.orderSizeUsdt) {
+        return NextResponse.json(
+          { error: 'DCA config requires intervalMinutes, totalOrders, and orderSizeUsdt' },
+          { status: 400 }
+        );
+      }
+
+      const bot = await createBot(user.id, {
+        symbol,
+        botType: 'DCA',
+        config: {
+          intervalMinutes: dcaConfig.intervalMinutes,
+          totalOrders: dcaConfig.totalOrders,
+          orderSizeUsdt: dcaConfig.orderSizeUsdt,
+          ordersPlaced: dcaConfig.ordersPlaced ?? 0,
+          side: dcaConfig.side ?? 'BUY',
+        },
+        priceMin: '0',
+        priceMax: '0',
+        positionSizeUsdt: String(dcaConfig.orderSizeUsdt),
+        takeProfitPercentage: '0',
+        gridCount: 1,
+        apiKeyId,
+      });
+      await setBotStatus(bot.id, user.id, 'RUNNING');
 
       await inngest.send({
         name: 'trading/bot.start',

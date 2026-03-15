@@ -120,6 +120,8 @@ export type CreateBotParams = {
   leverage?: number;
   marginType?: string;
   apiKeyId?: string;
+  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
+  config?: Record<string, unknown>;
 };
 
 export async function createBot(userId: string, params: CreateBotParams): Promise<TradingBot> {
@@ -128,6 +130,8 @@ export async function createBot(userId: string, params: CreateBotParams): Promis
     .values({
       userId,
       symbol: params.symbol,
+      botType: params.botType ?? 'GRID_LONG',
+      config: params.config,
       priceMin: params.priceMin,
       priceMax: params.priceMax,
       positionSizeUsdt: params.positionSizeUsdt,
