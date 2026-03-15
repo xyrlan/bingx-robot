@@ -100,6 +100,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, botId: bot.id });
     }
 
+    // --- Trailing Stop Bot creation ---
+    if (botType === 'TRAILING_STOP') {
+      const tsConfig = config as { positionSizeUsdt?: number; activationPricePct?: number; trailingPct?: number; highestPrice?: number; isActivated?: boolean; entryOrderId?: string | null } | undefined;
+      if (!tsConfig || !tsConfig.positionSizeUsdt || tsConfig.activationPricePct == null || !tsConfig.trailingPct) {
+        return NextResponse.json(
+          { error: 'Trailing Stop config requires positionSizeUsdt, activationPricePct, and trailingPct' },
+          { status: 400 }
+        );
+      }
+
+      const bot = await createBot(user.id, {
+        symbol,
+        botType: 'TRAILING_STOP',
+        config: {
+          positionSizeUsdt: tsConfig.positionSizeUsdt,
+          activationPricePct: tsConfig.activationPricePct,
+          trailingPct: tsConfig.trailingPct,
+          highestPrice: tsConfig.highestPrice ?? 0,
+          isActivated: tsConfig.isActivated ?? false,
+          entryOrderId: tsConfig.entryOrderId ?? null,
+        },
+        priceMin: '0',
+        priceMax: '0',
+        positionSizeUsdt: String(tsConfig.positionSizeUsdt),
+        takeProfitPercentage: '0',
+        gridCount: 1,
+        apiKeyId,
+      });
+      await setBotStatus(bot.id, user.id, 'RUNNING');
+
+      await inngest.send({
+        name: 'trading/bot.start',
+        data: { userId: user.id, botId: bot.id },
+      });
+
+      return NextResponse.json({ success: true, botId: bot.id });
+    }
+
     const priceMinStr = String(priceMin ?? '').trim();
     const priceMaxStr = String(priceMax ?? '').trim();
     const positionSizeStr = String(positionSizeUsdt ?? '').trim();

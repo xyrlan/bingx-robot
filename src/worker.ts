@@ -11,6 +11,7 @@ import { connect, ConnectionState } from 'inngest/connect';
 import { inngest } from '@/inngest/client';
 import { tradingBotWatch } from '@/inngest/functions/trading-bot-watch';
 import { dcaBotWatch } from '@/inngest/functions/dca-bot-watch';
+import { trailingStopWatch } from '@/inngest/functions/trailing-stop-watch';
 
 const PORT = Number(process.env.WORKER_PORT ?? 8080);
 
@@ -19,7 +20,7 @@ const PORT = Number(process.env.WORKER_PORT ?? 8080);
     apps: [
       {
         client: inngest,
-        functions: [tradingBotWatch, dcaBotWatch],
+        functions: [tradingBotWatch, dcaBotWatch, trailingStopWatch],
       },
     ],
     instanceId: process.env.HOSTNAME ?? process.env.RENDER_INSTANCE_ID ?? undefined,
