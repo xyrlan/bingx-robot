@@ -93,6 +93,7 @@ export function BotConfigForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          botType: 'GRID_LONG',
           priceMin: priceMin.trim(),
           priceMax: priceMax.trim(),
           positionSizeUsdt: positionSizeUsdt.trim(),
