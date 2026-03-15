@@ -10,7 +10,7 @@
 
 @layer components {
   .input {
-    @apply bg-accent-soft-foreground;
+    @apply dark:bg-accent-soft-foreground bg-background;
   }
 }
 /*
