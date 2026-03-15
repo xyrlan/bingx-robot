@@ -58,7 +58,7 @@ export const tradingBotWatch = inngest.createFunction(
     retries: 3,
     concurrency: {limit: 1}
   },
-  { cron: '*/5 * * * *' },
+  { cron: '*/3 * * * *' },
   async ({ step, logger }) => {
     const bots = await step.run('fetch-running-bots', async () => {
       return getRunningBots();
