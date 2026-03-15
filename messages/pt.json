@@ -70,5 +70,34 @@
   },
   "Theme": {
     "toggle": "Alternar tema claro/escuro"
+  },
+  "Nav": {
+    "overview": "Visão Geral",
+    "bots": "Bots",
+    "accounts": "Contas",
+    "settings": "Configurações",
+    "signOut": "Sair"
+  },
+  "Accounts": {
+    "title": "Contas",
+    "addAccount": "Adicionar Conta",
+    "editAccount": "Editar Conta",
+    "deleteAccount": "Excluir Conta",
+    "label": "Nome da Conta",
+    "apiKey": "Chave API",
+    "secretKey": "Chave Secreta",
+    "connected": "Conectado",
+    "confirmDelete": "Tem certeza? Bots usando esta conta irão parar de funcionar."
+  },
+  "Dashboard": {
+    "balance": "Saldo",
+    "equity": "Patrimônio",
+    "unrealizedPnl": "P&L Não Realizado",
+    "available": "Disponível",
+    "bots": "Bots",
+    "viewAll": "Ver todos",
+    "running": "Rodando",
+    "stopped": "Parados",
+    "grids": "grids"
   }
 }

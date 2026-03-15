@@ -4,13 +4,12 @@ import { requireAuth } from '@/services/auth.service';
 import {
   hasBingxKeys,
   getBingxClient,
+  getBingxClientByApiKeyId,
   createBot,
   getBotById,
   setBotStatus,
 } from '@/services/bingx.service';
 import { getAvailableMargin } from '@/lib/balance';
-
-const SYMBOL = 'BTC-USDT';
 
 export async function POST(request: Request) {
   try {
@@ -18,19 +17,29 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       botId,
+      apiKeyId,
+      symbol: bodySymbol,
       priceMin,
       priceMax,
       positionSizeUsdt,
       takeProfitPercentage,
       gridCount,
+      botType,
+      config,
     } = body as {
       botId?: string;
+      apiKeyId?: string;
+      symbol?: string;
       priceMin?: string | number;
       priceMax?: string | number;
       positionSizeUsdt?: string | number;
       takeProfitPercentage?: string | number;
       gridCount?: number;
+      botType?: string;
+      config?: Record<string, unknown>;
     };
+
+    const symbol = bodySymbol ?? 'BTC-USDT';
 
     if (!(await hasBingxKeys(user.id))) {
       return NextResponse.json(
@@ -45,6 +54,81 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Bot not found' }, { status: 404 });
       }
       await setBotStatus(botId, user.id, 'RUNNING');
+
+      await inngest.send({
+        name: 'trading/bot.start',
+        data: { userId: user.id, botId: bot.id },
+      });
+
+      return NextResponse.json({ success: true, botId: bot.id });
+    }
+
+    // --- DCA Bot creation ---
+    if (botType === 'DCA') {
+      const dcaConfig = config as { intervalMinutes?: number; totalOrders?: number; orderSizeUsdt?: number; ordersPlaced?: number; side?: string } | undefined;
+      if (!dcaConfig || !dcaConfig.intervalMinutes || !dcaConfig.totalOrders || !dcaConfig.orderSizeUsdt) {
+        return NextResponse.json(
+          { error: 'DCA config requires intervalMinutes, totalOrders, and orderSizeUsdt' },
+          { status: 400 }
+        );
+      }
+
+      const bot = await createBot(user.id, {
+        symbol,
+        botType: 'DCA',
+        config: {
+          intervalMinutes: dcaConfig.intervalMinutes,
+          totalOrders: dcaConfig.totalOrders,
+          orderSizeUsdt: dcaConfig.orderSizeUsdt,
+          ordersPlaced: dcaConfig.ordersPlaced ?? 0,
+          side: dcaConfig.side ?? 'BUY',
+        },
+        priceMin: '0',
+        priceMax: '0',
+        positionSizeUsdt: String(dcaConfig.orderSizeUsdt),
+        takeProfitPercentage: '0',
+        gridCount: 1,
+        apiKeyId,
+      });
+      await setBotStatus(bot.id, user.id, 'RUNNING');
+
+      await inngest.send({
+        name: 'trading/bot.start',
+        data: { userId: user.id, botId: bot.id },
+      });
+
+      return NextResponse.json({ success: true, botId: bot.id });
+    }
+
+    // --- Trailing Stop Bot creation ---
+    if (botType === 'TRAILING_STOP') {
+      const tsConfig = config as { positionSizeUsdt?: number; activationPricePct?: number; trailingPct?: number; highestPrice?: number; isActivated?: boolean; entryOrderId?: string | null } | undefined;
+      if (!tsConfig || !tsConfig.positionSizeUsdt || tsConfig.activationPricePct == null || !tsConfig.trailingPct) {
+        return NextResponse.json(
+          { error: 'Trailing Stop config requires positionSizeUsdt, activationPricePct, and trailingPct' },
+          { status: 400 }
+        );
+      }
+
+      const bot = await createBot(user.id, {
+        symbol,
+        botType: 'TRAILING_STOP',
+        config: {
+          positionSizeUsdt: tsConfig.positionSizeUsdt,
+          activationPricePct: tsConfig.activationPricePct,
+          trailingPct: tsConfig.trailingPct,
+          highestPrice: tsConfig.highestPrice ?? 0,
+          isActivated: tsConfig.isActivated ?? false,
+          entryOrderId: tsConfig.entryOrderId ?? null,
+        },
+        priceMin: '0',
+        priceMax: '0',
+        positionSizeUsdt: String(tsConfig.positionSizeUsdt),
+        takeProfitPercentage: '0',
+        gridCount: 1,
+        apiKeyId,
+      });
+      await setBotStatus(bot.id, user.id, 'RUNNING');
 
       await inngest.send({
         name: 'trading/bot.start',
@@ -100,7 +184,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const client = await getBingxClient(user.id);
+    const client = apiKeyId
+      ? await getBingxClientByApiKeyId(apiKeyId)
+      : await getBingxClient(user.id);
     if (!client) {
       return NextResponse.json(
         { error: 'BingX API keys not configured. Connect your keys first.' },
@@ -112,8 +198,8 @@ export async function POST(request: Request) {
     let marginTypeStr = 'SEPARATE_ISOLATED';
     try {
       const [marginRes, leverageRes] = await Promise.all([
-        client.get('/openApi/swap/v2/trade/marginType', { symbol: SYMBOL }) as Promise<{ marginType?: string }>,
-        client.get('/openApi/swap/v2/trade/leverage', { symbol: SYMBOL }) as Promise<{ longLeverage?: number; shortLeverage?: number }>,
+        client.get('/openApi/swap/v2/trade/marginType', { symbol }) as Promise<{ marginType?: string }>,
+        client.get('/openApi/swap/v2/trade/leverage', { symbol }) as Promise<{ longLeverage?: number; shortLeverage?: number }>,
       ]);
       marginTypeStr = String(marginRes?.marginType ?? 'SEPARATE_ISOLATED').trim().toUpperCase() || 'SEPARATE_ISOLATED';
       leverageNum = Math.max(1, Math.min(125, leverageRes?.longLeverage ?? leverageRes?.shortLeverage ?? 1));
@@ -141,7 +227,7 @@ export async function POST(request: Request) {
     }
 
     const bot = await createBot(user.id, {
-      symbol: SYMBOL,
+      symbol,
       priceMin: priceMinStr,
       priceMax: priceMaxStr,
       positionSizeUsdt: positionSizeStr,
@@ -149,6 +235,7 @@ export async function POST(request: Request) {
       gridCount: gridCountNum,
       leverage: leverageNum,
       marginType: marginTypeStr,
+      apiKeyId,
     });
     await setBotStatus(bot.id, user.id, 'RUNNING');
 

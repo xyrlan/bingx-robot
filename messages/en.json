@@ -70,5 +70,34 @@
   },
   "Theme": {
     "toggle": "Toggle light/dark theme"
+  },
+  "Nav": {
+    "overview": "Overview",
+    "bots": "Bots",
+    "accounts": "Accounts",
+    "settings": "Settings",
+    "signOut": "Sign out"
+  },
+  "Accounts": {
+    "title": "Accounts",
+    "addAccount": "Add Account",
+    "editAccount": "Edit Account",
+    "deleteAccount": "Delete Account",
+    "label": "Account Name",
+    "apiKey": "API Key",
+    "secretKey": "Secret Key",
+    "connected": "Connected",
+    "confirmDelete": "Are you sure? Bots using this account will stop working."
+  },
+  "Dashboard": {
+    "balance": "Balance",
+    "equity": "Equity",
+    "unrealizedPnl": "Unrealized P&L",
+    "available": "Available",
+    "bots": "Bots",
+    "viewAll": "View all",
+    "running": "Running",
+    "stopped": "Stopped",
+    "grids": "grids"
   }
 }

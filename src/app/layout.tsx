@@ -5,7 +5,6 @@ import "./globals.css";
 import { getLocale } from "next-intl/server";
 import { NextIntlClientProvider } from "next-intl";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { ToastProvider } from "@/components/toast-provider";
 import { THEME_COOKIE_NAME } from "@/lib/theme";
 
@@ -42,9 +41,6 @@ export default async function RootLayout({
         <NextIntlClientProvider>
           <ToastProvider />
           <NuqsAdapter>
-            <div className="fixed bottom-4 right-4 z-50">
-              <ThemeToggle initialTheme={theme} fontVariableClass={fontVariableClasses} />
-            </div>
             {children}
           </NuqsAdapter>
         </NextIntlClientProvider>

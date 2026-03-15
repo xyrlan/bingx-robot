@@ -9,6 +9,7 @@ import {
   integer,
   boolean,
   uniqueIndex,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 
 // ==========================================
@@ -18,6 +19,13 @@ import {
 export const userRoleEnum = pgEnum('user_role', ['USER', 'ADMIN']);
 
 export const botStatusEnum = pgEnum('bot_status', ['STOPPED', 'RUNNING']);
+
+export const botTypeEnum = pgEnum('bot_type', [
+  'GRID_LONG',
+  'GRID_SHORT',
+  'DCA',
+  'TRAILING_STOP',
+]);
 
 // ==========================================
 // 2. USERS & PROFILES
@@ -76,8 +84,8 @@ export const bingxApiKeys = pgTable('bingx_api_keys', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
     .references(() => users.id, { onDelete: 'cascade' })
-    .notNull()
-    .unique(),
+    .notNull(),
+  label: text('label').notNull().default('Main'),
   apiKey: text('api_key').notNull(),
   secretKeyEncrypted: text('secret_key_encrypted').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -93,7 +101,11 @@ export const tradingBots = pgTable('trading_bots', {
   userId: uuid('user_id')
     .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
+  apiKeyId: uuid('api_key_id')
+    .references(() => bingxApiKeys.id, { onDelete: 'set null' }),
   symbol: text('symbol').notNull(),
+  botType: botTypeEnum('bot_type').notNull().default('GRID_LONG'),
+  config: jsonb('config').$type<Record<string, unknown>>(),
   priceMin: decimal('price_min', { precision: 18, scale: 8 }).notNull(),
   priceMax: decimal('price_max', { precision: 18, scale: 8 }).notNull(),
   positionSizeUsdt: decimal('position_size_usdt', { precision: 18, scale: 8 }).notNull().default('10'),
@@ -132,17 +144,22 @@ export const gridLevels = pgTable(
 // 6. RELATIONS (BingX)
 // ==========================================
 
-export const bingxApiKeysRelations = relations(bingxApiKeys, ({ one }) => ({
+export const bingxApiKeysRelations = relations(bingxApiKeys, ({ one, many }) => ({
   user: one(users, {
     fields: [bingxApiKeys.userId],
     references: [users.id],
   }),
+  bots: many(tradingBots),
 }));
 
 export const tradingBotsRelations = relations(tradingBots, ({ one, many }) => ({
   user: one(users, {
     fields: [tradingBots.userId],
     references: [users.id],
+  }),
+  apiKey: one(bingxApiKeys, {
+    fields: [tradingBots.apiKeyId],
+    references: [bingxApiKeys.id],
   }),
   gridLevels: many(gridLevels),
 }));

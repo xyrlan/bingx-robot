@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, Button, Spinner, Accordion, toast } from '@heroui/react';
 import { EditBotModal } from './edit-bot-modal';
+import { useActiveAccount } from '@/contexts/active-account';
 
 type BotOrderInfo = {
   priceLevel: string;
@@ -32,6 +33,8 @@ type BotDetails = {
     positionSizeUsdt?: string;
     takeProfitPercentage?: string;
     status: 'STOPPED' | 'RUNNING';
+    botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
+    config?: Record<string, unknown>;
     createdAt: string;
   };
   runtime: string;
@@ -41,16 +44,21 @@ type BotDetails = {
   realizedPnl: number;
 };
 
+type StatusFilter = 'ALL' | 'RUNNING' | 'STOPPED';
+
 function formatPnl(value: number): string {
   const sign = value >= 0 ? '+' : '';
   return `${sign}${value.toFixed(2)} USDT`;
 }
 
 export function BotsList() {
+  const { activeAccountId } = useActiveAccount();
   const [bots, setBots] = useState<BotDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const [restartingId, setRestartingId] = useState<string | null>(null);
   const [editingBot, setEditingBot] = useState<BotDetails | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
   function openEditModal(item: BotDetails) {
     setEditingBot(item);
@@ -103,7 +111,7 @@ export function BotsList() {
   async function fetchBots(silent = false) {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch('/api/bingx/bot?details=true');
+      const res = await fetch(`/api/bingx/bot?details=true${activeAccountId ? `&apiKeyId=${activeAccountId}` : ''}`);
       const data = await res.json();
       if (res.ok) {
         setBots(data.bots ?? []);
@@ -135,9 +143,31 @@ export function BotsList() {
     }
   }
 
+  async function handleRestart(botId: string) {
+    setRestartingId(botId);
+    try {
+      const res = await fetch('/api/bingx/bot/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success('Bot restarted');
+        fetchBots();
+      } else {
+        toast.danger(data.error ?? 'Failed to restart bot');
+      }
+    } catch {
+      toast.danger('Network error');
+    } finally {
+      setRestartingId(null);
+    }
+  }
+
   useEffect(() => {
     fetchBots();
-  }, []);
+  }, [activeAccountId]);
 
   // Auto-refresh active bots every 30 seconds (silent, no loading spinner)
   const hasRunning = bots.some((b) => b.bot.status === 'RUNNING');
@@ -147,11 +177,12 @@ export function BotsList() {
     return () => clearInterval(interval);
   }, [hasRunning]);
 
-  const activeBots = bots.filter((b) => b.bot.status === 'RUNNING');
+  const filteredBots = statusFilter === 'ALL'
+    ? bots
+    : bots.filter((b) => b.bot.status === statusFilter);
 
-  if (activeBots.length === 0 && !loading) {
-    return null;
-  }
+  const runningCount = bots.filter((b) => b.bot.status === 'RUNNING').length;
+  const stoppedCount = bots.filter((b) => b.bot.status === 'STOPPED').length;
 
   return (
     <Card variant="default" className="w-full">
@@ -163,13 +194,35 @@ export function BotsList() {
           </Button>
         </div>
 
-        {loading && activeBots.length === 0 ? (
+        {/* Status filter */}
+        <div className="flex gap-2 mb-4">
+          {([
+            { key: 'ALL' as StatusFilter, label: `All (${bots.length})` },
+            { key: 'RUNNING' as StatusFilter, label: `Running (${runningCount})` },
+            { key: 'STOPPED' as StatusFilter, label: `Stopped (${stoppedCount})` },
+          ]).map((filter) => (
+            <Button
+              key={filter.key}
+              size="sm"
+              variant={statusFilter === filter.key ? 'primary' : 'outline'}
+              onPress={() => setStatusFilter(filter.key)}
+            >
+              {filter.label}
+            </Button>
+          ))}
+        </div>
+
+        {loading && bots.length === 0 ? (
           <div className="flex justify-center py-8">
             <Spinner />
           </div>
+        ) : filteredBots.length === 0 ? (
+          <p className="text-sm text-muted py-4 text-center">
+            {bots.length === 0 ? 'No bots yet. Create one above!' : 'No bots matching this filter.'}
+          </p>
         ) : (
           <Accordion className="w-full" allowsMultipleExpanded variant="surface">
-            {activeBots.map((item) => {
+            {filteredBots.map((item) => {
               const { bot, runtime, orders, positions, unrealizedPnl, realizedPnl } = item;
 
               return (
@@ -178,10 +231,34 @@ export function BotsList() {
                     <div className="flex flex-wrap items-center justify-between gap-3 py-3 pr-2 w-full">
                       <Accordion.Trigger className="flex-1 min-w-0 text-left">
                         <div>
-                          <p className="font-medium">{bot.symbol}</p>
+                          <p className="font-medium">
+                            {bot.symbol}
+                            {' '}
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              bot.botType === 'GRID_LONG' ? 'bg-success/10 text-success' :
+                              bot.botType === 'GRID_SHORT' ? 'bg-danger/10 text-danger' :
+                              bot.botType === 'DCA' ? 'bg-accent/10 text-accent' :
+                              bot.botType === 'TRAILING_STOP' ? 'bg-warning/10 text-warning' :
+                              'bg-success/10 text-success'
+                            }`}>
+                              {bot.botType === 'GRID_LONG' ? 'Grid Long' :
+                               bot.botType === 'GRID_SHORT' ? 'Grid Short' :
+                               bot.botType === 'DCA' ? 'DCA' :
+                               bot.botType === 'TRAILING_STOP' ? 'Trailing Stop' :
+                               'Grid Long'}
+                            </span>
+                            {' '}
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              bot.status === 'RUNNING'
+                                ? 'bg-success/10 text-success'
+                                : 'bg-default-200 text-muted'
+                            }`}>
+                              {bot.status}
+                            </span>
+                          </p>
                           <p className="text-sm text-default-500">
-                            {Number(bot.priceMin).toFixed(2)} – {Number(bot.priceMax).toFixed(2)} • {bot.gridCount ?? 1} grids • {bot.status}
-                            {bot.status === 'RUNNING' && (
+                            {Number(bot.priceMin).toFixed(2)} – {Number(bot.priceMax).toFixed(2)} • {bot.gridCount ?? 1} grids
+                            {bot.status === 'RUNNING' && runtime && (
                               <span className="ml-2">• Running for {runtime}</span>
                             )}
                           </p>
@@ -204,29 +281,52 @@ export function BotsList() {
                               </span>
                             </p>
                           )}
+                          {bot.botType === 'DCA' && bot.config && (
+                            <span className="text-xs text-muted">
+                              {(bot.config as Record<string, unknown>).ordersPlaced as number ?? 0}/{(bot.config as Record<string, unknown>).totalOrders as number ?? 0} orders
+                            </span>
+                          )}
+                          {bot.botType === 'TRAILING_STOP' && bot.config && (
+                            <span className="text-xs text-muted">
+                              {(bot.config as Record<string, unknown>).isActivated ? 'Trailing active' : 'Waiting for activation'}
+                            </span>
+                          )}
                         </div>
                         <Accordion.Indicator />
                       </Accordion.Trigger>
-                      {bot.status === 'RUNNING' && (
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        {bot.status === 'RUNNING' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onPress={() => openEditModal(item)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onPress={() => handleStop(bot.id)}
+                              isDisabled={stoppingId === bot.id}
+                              className="text-danger border-danger/50 hover:bg-danger/10"
+                            >
+                              {stoppingId === bot.id ? <Spinner size="sm" /> : 'Stop'}
+                            </Button>
+                          </>
+                        )}
+                        {bot.status === 'STOPPED' && (
                           <Button
                             size="sm"
                             variant="outline"
-                            onPress={() => openEditModal(item)}
+                            onPress={() => handleRestart(bot.id)}
+                            isDisabled={restartingId === bot.id}
+                            className="text-success border-success/50 hover:bg-success/10"
                           >
-                            Edit
+                            {restartingId === bot.id ? <Spinner size="sm" /> : 'Restart'}
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onPress={() => handleStop(bot.id)}
-                            isDisabled={stoppingId === bot.id}
-                            className="text-danger border-danger/50 hover:bg-danger/10"
-                          >
-                            {stoppingId === bot.id ? <Spinner size="sm" /> : 'Stop'}
-                          </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </Accordion.Heading>
                   <Accordion.Panel>
@@ -286,8 +386,6 @@ export function BotsList() {
                           </div>
                         </div>
                       )}
-
-                     
 
                       {orders.length === 0 && positions.length === 0 && (
                         <p className="text-sm text-default-500">

@@ -7,6 +7,12 @@
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular";
 }
 
+
+@layer components {
+  .input {
+    @apply bg-accent-soft-foreground;
+  }
+}
 /*
  * HeroUI Theme Customization
  * Add this to your global.css after importing @heroui/styles
@@ -91,3 +97,8 @@
    --warning: oklch(82.03% 0.1434 76.75);
    --warning-foreground: oklch(21.03% 0.0059 76.75);
  }
+
+/* Safe area for mobile bottom nav */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

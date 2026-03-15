@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, or, desc, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { bingxApiKeys, tradingBots, gridLevels } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
@@ -8,25 +8,40 @@ import type { InferSelectModel } from 'drizzle-orm';
 export type TradingBot = InferSelectModel<typeof tradingBots>;
 export type GridLevel = InferSelectModel<typeof gridLevels>;
 
-export async function saveBingxKeys(userId: string, apiKey: string, secretKey: string): Promise<void> {
+export async function saveBingxKeys(
+  userId: string,
+  apiKey: string,
+  secretKey: string,
+  label: string = 'Main',
+  apiKeyId?: string
+): Promise<string> {
   const trimmedApiKey = apiKey.trim();
   const trimmedSecretKey = secretKey.trim();
   const secretKeyEncrypted = encryptSecret(trimmedSecretKey);
-  await db
+
+  if (apiKeyId) {
+    await db
+      .update(bingxApiKeys)
+      .set({
+        apiKey: trimmedApiKey,
+        secretKeyEncrypted,
+        label,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(bingxApiKeys.id, apiKeyId), eq(bingxApiKeys.userId, userId)));
+    return apiKeyId;
+  }
+
+  const [row] = await db
     .insert(bingxApiKeys)
     .values({
       userId,
       apiKey: trimmedApiKey,
       secretKeyEncrypted,
+      label,
     })
-    .onConflictDoUpdate({
-      target: bingxApiKeys.userId,
-      set: {
-        apiKey: trimmedApiKey,
-        secretKeyEncrypted,
-        updatedAt: new Date(),
-      },
-    });
+    .returning({ id: bingxApiKeys.id });
+  return row.id;
 }
 
 export async function getBingxKeys(userId: string): Promise<{ apiKey: string; secretKey: string } | null> {
@@ -46,6 +61,39 @@ export async function getBingxClient(userId: string): Promise<BingxClient | null
   const keys = await getBingxKeys(userId);
   if (!keys) return null;
   return createBingxClient(keys.apiKey, keys.secretKey);
+}
+
+export async function getBingxKeysByApiKeyId(apiKeyId: string): Promise<{ apiKey: string; secretKey: string } | null> {
+  const row = await db.query.bingxApiKeys.findFirst({
+    where: eq(bingxApiKeys.id, apiKeyId),
+  });
+  if (!row) return null;
+  try {
+    const secretKey = decryptSecret(row.secretKeyEncrypted);
+    return { apiKey: row.apiKey, secretKey };
+  } catch {
+    return null;
+  }
+}
+
+export async function getBingxClientByApiKeyId(apiKeyId: string): Promise<BingxClient | null> {
+  const keys = await getBingxKeysByApiKeyId(apiKeyId);
+  if (!keys) return null;
+  return createBingxClient(keys.apiKey, keys.secretKey);
+}
+
+export async function getUserApiKeys(userId: string): Promise<Array<{ id: string; label: string; createdAt: Date }>> {
+  return db.query.bingxApiKeys.findMany({
+    where: eq(bingxApiKeys.userId, userId),
+    columns: { id: true, label: true, createdAt: true },
+    orderBy: [desc(bingxApiKeys.createdAt)],
+  });
+}
+
+export async function deleteBingxKey(apiKeyId: string, userId: string): Promise<void> {
+  await db.delete(bingxApiKeys).where(
+    and(eq(bingxApiKeys.id, apiKeyId), eq(bingxApiKeys.userId, userId))
+  );
 }
 
 export async function deleteBingxKeys(userId: string): Promise<void> {
@@ -71,6 +119,9 @@ export type CreateBotParams = {
   gridCount: number;
   leverage?: number;
   marginType?: string;
+  apiKeyId?: string;
+  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
+  config?: Record<string, unknown>;
 };
 
 export async function createBot(userId: string, params: CreateBotParams): Promise<TradingBot> {
@@ -79,6 +130,8 @@ export async function createBot(userId: string, params: CreateBotParams): Promis
     .values({
       userId,
       symbol: params.symbol,
+      botType: params.botType ?? 'GRID_LONG',
+      config: params.config,
       priceMin: params.priceMin,
       priceMax: params.priceMax,
       positionSizeUsdt: params.positionSizeUsdt,
@@ -86,6 +139,7 @@ export async function createBot(userId: string, params: CreateBotParams): Promis
       gridCount: params.gridCount,
       leverage: params.leverage ?? 1,
       marginType: params.marginType ?? 'SEPARATE_ISOLATED',
+      apiKeyId: params.apiKeyId,
     })
     .returning();
   if (!bot) throw new Error('Failed to create bot');
@@ -137,7 +191,7 @@ export async function createGridLevels(
   priceMin: string,
   priceMax: string,
   gridCount: number,
-  options?: { onConflictDoNothing?: boolean }
+  options?: { onConflictDoNothing?: boolean; positionSide?: string }
 ): Promise<GridLevel[]> {
   const min = parseFloat(priceMin);
   const max = parseFloat(priceMax);
@@ -145,7 +199,7 @@ export async function createGridLevels(
   const inserts = levels.map((priceLevel) => ({
     botId,
     priceLevel: String(priceLevel),
-    positionSide: 'LONG',
+    positionSide: options?.positionSide ?? 'LONG',
   }));
   if (options?.onConflictDoNothing) {
     return await db
@@ -361,14 +415,14 @@ export async function getOpenPositions(
       })
       .filter((p) => {
         const amt = Number(p?.positionAmt ?? p?.position ?? 0);
-        return amt > 0;
+        return Math.abs(amt) > 0;
       })
       .map((p) => {
         const rawPositionId = (p?.positionId ?? p?.position_id) as string | number | bigint | null | undefined;
         return {
           symbol: String(p?.symbol ?? ''),
           positionSide: String(p?.positionSide ?? 'LONG'),
-          positionAmt: Number(p?.positionAmt ?? p?.position ?? 0),
+          positionAmt: Math.abs(Number(p?.positionAmt ?? p?.position ?? 0)),
           entryPrice: Number(p?.entryPrice ?? p?.avgPrice ?? 0),
           positionId: toSafeIdString(rawPositionId),
         };
@@ -649,8 +703,10 @@ export async function editActiveBot(
   botId: string,
   params: EditBotParams
 ): Promise<void> {
-  const client = await getBingxClient(userId);
   const bot = await getBotById(botId, userId);
+  const client = bot?.apiKeyId
+    ? await getBingxClientByApiKeyId(bot.apiKeyId)
+    : await getBingxClient(userId);
 
   if (!client || !bot) {
     throw new Error('Bot or API Client not found');
@@ -698,6 +754,16 @@ export async function editActiveBot(
 export async function getUserBots(userId: string): Promise<TradingBot[]> {
   return db.query.tradingBots.findMany({
     where: eq(tradingBots.userId, userId),
+    orderBy: [desc(tradingBots.createdAt)],
+  });
+}
+
+export async function getUserBotsByApiKey(userId: string, apiKeyId: string): Promise<TradingBot[]> {
+  return db.query.tradingBots.findMany({
+    where: and(
+      eq(tradingBots.userId, userId),
+      or(eq(tradingBots.apiKeyId, apiKeyId), isNull(tradingBots.apiKeyId))
+    ),
     orderBy: [desc(tradingBots.createdAt)],
   });
 }
@@ -793,9 +859,11 @@ export async function getBotDetails(
 
   const runtime = formatRuntime(bot.createdAt);
 
-  const client = await getBingxClient(userId);
+  const client = bot.apiKeyId
+    ? await getBingxClientByApiKeyId(bot.apiKeyId)
+    : await getBingxClient(userId);
   const orders: BotOrderInfo[] = [];
-  let positions: BotPositionInfo[] = [];
+  const positions: BotPositionInfo[] = [];
   let unrealizedPnl = 0;
   let realizedPnl = 0;
   const openOrderIds = new Set<string>();
@@ -898,7 +966,11 @@ export async function getBotsDetailsBatched(
   const RATE_LIMIT_DELAY_MS = 400;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  const client = await getBingxClient(userId);
+  // Use first bot's apiKeyId, or fall back to userId
+  const firstBot = bots[0];
+  const client = firstBot?.apiKeyId
+    ? await getBingxClientByApiKeyId(firstBot.apiKeyId)
+    : await getBingxClient(userId);
   const symbolCache = new Map<
     string,
     {

@@ -15,7 +15,7 @@ type SymbolConfig = {
   leverage: number;
 };
 
-export function BotConfigForm() {
+export function GridShortConfigForm() {
   const { activeAccountId } = useActiveAccount();
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
@@ -93,13 +93,13 @@ export function BotConfigForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          botType: 'GRID_LONG',
           priceMin: priceMin.trim(),
           priceMax: priceMax.trim(),
           positionSizeUsdt: positionSizeUsdt.trim(),
           takeProfitPercentage: takeProfitPercentage.trim(),
           gridCount: gridNum,
           apiKeyId: activeAccountId,
+          botType: 'GRID_SHORT',
         }),
       });
       const data = await res.json();
@@ -118,7 +118,10 @@ export function BotConfigForm() {
   return (
     <Card variant="default" className="w-full">
       <Card.Content className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Start Grid Trading Bot</h3>
+        <h3 className="text-lg font-semibold mb-1">Grid Short Bot</h3>
+        <p className="text-sm text-default-500 mb-4">
+          Places sell orders in a price range, buying back at lower prices for profit.
+        </p>
         <form onSubmit={handleStart} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <TextField variant="primary" isDisabled={loading}>
@@ -188,7 +191,7 @@ export function BotConfigForm() {
                 <span className="text-default-600">
                   Available margin:{' '}
                   <strong>
-                    {availableMargin !== null ? formatUsdt(availableMargin) : '—'}
+                    {availableMargin !== null ? formatUsdt(availableMargin) : '\u2014'}
                   </strong>
                 </span>
                 <span className="text-default-600">

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, Button, toast } from '@heroui/react';
 import { parseBalanceData, getNum } from '@/lib/balance';
+import { useActiveAccount } from '@/contexts/active-account';
 
 function formatUsdt(value: number): string {
   return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
@@ -14,6 +15,7 @@ function formatPnl(value: number): string {
 }
 
 export function BalanceDisplay() {
+  const { activeAccountId } = useActiveAccount();
   const [balance, setBalance] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +24,7 @@ export function BalanceDisplay() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/bingx/balance');
-      const data = await res.json();
+      const res = await fetch(`/api/bingx/balance${activeAccountId ? `?apiKeyId=${activeAccountId}` : ''}`);      const data = await res.json();
       if (!res.ok) {
         const err = data.error ?? 'Failed to fetch balance';
         setError(err);
@@ -42,8 +43,8 @@ export function BalanceDisplay() {
   }
 
   useEffect(() => {
-    fetchBalance();
-  }, []);
+    if (activeAccountId) fetchBalance();
+  }, [activeAccountId]);
 
   const items = parseBalanceData(balance);
   const hasItems = items.length > 0;
