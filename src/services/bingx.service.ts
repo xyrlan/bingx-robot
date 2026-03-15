@@ -187,7 +187,7 @@ export async function createGridLevels(
   priceMin: string,
   priceMax: string,
   gridCount: number,
-  options?: { onConflictDoNothing?: boolean }
+  options?: { onConflictDoNothing?: boolean; positionSide?: string }
 ): Promise<GridLevel[]> {
   const min = parseFloat(priceMin);
   const max = parseFloat(priceMax);
@@ -195,7 +195,7 @@ export async function createGridLevels(
   const inserts = levels.map((priceLevel) => ({
     botId,
     priceLevel: String(priceLevel),
-    positionSide: 'LONG',
+    positionSide: options?.positionSide ?? 'LONG',
   }));
   if (options?.onConflictDoNothing) {
     return await db
@@ -411,14 +411,14 @@ export async function getOpenPositions(
       })
       .filter((p) => {
         const amt = Number(p?.positionAmt ?? p?.position ?? 0);
-        return amt > 0;
+        return Math.abs(amt) > 0;
       })
       .map((p) => {
         const rawPositionId = (p?.positionId ?? p?.position_id) as string | number | bigint | null | undefined;
         return {
           symbol: String(p?.symbol ?? ''),
           positionSide: String(p?.positionSide ?? 'LONG'),
-          positionAmt: Number(p?.positionAmt ?? p?.position ?? 0),
+          positionAmt: Math.abs(Number(p?.positionAmt ?? p?.position ?? 0)),
           entryPrice: Number(p?.entryPrice ?? p?.avgPrice ?? 0),
           positionId: toSafeIdString(rawPositionId),
         };
