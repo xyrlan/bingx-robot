@@ -18,6 +18,7 @@ import {
   updateGridLevelTpOrderId,
   toPrecision,
 } from '@/services/bingx.service';
+import { placeGridShortEntryOrder, placeShortTakeProfitOrder } from '@/services/bots/grid-short.service';
 
 const POSITION_ENTRY_TOLERANCE_PCT = 0.005;
 
@@ -68,9 +69,12 @@ export const tradingBotWatch = inngest.createFunction(
       return { processed: 0 };
     }
 
+    // Only process grid bots (skip DCA, TRAILING_STOP, etc.)
+    const gridBots = bots.filter(b => !b.botType || b.botType === 'GRID_LONG' || b.botType === 'GRID_SHORT');
+
     let processed = 0;
 
-    for (const bot of bots) {
+    for (const bot of gridBots) {
       const setup = await step.run(`setup-bot-${bot.id}`, async () => {
         const freshBot = await getBotById(bot.id, bot.userId);
         if (!freshBot || freshBot.status !== 'RUNNING') {
@@ -96,12 +100,16 @@ export const tradingBotWatch = inngest.createFunction(
         let levels = await getGridLevelsByBotId(bot.id);
         const symbol = String(bot.symbol ?? '').trim().toUpperCase() || bot.symbol;
 
+        const botType = freshBot.botType ?? 'GRID_LONG';
+        const positionSide = botType === 'GRID_SHORT' ? 'SHORT' : 'LONG';
+
         if (levels.length === 0) {
           levels = await createGridLevels(
             bot.id,
             String(bot.priceMin),
             String(bot.priceMax),
-            bot.gridCount
+            bot.gridCount,
+            { positionSide }
           );
         }
 
@@ -152,7 +160,8 @@ export const tradingBotWatch = inngest.createFunction(
           currentPrice,
           positionSizeUsdt: Number(bot.positionSizeUsdt),
           takeProfitPct: Number(bot.takeProfitPercentage) / 100,
-          positionSide: 'LONG',
+          positionSide,
+          botType,
         };
       });
 
@@ -174,7 +183,9 @@ export const tradingBotWatch = inngest.createFunction(
           positionSizeUsdt,
           takeProfitPct,
           positionSide,
+          botType,
         } = setup;
+        const isShort = botType === 'GRID_SHORT';
 
         const client = bot.apiKeyId
           ? await getBingxClientByApiKeyId(bot.apiKeyId)
@@ -189,10 +200,11 @@ export const tradingBotWatch = inngest.createFunction(
           let orderStillOpen = false;
           if (level.orderId && openOrderIdsSet.has(level.orderId)) {
             const order = orders.find((o) => String(o.orderId) === level.orderId);
+            const expectedEntrySide = isShort ? 'SELL' : 'BUY';
             const isEntryOrder =
               order &&
               ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
-              String(order.side ?? '').toUpperCase() === 'BUY';
+              String(order.side ?? '').toUpperCase() === expectedEntrySide;
             orderStillOpen = !!isEntryOrder;
           }
 
@@ -200,9 +212,11 @@ export const tradingBotWatch = inngest.createFunction(
 
           const positionsAtLevel = positions.filter((p) => {
             const side = p.positionSide.toUpperCase();
-            const isLong = side === 'LONG' || side === 'BOTH';
+            const isMatchingSide = isShort
+              ? (side === 'SHORT')
+              : (side === 'LONG' || side === 'BOTH');
             return (
-              isLong &&
+              isMatchingSide &&
               positionMatchesLevel(p.entryPrice, priceLevel) &&
               isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
             );
@@ -212,9 +226,11 @@ export const tradingBotWatch = inngest.createFunction(
             const freshPositions = await getOpenPositions(client, symbol);
             const freshPositionsAtLevel = freshPositions.filter((p) => {
               const side = p.positionSide.toUpperCase();
-              const isLong = side === 'LONG' || side === 'BOTH';
+              const isMatchingSide = isShort
+                ? (side === 'SHORT')
+                : (side === 'LONG' || side === 'BOTH');
               return (
-                isLong &&
+                isMatchingSide &&
                 positionMatchesLevel(p.entryPrice, priceLevel) &&
                 isClosestLevelForPosition(p.entryPrice, priceLevel, levels)
               );
@@ -233,10 +249,15 @@ export const tradingBotWatch = inngest.createFunction(
                 if (positionsWithTpCheck.has(posKey)) continue;
                 positionsWithTpCheck.add(posKey);
 
-                const stopPrice = priceLevel * (1 + takeProfitPct);
+                const stopPrice = isShort
+                  ? priceLevel * (1 - takeProfitPct)
+                  : priceLevel * (1 + takeProfitPct);
                 const stopPriceStr = toPrecision(stopPrice, pricePrecision);
                 const posSide = positionAtLevel.positionSide.toUpperCase();
-                if (currentPrice != null && stopPrice <= currentPrice) continue;
+                const skipTp = isShort
+                  ? (currentPrice != null && stopPrice >= currentPrice)
+                  : (currentPrice != null && stopPrice <= currentPrice);
+                if (skipTp) continue;
 
                 const hasTp =
                   (level.tpOrderId && freshOpenOrderIds.has(level.tpOrderId)) ||
@@ -250,15 +271,24 @@ export const tradingBotWatch = inngest.createFunction(
                   );
 
                 if (!hasTp) {
-                  const tpOrderId = await placeTakeProfitOrder(
-                    client,
-                    symbol,
-                    posSide,
-                    positionAtLevel.positionAmt,
-                    parseFloat(stopPriceStr),
-                    pricePrecision,
-                    positionAtLevel.positionId
-                  );
+                  const tpOrderId = isShort
+                    ? await placeShortTakeProfitOrder(
+                        client,
+                        symbol,
+                        positionAtLevel.positionAmt,
+                        parseFloat(stopPriceStr),
+                        pricePrecision,
+                        positionAtLevel.positionId
+                      )
+                    : await placeTakeProfitOrder(
+                        client,
+                        symbol,
+                        posSide,
+                        positionAtLevel.positionAmt,
+                        parseFloat(stopPriceStr),
+                        pricePrecision,
+                        positionAtLevel.positionId
+                      );
                   if (tpOrderId) {
                     await updateGridLevelTpOrderId(bot.id, String(level.priceLevel), tpOrderId);
                     botProcessed++;
@@ -287,15 +317,17 @@ export const tradingBotWatch = inngest.createFunction(
           const freshIds = new Set(freshOrders.map((o) => String(o.orderId)));
           if (level.orderId && freshIds.has(level.orderId)) {
             const order = freshOrders.find((o) => String(o.orderId) === level.orderId);
+            const expectedEntrySide2 = isShort ? 'SELL' : 'BUY';
             const isEntryOrder =
               order &&
               ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
-              String(order.side ?? '').toUpperCase() === 'BUY';
+              String(order.side ?? '').toUpperCase() === expectedEntrySide2;
             if (isEntryOrder) continue;
           }
 
+          const expectedOrphanSide = isShort ? 'SELL' : 'BUY';
           const orphanOrder = freshOrders.find((o) => {
-            if (String(o.side ?? '').toUpperCase() !== 'BUY') return false;
+            if (String(o.side ?? '').toUpperCase() !== expectedOrphanSide) return false;
             if (String(o.positionSide ?? '').toUpperCase() !== positionSide.toUpperCase()) return false;
             const orderType = String(o.type ?? '').toUpperCase();
             if (orderType !== 'LIMIT' && orderType !== 'TRIGGER_LIMIT') return false;
@@ -311,17 +343,28 @@ export const tradingBotWatch = inngest.createFunction(
             continue;
           }
 
-          const newOrderId = await placeGridEntryOrder({
-            client,
-            symbol,
-            priceLevel,
-            quantity: quantityBtc,
-            takeProfitPct,
-            pricePrecision,
-            quantityPrecision,
-            positionSide,
-            currentPrice,
-          });
+          const newOrderId = isShort
+            ? await placeGridShortEntryOrder({
+                client,
+                symbol,
+                priceLevel,
+                quantity: quantityBtc,
+                takeProfitPct,
+                pricePrecision,
+                quantityPrecision,
+                currentPrice,
+              })
+            : await placeGridEntryOrder({
+                client,
+                symbol,
+                priceLevel,
+                quantity: quantityBtc,
+                takeProfitPct,
+                pricePrecision,
+                quantityPrecision,
+                positionSide,
+                currentPrice,
+              });
 
           if (newOrderId) {
             await updateGridLevelOrderId(bot.id, String(level.priceLevel), String(newOrderId));
