@@ -30,7 +30,9 @@ export function ActiveAccountProvider({ children }: { children: ReactNode }) {
   }, [activeAccountId]);
 
   useEffect(() => {
-    refreshAccounts();
+    queueMicrotask(() => {
+      refreshAccounts();
+    });
   }, []);
 
   return (

@@ -7,6 +7,12 @@
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular";
 }
 
+
+@layer components {
+  .input {
+    @apply bg-accent-soft-foreground;
+  }
+}
 /*
  * HeroUI Theme Customization
  * Add this to your global.css after importing @heroui/styles
