@@ -26,22 +26,22 @@ export default async function DashboardLayout({
   const theme = themeCookie === 'light' || themeCookie === 'dark' ? themeCookie : 'dark';
 
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <div className="md:pl-64 flex flex-col min-h-screen">
-        <Header
-          signOutAction={signOutAction}
-          initialTheme={theme}
-          fontVariableClass=""
-        />
-        <ActiveAccountProvider>
+    <ActiveAccountProvider>
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <div className="md:pl-64 flex flex-col min-h-screen">
+          <Header
+            signOutAction={signOutAction}
+            initialTheme={theme}
+            fontVariableClass=""
+          />
           <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
             <div className="max-w-5xl mx-auto">
               {children}
             </div>
           </main>
-        </ActiveAccountProvider>
+        </div>
       </div>
-    </div>
+    </ActiveAccountProvider>
   );
 }
