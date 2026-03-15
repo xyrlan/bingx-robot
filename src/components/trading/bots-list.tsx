@@ -21,6 +21,7 @@ type BotPositionInfo = {
   positionSide: string;
   unrealizedPnl: number;
   estimatedProfit: number;
+  leverage?: number;
 };
 
 type BotDetails = {
@@ -32,6 +33,7 @@ type BotDetails = {
     gridCount: number;
     positionSizeUsdt?: string;
     takeProfitPercentage?: string;
+    leverage?: number;
     status: 'STOPPED' | 'RUNNING';
     botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
     config?: Record<string, unknown>;
@@ -184,6 +186,14 @@ export function BotsList() {
   const runningCount = bots.filter((b) => b.bot.status === 'RUNNING').length;
   const stoppedCount = bots.filter((b) => b.bot.status === 'STOPPED').length;
 
+  const totalUnrealized = bots.reduce((sum, b) => sum + b.unrealizedPnl, 0);
+  const totalRealized = bots.reduce((sum, b) => sum + b.realizedPnl, 0);
+  const totalEstimatedProfit = bots.reduce(
+    (sum, b) => sum + b.positions.reduce((s, p) => s + p.estimatedProfit, 0),
+    0
+  );
+  const totalPnl = totalUnrealized + totalRealized;
+
   return (
     <Card variant="default" className="w-full">
       <Card.Content className="p-6">
@@ -212,6 +222,24 @@ export function BotsList() {
           ))}
         </div>
 
+        {bots.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {[
+              { label: 'Unrealized', value: totalUnrealized },
+              { label: 'Realized', value: totalRealized },
+              { label: 'Total P&L', value: totalPnl },
+              { label: 'Projected Profit', value: totalEstimatedProfit, title: 'Profit if all take-profit orders execute' },
+            ].map((stat) => (
+              <div key={stat.label} className="bg-default-100 rounded-lg p-3 text-center" title={'title' in stat ? stat.title : undefined}>
+                <p className="text-xs text-default-500">{stat.label}</p>
+                <p className={`text-sm font-semibold ${stat.value >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {formatPnl(stat.value)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {loading && bots.length === 0 ? (
           <div className="flex justify-center py-8">
             <Spinner />
@@ -224,6 +252,8 @@ export function BotsList() {
           <Accordion className="w-full" allowsMultipleExpanded variant="surface">
             {filteredBots.map((item) => {
               const { bot, runtime, orders, positions, unrealizedPnl, realizedPnl } = item;
+              const exchangeLeverage = positions.find((p) => p.leverage)?.leverage;
+              const displayLeverage = exchangeLeverage ?? bot.leverage;
 
               return (
                 <Accordion.Item key={bot.id} id={bot.id}>
@@ -262,6 +292,13 @@ export function BotsList() {
                               <span className="ml-2">• Running for {runtime}</span>
                             )}
                           </p>
+                          <p className="text-xs text-default-400 mt-0.5">
+                            {displayLeverage && `${displayLeverage}x`}
+                            {bot.positionSizeUsdt && ` • ${Number(bot.positionSizeUsdt)} USDT/level`}
+                            {bot.takeProfitPercentage && ` • ${Number(bot.takeProfitPercentage)}% TP`}
+                            {' • '}
+                            {new Date(bot.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
                           {(unrealizedPnl !== 0 || realizedPnl !== 0) && (
                             <p className="text-sm mt-1">
                               <span
@@ -279,6 +316,17 @@ export function BotsList() {
                               >
                                 Realized: {formatPnl(realizedPnl)}
                               </span>
+                              {positions.length > 0 && (() => {
+                                const estProfit = positions.reduce((s, p) => s + p.estimatedProfit, 0);
+                                return estProfit !== 0 ? (
+                                  <>
+                                    <span className="mx-2 text-default-400">|</span>
+                                    <span className="text-default-500">
+                                      Projected Profit: {formatPnl(estProfit)}
+                                    </span>
+                                  </>
+                                ) : null;
+                              })()}
                             </p>
                           )}
                           {bot.botType === 'DCA' && bot.config && (
@@ -331,26 +379,46 @@ export function BotsList() {
                   </Accordion.Heading>
                   <Accordion.Panel>
                     <Accordion.Body className="space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                        {[
+                          { label: 'Leverage', value: displayLeverage ? `${displayLeverage}x` : '1x' },
+                          { label: 'Size/Level', value: bot.positionSizeUsdt ? `${Number(bot.positionSizeUsdt)} USDT` : '—' },
+                          { label: 'TP %', value: bot.takeProfitPercentage ? `${Number(bot.takeProfitPercentage)}%` : '—' },
+                          { label: 'Created', value: new Date(bot.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
+                        ].map((item) => (
+                          <div key={item.label} className="bg-default-100 rounded-md px-2 py-1.5">
+                            <p className="text-xs text-default-500">{item.label}</p>
+                            <p className="font-medium">{item.value}</p>
+                          </div>
+                        ))}
+                      </div>
 
-                    {positions.length > 0 && (
+                      {positions.length > 0 && (
                         <div>
-                          <p className="text-sm font-medium mb-2">Positions</p>
-                          <div className="space-y-1 text-sm">
+                          <p className="text-sm font-medium mb-2">Open Positions</p>
+                          <div className="bg-default-50 rounded-lg divide-y divide-default-200">
                             {positions.map((p, i) => (
-                              <div
-                                key={i}
-                                className="flex justify-between items-center py-1"
-                              >
-                                <span>
-                                  Entry {p.entryPrice.toFixed(2)} × {p.positionAmt}
-                                </span>
-                                <span
-                                  className={
-                                    p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'
-                                  }
-                                >
-                               {formatPnl(p.unrealizedPnl)}
-                                </span>
+                              <div key={i} className="px-3 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                    p.positionSide === 'LONG' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
+                                  }`}>
+                                    {p.positionSide}
+                                  </span>
+                                  <span className="text-sm">
+                                    Entry {p.entryPrice.toFixed(2)} × {p.positionAmt}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-sm">
+                                  <span className={p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'}>
+                                    {formatPnl(p.unrealizedPnl)}
+                                  </span>
+                                  {p.estimatedProfit !== 0 && (
+                                    <span className="text-default-500 text-xs">
+                                      Proj. {formatPnl(p.estimatedProfit)}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -359,26 +427,36 @@ export function BotsList() {
 
                       {orders.length > 0 && (
                         <div>
-                          <p className="text-sm font-medium mb-2">Orders</p>
-                          <div className="space-y-1 text-sm">
+                          <p className="text-sm font-medium mb-2">Orders ({orders.filter(o => o.status === 'OPEN').length} open)</p>
+                          <div className="bg-default-50 rounded-lg divide-y divide-default-200">
                             {orders.map((o, i) => (
                               <div
                                 key={`${o.priceLevel}-${o.type}-${i}`}
-                                className="flex justify-between items-center py-1"
+                                className="px-3 py-2 flex items-center justify-between"
                               >
-                                <span>
-                                  {o.type} @ {Number(o.priceLevel).toFixed(2)}
-                                  {o.stopPrice != null && ` (TP: ${o.stopPrice.toFixed(2)})`}
-                                </span>
-                                <span
-                                  className={
-                                    o.status === 'OPEN'
-                                      ? 'text-primary'
-                                      : o.status === 'FILLED'
-                                        ? 'text-success'
-                                        : 'text-default-400'
-                                  }
-                                >
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                    o.type === 'ENTRY' ? 'bg-primary/10 text-primary' : 'bg-warning/10 text-warning'
+                                  }`}>
+                                    {o.type}
+                                  </span>
+                                  <span className="text-sm">
+                                    @ {Number(o.priceLevel).toFixed(2)}
+                                    {o.quantity != null && (
+                                      <span className="text-default-400 ml-1">× {o.quantity}</span>
+                                    )}
+                                  </span>
+                                  {o.stopPrice != null && (
+                                    <span className="text-xs text-default-400">
+                                      TP: {o.stopPrice.toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-xs font-medium ${
+                                  o.status === 'OPEN' ? 'text-primary' :
+                                  o.status === 'FILLED' ? 'text-success' :
+                                  'text-default-400'
+                                }`}>
                                   {o.status}
                                 </span>
                               </div>

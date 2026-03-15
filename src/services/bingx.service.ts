@@ -364,6 +364,7 @@ export type OpenPosition = {
   positionSide: string;
   positionAmt: number;
   entryPrice: number;
+  leverage?: number;
   /** Always string to avoid JS BigInt/precision loss with exchange IDs */
   positionId?: string;
 };
@@ -419,11 +420,13 @@ export async function getOpenPositions(
       })
       .map((p) => {
         const rawPositionId = (p?.positionId ?? p?.position_id) as string | number | bigint | null | undefined;
+        const rawLeverage = Number(p?.leverage ?? 0);
         return {
           symbol: String(p?.symbol ?? ''),
           positionSide: String(p?.positionSide ?? 'LONG'),
           positionAmt: Math.abs(Number(p?.positionAmt ?? p?.position ?? 0)),
           entryPrice: Number(p?.entryPrice ?? p?.avgPrice ?? 0),
+          leverage: rawLeverage > 0 ? rawLeverage : undefined,
           positionId: toSafeIdString(rawPositionId),
         };
       });
@@ -800,6 +803,7 @@ export type BotPositionInfo = {
   positionSide: string;
   unrealizedPnl: number;
   estimatedProfit: number;
+  leverage?: number;
 };
 
 export type BotDetails = {
@@ -933,6 +937,7 @@ export async function getBotDetails(
         positionSide: pos.positionSide,
         unrealizedPnl: unrealized,
         estimatedProfit: estimated,
+        leverage: pos.leverage,
       });
       unrealizedPnl += unrealized;
     }
@@ -1054,6 +1059,7 @@ export async function getBotsDetailsBatched(
         positionSide: pos.positionSide,
         unrealizedPnl: unrealized,
         estimatedProfit: estimated,
+        leverage: pos.leverage,
       });
       unrealizedPnl += unrealized;
     }
