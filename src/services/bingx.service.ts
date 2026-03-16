@@ -120,7 +120,7 @@ export type CreateBotParams = {
   leverage?: number;
   marginType?: string;
   apiKeyId?: string;
-  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
+  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT';
   config?: Record<string, unknown>;
 };
 

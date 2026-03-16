@@ -29,10 +29,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ bots });
     }
 
-    const runningBots = bots.filter((b) => b.status === 'RUNNING');
-    const stoppedBots = bots.filter((b) => b.status === 'STOPPED');
+    const runningBots = bots.filter((b) => b.status === 'RUNNING' && b.botType !== 'DCA_SPOT');
+    const dcaSpotBots = bots.filter((b) => b.botType === 'DCA_SPOT');
+    const stoppedBots = bots.filter((b) => b.status === 'STOPPED' && b.botType !== 'DCA_SPOT');
 
     const enrichedRunning = await getBotsDetailsBatched(user.id, runningBots);
+    const enrichedDcaSpot = dcaSpotBots.map((bot) => ({
+      bot,
+      runtime: formatRuntime(bot.createdAt),
+      orders: [],
+      positions: [],
+      unrealizedPnl: 0,
+      realizedPnl: 0,
+    }));
     const enrichedStopped = stoppedBots.map((bot) => ({
       bot,
       runtime: formatRuntime(bot.createdAt),
@@ -43,7 +52,7 @@ export async function GET(request: Request) {
     }));
 
     const botOrder = new Map(bots.map((b, i) => [b.id, i]));
-    const enriched = [...enrichedRunning, ...enrichedStopped].sort(
+    const enriched = [...enrichedRunning, ...enrichedDcaSpot, ...enrichedStopped].sort(
       (a, b) => (botOrder.get(a.bot.id) ?? 0) - (botOrder.get(b.bot.id) ?? 0)
     );
 

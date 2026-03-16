@@ -100,6 +100,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, botId: bot.id });
     }
 
+    // --- DCA Spot Bot creation ---
+    if (botType === 'DCA_SPOT') {
+      const dcaConfig = config as { intervalMinutes?: number; totalOrders?: number; orderSizeUsdt?: number; ordersPlaced?: number; side?: string } | undefined;
+      if (!dcaConfig || !dcaConfig.intervalMinutes || !dcaConfig.totalOrders || !dcaConfig.orderSizeUsdt) {
+        return NextResponse.json(
+          { error: 'DCA Spot config requires intervalMinutes, totalOrders, and orderSizeUsdt' },
+          { status: 400 }
+        );
+      }
+
+      const bot = await createBot(user.id, {
+        symbol,
+        botType: 'DCA_SPOT',
+        config: {
+          intervalMinutes: dcaConfig.intervalMinutes,
+          totalOrders: dcaConfig.totalOrders,
+          orderSizeUsdt: dcaConfig.orderSizeUsdt,
+          ordersPlaced: dcaConfig.ordersPlaced ?? 0,
+          side: dcaConfig.side ?? 'BUY',
+        },
+        priceMin: '0',
+        priceMax: '0',
+        positionSizeUsdt: String(dcaConfig.orderSizeUsdt),
+        takeProfitPercentage: '0',
+        gridCount: 1,
+        apiKeyId,
+      });
+      await setBotStatus(bot.id, user.id, 'RUNNING');
+
+      await inngest.send({
+        name: 'trading/bot.start',
+        data: { userId: user.id, botId: bot.id },
+      });
+
+      return NextResponse.json({ success: true, botId: bot.id });
+    }
+
     // --- Trailing Stop Bot creation ---
     if (botType === 'TRAILING_STOP') {
       const tsConfig = config as { positionSizeUsdt?: number; activationPricePct?: number; trailingPct?: number; highestPrice?: number; isActivated?: boolean; entryOrderId?: string | null } | undefined;

@@ -35,7 +35,7 @@ type BotDetails = {
     takeProfitPercentage?: string;
     leverage?: number;
     status: 'STOPPED' | 'RUNNING';
-    botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP';
+    botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT';
     config?: Record<string, unknown>;
     createdAt: string;
   };
@@ -269,12 +269,14 @@ export function BotsList() {
                               bot.botType === 'GRID_SHORT' ? 'bg-danger/10 text-danger' :
                               bot.botType === 'DCA' ? 'bg-accent/10 text-accent' :
                               bot.botType === 'TRAILING_STOP' ? 'bg-warning/10 text-warning' :
+                              bot.botType === 'DCA_SPOT' ? 'bg-primary/10 text-primary' :
                               'bg-success/10 text-success'
                             }`}>
                               {bot.botType === 'GRID_LONG' ? 'Grid Long' :
                                bot.botType === 'GRID_SHORT' ? 'Grid Short' :
                                bot.botType === 'DCA' ? 'DCA' :
                                bot.botType === 'TRAILING_STOP' ? 'Trailing Stop' :
+                               bot.botType === 'DCA_SPOT' ? 'DCA Spot' :
                                'Grid Long'}
                             </span>
                             {' '}
@@ -332,6 +334,11 @@ export function BotsList() {
                           {bot.botType === 'DCA' && bot.config && (
                             <span className="text-xs text-muted">
                               {(bot.config as Record<string, unknown>).ordersPlaced as number ?? 0}/{(bot.config as Record<string, unknown>).totalOrders as number ?? 0} orders
+                            </span>
+                          )}
+                          {bot.botType === 'DCA_SPOT' && bot.config && (
+                            <span className="text-xs text-muted">
+                              {(bot.config as Record<string, unknown>).ordersPlaced as number ?? 0}/{(bot.config as Record<string, unknown>).totalOrders as number ?? 0} orders (spot)
                             </span>
                           )}
                           {bot.botType === 'TRAILING_STOP' && bot.config && (
