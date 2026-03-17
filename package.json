@@ -15,12 +15,15 @@
     "db:generate": "bunx drizzle-kit generate",
     "db:migrate": "bunx drizzle-kit migrate",
     "db:push": "bunx drizzle-kit push",
-    "inngest": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
+    "inngest": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest",
+    "render:promo": "remotion render remotion/index.ts LoginPromoVideo public/login-promo.mp4"
   },
   "dependencies": {
     "@heroui/react": "^3.0.0-beta.6",
     "@heroui/styles": "^3.0.0-beta.6",
     "@internationalized/date": "^3.11.0",
+    "@remotion/cli": "^4.0.436",
+    "@remotion/player": "^4.0.436",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "@tanstack/react-table": "^8.21.3",
@@ -37,6 +40,7 @@
     "postgres": "^3.4.8",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "remotion": "^4.0.436",
     "zod": "^4.3.6"
   },
   "devDependencies": {
