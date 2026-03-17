@@ -15,10 +15,19 @@ export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(loginAction, null);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="flex w-full max-w-7xl items-center gap-10">
-        {/* Login card */}
-        <Card variant="default" className="w-full lg:w-auto lg:min-w-[400px] shrink-0">
+    <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
+      {/* Background video */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        src="/login-promo.mp4"
+      />
+
+      {/* Login card */}
+      <Card variant="default" className="relative z-10 w-full max-w-md backdrop-blur-sm bg-background/80">
 
         <Card.Content className="p-8">
           <div className="text-center mb-8">
@@ -92,19 +101,6 @@ export default function LoginPage() {
           </div>
         </Card.Content>
       </Card>
-
-        {/* Video demo */}
-        <div className="hidden lg:flex flex-1 items-center rounded-2xl overflow-hidden border border-default-200">
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="w-full h-auto"
-            src="/login-promo.mp4"
-          />
-        </div>
-      </div>
     </div>
   );
 }

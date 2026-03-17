@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>BingX Bot — Dashboard Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --bg-card: #18181b;
+      --border: #27272a;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --default-100: #18181b;
+      --default-200: #27272a;
+      --default-400: #71717a;
+      --default-500: #a1a1aa;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --accent: #06b6d4;
+      --primary: #3b82f6;
+      --warning: #f59e0b;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      overflow: hidden;
+      height: 100vh;
+      width: 1280px;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: 256px; border-right: 1px solid var(--border);
+      background: var(--bg); z-index: 40;
+      display: flex; flex-direction: column;
+      transform: translateX(-100%);
+      transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .sidebar.visible { transform: translateX(0); }
+
+    .sidebar-logo {
+      height: 64px; display: flex; align-items: center;
+      padding: 0 24px; border-bottom: 1px solid var(--border);
+      font-size: 18px; font-weight: 700;
+    }
+
+    .account-switcher { padding: 12px; border-bottom: 1px solid var(--border); }
+    .account-switcher select {
+      width: 100%; padding: 8px 12px; border-radius: var(--radius-sm);
+      background: var(--default-100); border: 1px solid var(--border);
+      color: var(--fg); font-size: 14px; appearance: none;
+    }
+
+    .nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      font-size: 14px; font-weight: 500; color: var(--muted);
+      cursor: pointer; transition: all 0.25s;
+      text-decoration: none;
+    }
+    .nav-item.active { background: rgba(6,182,212,0.1); color: var(--accent); }
+    .nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+    /* ── Header ── */
+    .header {
+      position: sticky; top: 0; z-index: 30;
+      height: 64px; display: flex; align-items: center; justify-content: flex-end;
+      padding: 0 24px; border-bottom: 1px solid var(--border);
+      background: var(--bg); opacity: 0; transition: opacity 0.5s;
+    }
+    .header.visible { opacity: 1; }
+    .header-btn {
+      padding: 8px 16px; border-radius: var(--radius-sm);
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-size: 13px; cursor: pointer;
+    }
+
+    /* ── Main ── */
+    .main-wrapper { margin-left: 256px; min-height: 100vh; display: flex; flex-direction: column; }
+    .main { flex: 1; padding: 24px; max-width: 1024px; margin: 0 auto; width: 100%; }
+    .page-title {
+      font-size: 24px; font-weight: 700; margin-bottom: 24px;
+      opacity: 0; transition: opacity 0.5s;
+    }
+    .page-title.visible { opacity: 1; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .card-content { padding: 16px; }
+
+    /* ── Stats Grid ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat-card { opacity: 0; transform: translateY(12px); transition: all 0.4s ease; }
+    .stat-card.visible { opacity: 1; transform: translateY(0); }
+    .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .stat-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* Skeleton shimmer */
+    .skeleton {
+      background: linear-gradient(90deg, var(--default-200) 25%, #333 50%, var(--default-200) 75%);
+      background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-value { height: 22px; width: 100px; }
+
+    /* ── Bots Summary ── */
+    .bots-summary { opacity: 0; transform: translateY(12px); transition: all 0.4s ease; }
+    .bots-summary.visible { opacity: 1; transform: translateY(0); }
+    .bots-summary-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .bots-summary-header h3 { font-size: 14px; font-weight: 600; }
+    .bots-summary-header a { font-size: 12px; color: var(--accent); text-decoration: none; }
+    .bot-counts { display: flex; gap: 16px; font-size: 14px; }
+    .bot-preview { margin-top: 12px; }
+    .bot-preview-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; font-size: 14px;
+    }
+    .bot-preview-item .symbol { font-weight: 500; }
+    .bot-preview-item .grids { font-size: 12px; color: var(--muted); }
+
+    /* ── Page visibility ── */
+    .bots-page, .accounts-page { display: none; }
+    .bots-page.active, .accounts-page.active { display: block; }
+    .overview-page.hidden { display: none; }
+
+    /* ── Filter buttons ── */
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+    .filter-btn {
+      padding: 6px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+      border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer;
+    }
+    .filter-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+
+    /* ── P&L Grid ── */
+    .pnl-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    .pnl-card { background: var(--default-100); border-radius: var(--radius-sm); padding: 12px; text-align: center; }
+    .pnl-card .label { font-size: 12px; color: var(--default-500); }
+    .pnl-card .value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+
+    /* ── Bot Accordion ── */
+    .bot-accordion { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .bot-item { border-bottom: 1px solid var(--border); }
+    .bot-item:last-child { border-bottom: none; }
+    .bot-header { padding: 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .bot-symbol { font-weight: 500; font-size: 15px; }
+    .badge {
+      display: inline-block; font-size: 11px; padding: 2px 8px;
+      border-radius: 999px; font-weight: 500; margin-left: 6px;
+    }
+    .badge-grid-long { background: rgba(34,197,94,0.1); color: var(--success); }
+    .badge-grid-short { background: rgba(239,68,68,0.1); color: var(--danger); }
+    .badge-dca { background: rgba(6,182,212,0.1); color: var(--accent); }
+    .badge-running { background: rgba(34,197,94,0.1); color: var(--success); }
+    .badge-stopped { background: rgba(39,39,42,1); color: var(--muted); }
+    .badge-entry { background: rgba(59,130,246,0.1); color: var(--primary); }
+    .badge-tp { background: rgba(245,158,11,0.1); color: var(--warning); }
+    .badge-long { background: rgba(34,197,94,0.1); color: var(--success); }
+    .bot-meta { font-size: 13px; color: var(--default-500); margin-top: 4px; }
+    .bot-extra { font-size: 12px; color: var(--default-400); margin-top: 2px; }
+    .bot-pnl { font-size: 14px; margin-top: 6px; }
+    .bot-actions { display: flex; gap: 8px; align-items: flex-start; padding-top: 4px; }
+    .btn-outline {
+      padding: 6px 14px; border-radius: var(--radius-sm); font-size: 13px;
+      border: 1px solid var(--border); background: transparent; color: var(--fg); cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-danger { color: var(--danger); border-color: rgba(239,68,68,0.5); }
+    .btn-success { color: var(--success); border-color: rgba(34,197,94,0.5); }
+
+    /* ── Bot expanded details ── */
+    .bot-details {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.6s cubic-bezier(0.4, 0, 0.2, 1), padding 0.4s;
+      padding: 0 16px;
+    }
+    .bot-details.expanded { max-height: 600px; padding: 0 16px 16px; }
+
+    .detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+    .detail-cell { background: var(--default-100); border-radius: 6px; padding: 8px; }
+    .detail-cell .label { font-size: 11px; color: var(--default-500); }
+    .detail-cell .value { font-size: 14px; font-weight: 500; margin-top: 2px; }
+
+    .section-title { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+    .positions-list, .orders-list { background: rgba(9,9,11,0.5); border-radius: var(--radius-sm); }
+    .position-row, .order-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; border-bottom: 1px solid var(--default-200);
+    }
+    .position-row:last-child, .order-row:last-child { border-bottom: none; }
+
+    /* ── Balance grid ── */
+    .balance-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .balance-card { opacity: 0; transform: translateY(12px); transition: all 0.4s ease; }
+    .balance-card.visible { opacity: 1; transform: translateY(0); }
+
+    /* ── Splash ── */
+    .splash {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: var(--bg); opacity: 1; transition: opacity 0.8s;
+    }
+    .splash.hidden { opacity: 0; pointer-events: none; }
+    .splash-title {
+      font-size: 52px; font-weight: 800; letter-spacing: -1.5px;
+      opacity: 0; transform: translateY(20px);
+      transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .splash-title.visible { opacity: 1; transform: translateY(0); }
+    .splash-subtitle {
+      font-size: 18px; color: var(--muted); margin-top: 12px;
+      opacity: 0; transition: opacity 0.6s 0.3s;
+    }
+    .splash-subtitle.visible { opacity: 1; }
+    .splash-accent {
+      width: 60px; height: 3px; background: var(--accent); border-radius: 2px;
+      margin-top: 20px; opacity: 0; transform: scaleX(0);
+      transition: all 0.5s 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .splash-accent.visible { opacity: 1; transform: scaleX(1); }
+
+    /* ── Outro ── */
+    .outro {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: var(--bg); opacity: 0; pointer-events: none; transition: opacity 0.8s;
+    }
+    .outro.visible { opacity: 1; }
+    .outro-title { font-size: 40px; font-weight: 800; letter-spacing: -1px; }
+    .outro-sub { font-size: 16px; color: var(--accent); margin-top: 8px; }
+    .outro-line {
+      width: 60px; height: 3px; background: var(--accent); border-radius: 2px; margin-top: 16px;
+    }
+
+    /* ── Utilities ── */
+    .text-success { color: var(--success); }
+    .text-danger { color: var(--danger); }
+    .text-muted { color: var(--muted); }
+    .text-accent { color: var(--accent); }
+
+    @keyframes flash-green {
+      0% { background: transparent; }
+      50% { background: rgba(34,197,94,0.15); }
+      100% { background: transparent; }
+    }
+    .flash { animation: flash-green 0.6s ease; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- ══ Splash ══ -->
+  <div class="splash" id="splash">
+    <div class="splash-title" id="splash-title">BingX Bot</div>
+    <div class="splash-subtitle" id="splash-subtitle">Automated Grid Trading</div>
+    <div class="splash-accent" id="splash-accent"></div>
+  </div>
+
+  <!-- ══ Outro ══ -->
+  <div class="outro" id="outro">
+    <div class="outro-title">BingX Bot</div>
+    <div class="outro-sub">Trade Smarter — Automated Grid Trading</div>
+    <div class="outro-line"></div>
+  </div>
+
+  <!-- ══ Sidebar ══ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">BingX Bot</div>
+    <div class="account-switcher">
+      <select><option>Main Account</option></select>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" id="nav-overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
+      </div>
+      <div class="nav-item" id="nav-bots">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><circle cx="8" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg>
+        Bots
+      </div>
+      <div class="nav-item" id="nav-accounts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        Accounts
+      </div>
+      <div class="nav-item" id="nav-settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ Main Content ══ -->
+  <div class="main-wrapper">
+    <div class="header" id="header">
+      <button class="header-btn">Sign out</button>
+    </div>
+    <div class="main">
+
+      <!-- ── Overview Page ── -->
+      <div class="overview-page" id="overview-page">
+        <h1 class="page-title" id="overview-title">Overview</h1>
+
+        <div class="stats-grid" id="stats-grid">
+          <div class="card stat-card" id="stat-balance">
+            <div class="card-content">
+              <div class="stat-label">Balance</div>
+              <div class="stat-value" id="val-balance"><div class="skeleton skeleton-value"></div></div>
+            </div>
+          </div>
+          <div class="card stat-card" id="stat-equity">
+            <div class="card-content">
+              <div class="stat-label">Equity</div>
+              <div class="stat-value" id="val-equity"><div class="skeleton skeleton-value"></div></div>
+            </div>
+          </div>
+          <div class="card stat-card" id="stat-pnl">
+            <div class="card-content">
+              <div class="stat-label">Unrealized P&L</div>
+              <div class="stat-value" id="val-pnl"><div class="skeleton skeleton-value"></div></div>
+            </div>
+          </div>
+          <div class="card stat-card" id="stat-available">
+            <div class="card-content">
+              <div class="stat-label">Available</div>
+              <div class="stat-value" id="val-available"><div class="skeleton skeleton-value"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card bots-summary" id="bots-summary">
+          <div class="card-content">
+            <div class="bots-summary-header">
+              <h3>Bots</h3>
+              <a href="#">View all &rarr;</a>
+            </div>
+            <div class="bot-counts">
+              <div><span class="text-success" style="font-weight:500">3</span> <span class="text-muted">Running</span></div>
+              <div><span class="text-muted" style="font-weight:500">1</span> <span class="text-muted">Stopped</span></div>
+            </div>
+            <div class="bot-preview">
+              <div class="bot-preview-item"><span class="symbol">BTCUSDT</span><span class="grids">10 grids</span></div>
+              <div class="bot-preview-item"><span class="symbol">ETHUSDT</span><span class="grids">8 grids</span></div>
+              <div class="bot-preview-item"><span class="symbol">SOLUSDT</span><span class="grids">5 grids</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Bots Page ── -->
+      <div class="bots-page" id="bots-page">
+        <h1 class="page-title visible">Bots</h1>
+
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-content">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+              <h3 style="font-size:18px;font-weight:600">Your Bots</h3>
+              <button class="btn-outline">Refresh</button>
+            </div>
+
+            <div class="filter-bar">
+              <button class="filter-btn active">All (4)</button>
+              <button class="filter-btn">Running (3)</button>
+              <button class="filter-btn">Stopped (1)</button>
+            </div>
+
+            <div class="pnl-grid">
+              <div class="pnl-card">
+                <div class="label">Unrealized</div>
+                <div class="value text-success" id="bots-unrealized">+207.50 USDT</div>
+              </div>
+              <div class="pnl-card">
+                <div class="label">Realized</div>
+                <div class="value text-success">+425.30 USDT</div>
+              </div>
+              <div class="pnl-card">
+                <div class="label">Total P&L</div>
+                <div class="value text-success">+632.80 USDT</div>
+              </div>
+              <div class="pnl-card">
+                <div class="label">Projected Profit</div>
+                <div class="value text-success">+89.60 USDT</div>
+              </div>
+            </div>
+
+            <div class="bot-accordion">
+              <!-- Bot 1: BTCUSDT -->
+              <div class="bot-item" id="bot-btc">
+                <div class="bot-header">
+                  <div style="flex:1">
+                    <div>
+                      <span class="bot-symbol">BTCUSDT</span>
+                      <span class="badge badge-grid-long">Grid Long</span>
+                      <span class="badge badge-running">RUNNING</span>
+                    </div>
+                    <div class="bot-meta">82,000.00 &ndash; 95,000.00 &bull; 10 grids &bull; Running for 3d 14h</div>
+                    <div class="bot-extra">20x &bull; 50 USDT/level &bull; 0.8% TP &bull; Mar 12, 2026</div>
+                    <div class="bot-pnl">
+                      <span class="text-success">Unrealized: <span id="btc-unrealized">+145.20</span> USDT</span>
+                      <span class="text-muted" style="margin:0 8px">|</span>
+                      <span class="text-success">Realized: +312.40 USDT</span>
+                      <span class="text-muted" style="margin:0 8px">|</span>
+                      <span class="text-muted">Projected: +89.60 USDT</span>
+                    </div>
+                  </div>
+                  <div class="bot-actions">
+                    <button class="btn-outline">Edit</button>
+                    <button class="btn-outline btn-danger">Stop</button>
+                  </div>
+                </div>
+                <div class="bot-details" id="btc-details">
+                  <div class="detail-grid">
+                    <div class="detail-cell"><div class="label">Leverage</div><div class="value">20x</div></div>
+                    <div class="detail-cell"><div class="label">Size/Level</div><div class="value">50 USDT</div></div>
+                    <div class="detail-cell"><div class="label">TP %</div><div class="value">0.8%</div></div>
+                    <div class="detail-cell"><div class="label">Created</div><div class="value">Mar 12, 2026</div></div>
+                  </div>
+
+                  <div style="margin-bottom:16px">
+                    <div class="section-title">Open Positions</div>
+                    <div class="positions-list">
+                      <div class="position-row">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span class="badge badge-long">LONG</span>
+                          <span style="font-size:14px">Entry 84,200.00 &times; 0.002</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px">
+                          <span class="text-success" style="font-size:14px">+98.40 USDT</span>
+                          <span class="text-muted" style="font-size:12px">Proj. +44.80 USDT</span>
+                        </div>
+                      </div>
+                      <div class="position-row">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span class="badge badge-long">LONG</span>
+                          <span style="font-size:14px">Entry 85,400.00 &times; 0.002</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px">
+                          <span class="text-success" style="font-size:14px">+46.80 USDT</span>
+                          <span class="text-muted" style="font-size:12px">Proj. +44.80 USDT</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="section-title">Orders (4 open)</div>
+                    <div class="orders-list">
+                      <div class="order-row">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span class="badge badge-entry">ENTRY</span>
+                          <span style="font-size:14px">@ 83,444.44 <span class="text-muted" style="font-size:12px">&times; 0.002</span></span>
+                        </div>
+                        <span style="font-size:12px;font-weight:500;color:var(--primary)">OPEN</span>
+                      </div>
+                      <div class="order-row">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span class="badge badge-entry">ENTRY</span>
+                          <span style="font-size:14px">@ 86,555.55 <span class="text-muted" style="font-size:12px">&times; 0.002</span></span>
+                        </div>
+                        <span style="font-size:12px;font-weight:500;color:var(--primary)">OPEN</span>
+                      </div>
+                      <div class="order-row">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span class="badge badge-tp">TP</span>
+                          <span style="font-size:14px">@ 84,873.60 <span class="text-muted" style="font-size:12px">TP: 84,873.60</span></span>
+                        </div>
+                        <span style="font-size:12px;font-weight:500;color:var(--primary)">OPEN</span>
+                      </div>
+                      <div class="order-row">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span class="badge badge-tp">TP</span>
+                          <span style="font-size:14px">@ 86,083.20 <span class="text-muted" style="font-size:12px">TP: 86,083.20</span></span>
+                        </div>
+                        <span style="font-size:12px;font-weight:500;color:var(--primary)">OPEN</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bot 2: ETHUSDT -->
+              <div class="bot-item">
+                <div class="bot-header">
+                  <div style="flex:1">
+                    <div>
+                      <span class="bot-symbol">ETHUSDT</span>
+                      <span class="badge badge-grid-long">Grid Long</span>
+                      <span class="badge badge-running">RUNNING</span>
+                    </div>
+                    <div class="bot-meta">2,800.00 &ndash; 3,400.00 &bull; 8 grids &bull; Running for 2d 8h</div>
+                    <div class="bot-extra">15x &bull; 40 USDT/level &bull; 0.6% TP &bull; Mar 13, 2026</div>
+                    <div class="bot-pnl">
+                      <span class="text-success">Unrealized: +62.30 USDT</span>
+                      <span class="text-muted" style="margin:0 8px">|</span>
+                      <span class="text-success">Realized: +88.10 USDT</span>
+                    </div>
+                  </div>
+                  <div class="bot-actions">
+                    <button class="btn-outline">Edit</button>
+                    <button class="btn-outline btn-danger">Stop</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bot 3: SOLUSDT -->
+              <div class="bot-item">
+                <div class="bot-header">
+                  <div style="flex:1">
+                    <div>
+                      <span class="bot-symbol">SOLUSDT</span>
+                      <span class="badge badge-dca">DCA</span>
+                      <span class="badge badge-running">RUNNING</span>
+                    </div>
+                    <div class="bot-meta">120.00 &ndash; 180.00 &bull; 5 orders &bull; Running for 1d 2h</div>
+                    <div class="bot-extra">10x &bull; 30 USDT/level &bull; 1.0% TP &bull; Mar 14, 2026</div>
+                    <div class="bot-pnl">
+                      <span class="text-muted">3/5 orders placed</span>
+                    </div>
+                  </div>
+                  <div class="bot-actions">
+                    <button class="btn-outline">Edit</button>
+                    <button class="btn-outline btn-danger">Stop</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bot 4: XRPUSDT -->
+              <div class="bot-item">
+                <div class="bot-header">
+                  <div style="flex:1">
+                    <div>
+                      <span class="bot-symbol">XRPUSDT</span>
+                      <span class="badge badge-grid-short">Grid Short</span>
+                      <span class="badge badge-stopped">STOPPED</span>
+                    </div>
+                    <div class="bot-meta">0.50 &ndash; 0.65 &bull; 6 grids</div>
+                    <div class="bot-extra">5x &bull; 25 USDT/level &bull; 0.5% TP &bull; Mar 10, 2026</div>
+                    <div class="bot-pnl">
+                      <span class="text-success">Realized: +24.80 USDT</span>
+                    </div>
+                  </div>
+                  <div class="bot-actions">
+                    <button class="btn-outline btn-success">Restart</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Accounts Page ── -->
+      <div class="accounts-page" id="accounts-page">
+        <h1 class="page-title visible">Accounts</h1>
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-content">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+              <h3 style="font-size:18px;font-weight:600">Balance</h3>
+              <button class="btn-outline">Refresh</button>
+            </div>
+            <div class="balance-grid" id="balance-grid">
+              <div class="card balance-card" id="bal-1"><div class="card-content"><div class="stat-label">Balance</div><div class="stat-value">$12,450.00</div></div></div>
+              <div class="card balance-card" id="bal-2"><div class="card-content"><div class="stat-label">Equity</div><div class="stat-value">$12,680.50</div></div></div>
+              <div class="card balance-card" id="bal-3"><div class="card-content"><div class="stat-label">Unrealized P&L</div><div class="stat-value text-success">+$230.50</div></div></div>
+              <div class="card balance-card" id="bal-4"><div class="card-content"><div class="stat-label">Realized P&L</div><div class="stat-value text-success">+$425.30</div></div></div>
+              <div class="card balance-card" id="bal-5"><div class="card-content"><div class="stat-label">Available Margin</div><div class="stat-value">$8,200.00</div></div></div>
+              <div class="card balance-card" id="bal-6"><div class="card-content"><div class="stat-label">Used Margin</div><div class="stat-value">$4,250.00</div></div></div>
+              <div class="card balance-card" id="bal-7"><div class="card-content"><div class="stat-label">Frozen Margin</div><div class="stat-value">$0.00</div></div></div>
+              <div class="card balance-card" id="bal-8"><div class="card-content"><div class="stat-label">Asset (USDT)</div><div class="stat-value">$12,450.00</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ── Helper ──
+    function el(id) { return document.getElementById(id); }
+
+    // ── Count-up animation ──
+    function countUp(elId, start, end, prefix, suffix, className) {
+      const element = el(elId);
+      element.innerHTML = '';
+      if (className) element.className = 'stat-value ' + className;
+      const duration = 1200;
+      const steps = 30;
+      const increment = (end - start) / steps;
+      let current = start;
+      let step = 0;
+      const timer = setInterval(() => {
+        step++;
+        current += increment;
+        if (step >= steps) { current = end; clearInterval(timer); }
+        element.textContent = prefix + current.toFixed(2) + (suffix || '');
+      }, duration / steps);
+    }
+
+    // ── Show stat cards with stagger ──
+    function showStatCards() {
+      document.querySelectorAll('.stat-card').forEach((card, i) => {
+        setTimeout(() => card.classList.add('visible'), i * 120);
+      });
+    }
+
+    // ── Populate stats with count-up ──
+    function populateStats() {
+      countUp('val-balance', 0, 12450, '$', '');
+      countUp('val-equity', 0, 12680.5, '$', '');
+      setTimeout(() => {
+        el('val-pnl').innerHTML = '';
+        countUp('val-pnl', 0, 230.5, '+$', '', 'text-success');
+      }, 150);
+      countUp('val-available', 0, 8200, '$', '');
+    }
+
+    // ── Navigate between pages ──
+    function navigateTo(page) {
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      el('nav-' + page).classList.add('active');
+
+      el('overview-page').classList.add('hidden');
+      el('bots-page').classList.remove('active');
+      el('accounts-page').classList.remove('active');
+
+      if (page === 'bots') el('bots-page').classList.add('active');
+      else if (page === 'accounts') el('accounts-page').classList.add('active');
+    }
+
+    // ── Simulate P&L live updates ──
+    function simulatePnlUpdate() {
+      const btcEl = el('btc-unrealized');
+      btcEl.textContent = '+152.80';
+      btcEl.parentElement.classList.add('flash');
+      setTimeout(() => btcEl.parentElement.classList.remove('flash'), 700);
+      el('bots-unrealized').textContent = '+215.10 USDT';
+    }
+
+    function simulatePnlUpdate2() {
+      const btcEl = el('btc-unrealized');
+      btcEl.textContent = '+161.40';
+      btcEl.parentElement.classList.add('flash');
+      setTimeout(() => btcEl.parentElement.classList.remove('flash'), 700);
+      el('bots-unrealized').textContent = '+223.70 USDT';
+    }
+
+    // ── Show balance cards with stagger ──
+    function showBalanceCards() {
+      document.querySelectorAll('.balance-card').forEach((card, i) => {
+        setTimeout(() => card.classList.add('visible'), i * 100);
+      });
+    }
+
+    // ══════════════════════════════════════════
+    //  ANIMATION TIMELINE
+    // ══════════════════════════════════════════
+    const timeline = [
+      // Scene 1: Splash
+      { at: 300,   fn: () => el('splash-title').classList.add('visible') },
+      { at: 700,   fn: () => el('splash-subtitle').classList.add('visible') },
+      { at: 900,   fn: () => el('splash-accent').classList.add('visible') },
+
+      // Scene 2: Dashboard layout
+      { at: 2800,  fn: () => el('splash').classList.add('hidden') },
+      { at: 3000,  fn: () => el('sidebar').classList.add('visible') },
+      { at: 3200,  fn: () => el('header').classList.add('visible') },
+      { at: 3400,  fn: () => el('overview-title').classList.add('visible') },
+
+      // Scene 3: Stat cards appear (skeleton)
+      { at: 3800,  fn: () => showStatCards() },
+
+      // Scene 4: Stats count up
+      { at: 4800,  fn: () => populateStats() },
+
+      // Scene 5: Bots summary
+      { at: 7000,  fn: () => el('bots-summary').classList.add('visible') },
+
+      // Scene 6: Navigate to Bots
+      { at: 10000, fn: () => navigateTo('bots') },
+
+      // Scene 8: Expand BTCUSDT
+      { at: 13000, fn: () => el('btc-details').classList.add('expanded') },
+
+      // Scene 9: P&L live updates
+      { at: 16000, fn: () => simulatePnlUpdate() },
+      { at: 18000, fn: () => simulatePnlUpdate2() },
+
+      // Scene 10: Navigate to Accounts
+      { at: 21000, fn: () => navigateTo('accounts') },
+
+      // Scene 11: Balance cards
+      { at: 22000, fn: () => showBalanceCards() },
+
+      // Scene 12: Outro
+      { at: 26000, fn: () => el('outro').classList.add('visible') },
+    ];
+
+    // ── Run ──
+    timeline.forEach(({ at, fn }) => setTimeout(fn, at));
+  </script>
+</body>
+</html>
