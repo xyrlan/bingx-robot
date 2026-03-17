@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const client = bot.apiKeyId
       ? await getBingxClientByApiKeyId(bot.apiKeyId)
       : await getBingxClient(user.id);
-    if (client) {
+    if (client && bot.botType !== 'DCA_SPOT' && bot.botType !== 'DCA') {
       try {
         await stopBotAndCancelEntries(client, botId, symbol);
       } catch (cancelErr) {

@@ -103,6 +103,41 @@ export function createBingxClient(apiKey: string, secretKey: string, recvWindow 
         options?.omitRecvWindow ?? false
       );
     },
+
+    postForm<T = unknown>(
+      path: string,
+      params?: Record<string, string | number | undefined>
+    ) {
+      const paramsToSign = params ?? {};
+      const signedParams = signParams(paramsToSign, secretKey.trim(), recvWindow, false);
+      const { signature, ...restParams } = signedParams;
+      const bodyParts = Object.entries(restParams)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+        .join('&');
+      const body = `${bodyParts}&signature=${encodeURIComponent(signature)}`;
+
+      return (async () => {
+        const url = new URL(path.startsWith('http') ? path : `${BASE_URL}${path}`);
+        const res = await fetch(url.toString(), {
+          method: 'POST',
+          headers: {
+            'X-BX-APIKEY': apiKey.trim(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body,
+        });
+        const responseText = await res.text();
+        const json = JSONBig({ storeAsString: true }).parse(responseText) as BingxApiResponse<T>;
+        if (!res.ok) {
+          throw new Error(json.msg || `BingX API error: ${res.status}`);
+        }
+        if (json.code !== undefined && json.code !== 0) {
+          throw new Error(json.msg || `BingX API code ${json.code}`);
+        }
+        return (json.data ?? json) as T;
+      })();
+    },
   };
 }
 

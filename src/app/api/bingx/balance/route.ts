@@ -19,6 +19,13 @@ export async function GET(request: Request) {
       );
     }
 
+    const account = url.searchParams.get('account');
+
+    if (account === 'spot') {
+      const data = await client.get('/openApi/spot/v1/account/balance');
+      return NextResponse.json(data);
+    }
+
     const data = await client.get('/openApi/swap/v2/user/balance');
     return NextResponse.json(data);
   } catch (err) {

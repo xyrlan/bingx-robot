@@ -25,6 +25,7 @@ export const botTypeEnum = pgEnum('bot_type', [
   'GRID_SHORT',
   'DCA',
   'TRAILING_STOP',
+  'DCA_SPOT',
 ]);
 
 // ==========================================
