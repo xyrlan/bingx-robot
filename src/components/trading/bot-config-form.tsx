@@ -50,22 +50,45 @@ export function BotConfigForm() {
     fetchData();
   }, [activeAccountId]);
 
-  const posSize = parseFloat(positionSizeUsdt) || 0;
-  const lev = symbolConfig?.leverage ?? 1;
-  const gridNum = Math.max(1, Math.min(100, parseInt(gridCount, 10) || 1));
-  const marginPerGrid = lev > 0 ? posSize / lev : 0;
+  const priceMinNum = parseFloat(priceMin);
+  const priceMaxNum = parseFloat(priceMax);
+  const posSize = parseFloat(positionSizeUsdt);
+  const tpPct = parseFloat(takeProfitPercentage);
+
+  const gridCountInt = parseInt(gridCount, 10);
+  const gridNum = Math.max(1, Math.min(100, gridCountInt || 1));
+
+  const lev = symbolConfig && Number.isFinite(symbolConfig.leverage) ? symbolConfig.leverage : 1;
+
+  const hasValidPrices =
+    Number.isFinite(priceMinNum) &&
+    Number.isFinite(priceMaxNum) &&
+    priceMinNum > 0 &&
+    priceMaxNum > 0 &&
+    priceMinNum < priceMaxNum;
+
+  const hasValidPosSize = Number.isFinite(posSize) && posSize > 0;
+  const hasValidTakeProfit = Number.isFinite(tpPct) && tpPct > 0;
+
+  const hasValidGridCountInput = Number.isFinite(gridCountInt) && gridCountInt >= 1 && gridCountInt <= 100;
+  const hasValidLeverage = symbolConfig !== null && Number.isFinite(symbolConfig.leverage) && symbolConfig.leverage >= 1;
+
+  const marginPerGrid = lev > 0 ? (Number.isFinite(posSize) ? posSize : 0) / lev : 0;
   const totalMarginNeeded = marginPerGrid * gridNum;
   const hasEnoughMargin =
     availableMargin !== null && totalMarginNeeded > 0 && availableMargin >= totalMarginNeeded;
+
   const canSubmit =
     !loading &&
     !balanceLoading &&
     symbolConfig !== null &&
     availableMargin !== null &&
     hasEnoughMargin &&
-    posSize > 0 &&
-    lev >= 1 &&
-    gridNum >= 1;
+    hasValidPrices &&
+    hasValidPosSize &&
+    hasValidLeverage &&
+    hasValidGridCountInput &&
+    hasValidTakeProfit;
 
   async function handleStart(e: React.FormEvent) {
     e.preventDefault();
@@ -117,111 +140,255 @@ export function BotConfigForm() {
 
   return (
     <Card variant="default" className="w-full">
-      <Card.Content className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Start Grid Trading Bot</h3>
-        <form onSubmit={handleStart} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <TextField variant="primary" isDisabled={loading}>
-              <Label>Price Min</Label>
-              <Input
-                name="priceMin"
-                type="text"
-                inputMode="decimal"
-                value={priceMin}
-                onChange={(e) => setPriceMin(e.target.value)}
-                placeholder="85000"
-              />
-            </TextField>
-            <TextField variant="primary" isDisabled={loading}>
-              <Label>Price Max</Label>
-              <Input
-                name="priceMax"
-                type="text"
-                inputMode="decimal"
-                value={priceMax}
-                onChange={(e) => setPriceMax(e.target.value)}
-                placeholder="95000"
-              />
-            </TextField>
-          </div>
-          <TextField variant="primary" isDisabled={loading}>
-            <Label>Position Size (USDT) per grid</Label>
-            <Input
-              name="positionSizeUsdt"
-              type="text"
-              inputMode="decimal"
-              value={positionSizeUsdt}
-              onChange={(e) => setPositionSizeUsdt(e.target.value)}
-              placeholder="10"
-            />
-          </TextField>
-          <TextField variant="primary" isDisabled={loading}>
-            <Label>Grid Count</Label>
-            <Input
-              name="gridCount"
-              type="number"
-              min={1}
-              max={100}
-              value={gridCount}
-              onChange={(e) => setGridCount(e.target.value)}
-              placeholder="5"
-            />
-          </TextField>
-          <TextField variant="primary" isDisabled={loading}>
-            <Label>Take Profit (%) per grid</Label>
-            <Input
-              name="takeProfitPercentage"
-              type="text"
-              inputMode="decimal"
-              value={takeProfitPercentage}
-              onChange={(e) => setTakeProfitPercentage(e.target.value)}
-              placeholder="2"
-            />
-          </TextField>
-
-          {!balanceLoading && symbolConfig && posSize > 0 && lev >= 1 && gridNum >= 1 && (
-            <div className="rounded-lg bg-default-100 p-4 space-y-2">
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                <span className="text-default-600">
-                  Required margin: <strong>{formatUsdt(totalMarginNeeded)}</strong>
-                </span>
-                <span className="text-default-600">
-                  Available margin:{' '}
-                  <strong>
-                    {availableMargin !== null ? formatUsdt(availableMargin) : '—'}
-                  </strong>
-                </span>
-                <span className="text-default-600">
-                  Leverage: <strong>{lev}x</strong> (from Symbol & Leverage card)
-                </span>
-              </div>
-              {availableMargin !== null && !hasEnoughMargin && (
-                <p className="text-sm text-danger">
-                  Insufficient margin. You need {formatUsdt(totalMarginNeeded - availableMargin)}{' '}
-                  more.
-                </p>
-              )}
+        <Card.Content className="p-6">
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-1">Start Grid Trading Bot</h3>
+              <p className="text-sm text-default-600">
+                Creates orders in a grid within the selected price range. The button is enabled only when entries and margin make sense.
+              </p>
             </div>
-          )}
 
-          <span
-            title={
-              balanceLoading
-                ? 'Loading...'
-                : symbolConfig === null
-                  ? 'Symbol config unavailable. Connect keys and refresh.'
-                  : availableMargin === null
-                    ? 'Balance unavailable. Connect keys and refresh.'
-                    : !hasEnoughMargin
-                      ? 'Insufficient margin'
-                      : undefined
-            }
-          >
-            <Button type="submit" variant="primary" isDisabled={loading || !canSubmit}>
-              {loading ? 'Starting...' : 'Start Bot'}
-            </Button>
-          </span>
-        </form>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <form onSubmit={handleStart} className="space-y-4 lg:col-span-2">
+                <div className="rounded-2xl border border-default-200 bg-default-50/60 p-4 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <TextField variant="primary" isDisabled={loading}>
+                      <Label>Price Min</Label>
+                      <Input
+                        name="priceMin"
+                        type="text"
+                        inputMode="decimal"
+                        value={priceMin}
+                        onChange={(e) => setPriceMin(e.target.value)}
+                        placeholder="85000"
+                      />
+                    </TextField>
+                    <TextField variant="primary" isDisabled={loading}>
+                      <Label>Price Max</Label>
+                      <Input
+                        name="priceMax"
+                        type="text"
+                        inputMode="decimal"
+                        value={priceMax}
+                        onChange={(e) => setPriceMax(e.target.value)}
+                        placeholder="95000"
+                      />
+                    </TextField>
+                  </div>
+
+                  <TextField variant="primary" isDisabled={loading}>
+                    <Label>Position Size (USDT) per grid</Label>
+                    <Input
+                      name="positionSizeUsdt"
+                      type="text"
+                      inputMode="decimal"
+                      value={positionSizeUsdt}
+                      onChange={(e) => setPositionSizeUsdt(e.target.value)}
+                      placeholder="10"
+                    />
+                    <p className="text-xs text-default-500 mt-1">
+                      USDT used per grid. Margin per grid depends on leverage: `margin = pos / leverage`.
+                    </p>
+                  </TextField>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <TextField variant="primary" isDisabled={loading}>
+                      <Label>Grid Count</Label>
+                      <Input
+                        name="gridCount"
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={gridCount}
+                        onChange={(e) => setGridCount(e.target.value)}
+                        placeholder="5"
+                      />
+                      <p className="text-xs text-default-500 mt-1">Between 1 and 100.</p>
+                    </TextField>
+
+                    <TextField variant="primary" isDisabled={loading}>
+                      <Label>Take Profit (%) per grid</Label>
+                      <Input
+                        name="takeProfitPercentage"
+                        type="text"
+                        inputMode="decimal"
+                        value={takeProfitPercentage}
+                        onChange={(e) => setTakeProfitPercentage(e.target.value)}
+                        placeholder="2"
+                      />
+                      <p className="text-xs text-default-500 mt-1">
+                        Percentage above the entry price (e.g. 2 means 2%).
+                      </p>
+                    </TextField>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span
+                    title={
+                      balanceLoading
+                        ? 'Loading balance...'
+                        : symbolConfig === null
+                          ? 'Symbol config unavailable. Connect keys and refresh.'
+                          : availableMargin === null
+                            ? 'Balance unavailable. Connect keys and refresh.'
+                            : !hasValidPrices
+                              ? 'Revise Price Min / Price Max (min < max).'
+                              : !hasValidPosSize
+                                ? 'Revise Position Size (USDT) per grid (must be > 0).'
+                                : !hasValidGridCountInput
+                                  ? 'Revise Grid Count (between 1 and 100).'
+                                  : !hasValidTakeProfit
+                                    ? 'Revise Take Profit (%): must be > 0.'
+                                    : !hasValidLeverage
+                                      ? 'Invalid leverage for the selected symbol.'
+                                      : !hasEnoughMargin
+                                        ? 'Insufficient margin.'
+                                        : undefined
+                    }
+                  >
+                    <Button type="submit" variant="primary" isDisabled={loading || !canSubmit}>
+                      {loading ? 'Starting...' : 'Start Bot'}
+                    </Button>
+                  </span>
+                </div>
+              </form>
+
+              <aside className="lg:col-span-1">
+                <div className="rounded-2xl border border-default-200 bg-default-50/60 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">Margin & Preparation</p>
+                      <p className="text-xs text-default-500 mt-1">
+                        {balanceLoading
+                          ? 'Calculating based on your balance and leverage.'
+                          : availableMargin === null
+                            ? 'Could not fetch your balance.'
+                            : hasEnoughMargin
+                              ? 'You have enough margin to start the grid.'
+                              : 'You do not have enough margin to cover the grid.'}
+                      </p>
+                    </div>
+
+                    <div
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                        balanceLoading || availableMargin === null
+                          ? 'border-default-200 text-default-600 bg-default-100'
+                          : hasEnoughMargin
+                            ? 'border-success/50 text-success bg-success/10'
+                            : 'border-danger/50 text-danger bg-danger/10'
+                      }`}
+                    >
+                      {balanceLoading || availableMargin === null
+                        ? 'Margin: —'
+                        : hasEnoughMargin
+                          ? 'Margin: With margin'
+                          : 'Margin: Without margin'}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="rounded-xl border border-default-200 bg-background p-3">
+                      <p className="text-xs text-default-500">Margin per grid</p>
+                      <p className="text-sm font-semibold mt-1">
+                        {hasValidPosSize && hasValidLeverage ? formatUsdt(marginPerGrid) : '—'}
+                      </p>
+                      <p className="text-xs text-default-500 mt-1">
+                        {hasValidLeverage ? `pos / ${lev}x` : '—'}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-default-200 bg-background p-3">
+                      <p className="text-xs text-default-500">Required margin (total)</p>
+                      <p className="text-sm font-semibold mt-1">
+                        {hasValidPosSize && hasValidLeverage && gridNum >= 1 ? formatUsdt(totalMarginNeeded) : '—'}
+                      </p>
+                      <p className="text-xs text-default-500 mt-1">= margin per grid * {gridNum} grids</p>
+                    </div>
+
+                    <div className="rounded-xl border border-default-200 bg-background p-3">
+                      <p className="text-xs text-default-500">Available margin</p>
+                      <p className="text-sm font-semibold mt-1">
+                        {availableMargin !== null ? formatUsdt(availableMargin) : '—'}
+                      </p>
+                      {availableMargin !== null && totalMarginNeeded > 0 && (
+                        hasEnoughMargin ? (
+                          <p className="text-xs text-success mt-1">
+                            Leftover {formatUsdt(Math.max(0, availableMargin - totalMarginNeeded))} to start.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-danger mt-1">
+                            Missing {formatUsdt(Math.max(0, totalMarginNeeded - availableMargin))} to start.
+                          </p>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-default-200 space-y-3">
+                    <p className="text-xs font-semibold text-default-600 uppercase tracking-wide">
+                      Fill checklist
+                    </p>
+                    <div className="space-y-2">
+                      <div
+                        className={`flex items-center gap-2 text-sm ${
+                          hasValidPrices ? 'text-success' : 'text-default-600'
+                        }`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${hasValidPrices ? 'bg-success' : 'bg-default-300'}`}
+                        />
+                        Price range (Min &lt; Max)
+                      </div>
+                      <div
+                        className={`flex items-center gap-2 text-sm ${
+                          hasValidPosSize ? 'text-success' : 'text-default-600'
+                        }`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${hasValidPosSize ? 'bg-success' : 'bg-default-300'}`}
+                        />
+                        Position Size &gt; 0
+                      </div>
+                      <div
+                        className={`flex items-center gap-2 text-sm ${
+                          hasValidGridCountInput ? 'text-success' : 'text-default-600'
+                        }`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${hasValidGridCountInput ? 'bg-success' : 'bg-default-300'}`}
+                        />
+                        Grid Count between 1 and 100
+                      </div>
+                      <div
+                        className={`flex items-center gap-2 text-sm ${
+                          hasValidTakeProfit ? 'text-success' : 'text-default-600'
+                        }`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${hasValidTakeProfit ? 'bg-success' : 'bg-default-300'}`}
+                        />
+                        Take Profit (%), &gt; 0
+                      </div>
+                      <div
+                        className={`flex items-center gap-2 text-sm ${
+                          hasEnoughMargin ? 'text-success' : availableMargin === null ? 'text-default-600' : 'text-danger'
+                        }`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            hasEnoughMargin ? 'bg-success' : availableMargin === null ? 'bg-default-300' : 'bg-danger'
+                          }`}
+                        />
+                        Enough margin to start
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
       </Card.Content>
     </Card>
   );
