@@ -221,8 +221,6 @@ export const tradingBotWatch = inngest.createFunction(
           if (positionsAtLevel.length > 0) {
             // NEEDS_TP: Check if TP exists for each position
             for (const pos of positionsAtLevel) {
-              if (!isClosestLevelForPosition(pos.entryPrice, priceLevel, levels)) continue;
-
               const stopPrice = isShort
                 ? priceLevel * (1 - takeProfitPct)
                 : priceLevel * (1 + takeProfitPct);
@@ -320,8 +318,6 @@ export const tradingBotWatch = inngest.createFunction(
         // === PHASE 2: Fresh validation + Batch execution ===
         const freshOrders = await getOpenOrders(client, symbol);
         const freshPositions = await getOpenPositions(client, symbol);
-        const freshOrderIds = new Set(freshOrders.map((o) => String(o.orderId)));
-
         // Filter entries: skip if an order now exists at that price
         const validEntries = pendingEntries.filter((entry) => {
           const priceLevel = Number(entry.levelPrice);
