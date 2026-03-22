@@ -8,22 +8,24 @@
 
 ## Problem
 
-The `trading-bot-watch` cron job makes 60+ individual API calls per cycle for a bot with 20 grid levels. This exceeds Vercel's serverless execution limits, requiring a long-running Railway worker (~$5-10/month) to host the Inngest Connect process.
+The `trading-bot-watch` cron job makes 30-60+ individual API calls per cycle for a bot with 20 grid levels (worst case: all levels need fresh checks + placement). This exceeds Vercel's serverless execution limits, requiring a long-running Railway worker (~$5-10/month) to host the Inngest Connect process.
 
 ### Root causes
 
 1. **Redundant queries:** `getOpenOrders()` and `getOpenPositions()` are called per-level inside the processing loop (lines 226, 242, 316 of `trading-bot-watch.ts`), even though the same data was already fetched in the `setup` step.
 2. **Individual order placement:** Each entry order and take-profit order is placed via a separate `POST /openApi/swap/v2/trade/order` call with no batching.
 
-### Current call count per bot (20 levels)
+### Current call count per bot (20 levels, worst case)
 
 | Call | Count | Purpose |
 |------|-------|---------|
-| `getOpenPositions()` | ~20 | Fresh check per level (line 226) |
-| `getOpenOrders()` | ~20 | Fresh check per level (lines 242, 316) |
+| `getOpenPositions()` | ~5-20 | Fresh check per level with position (line 226) |
+| `getOpenOrders()` | ~10-20 | Fresh check per level (lines 242, 316) |
 | `placeGridEntryOrder()` | ~10 | Individual entry placement |
 | `placeTakeProfitOrder()` | ~5 | Individual TP placement |
-| **Total** | **~55-65** | |
+| **Total** | **~30-65** | |
+
+> Note: Actual count depends on how many levels have positions vs need entries. Typical case with 5 filled positions and 10 needing entries: ~35 calls.
 
 ---
 
@@ -45,10 +47,12 @@ Iterate all grid levels using the data already fetched in the `setup` step (`pos
 
 Output: `pendingEntries[]` and `pendingTPs[]` arrays with order payloads ready to send.
 
+**Short-circuit:** If both arrays are empty after Phase 1 (e.g., all levels have open orders already), skip Phase 2 entirely — no fresh validation needed.
+
 ### Phase 2 — Fresh validation + Batch execution
 
 1. **Single fresh validation:** Call `getOpenOrders()` and `getOpenPositions()` **once** to confirm pending orders are still needed (guards against race conditions from the ~seconds between setup and execution).
-2. **Filter:** Remove any pending entry where an order now exists, or any pending TP where a TP was placed externally.
+2. **Filter:** Remove any pending entry where an order now exists, or any pending TP where a TP was placed externally. Duplicate rejections by the exchange (order already exists) are expected "failures" and should be logged at `info` level, not `error`.
 3. **Batch send:** Submit orders via `POST /openApi/swap/v2/trade/batchOrders` in chunks of 5 (API maximum).
 4. **Process results:** Map each returned `orderId` back to its grid level and update the DB.
 
@@ -60,11 +64,11 @@ Output: `pendingEntries[]` and `pendingTPs[]` arrays with order payloads ready t
 | Setup: `getCurrentPrice()` | 1 | |
 | Setup: `getOpenPositions()` | 1 | |
 | Setup: `getOpenOrders()` | 1 | |
-| Fresh validation: `getOpenOrders()` | 1 | Pre-batch check |
-| Fresh validation: `getOpenPositions()` | 1 | Pre-batch check |
+| Fresh validation: `getOpenOrders()` | 0-1 | Pre-batch check (skipped if nothing pending) |
+| Fresh validation: `getOpenPositions()` | 0-1 | Pre-batch check (skipped if nothing pending) |
 | Batch entries (10 orders / 5 per batch) | 2 | `batchOrders` POST |
 | Batch TPs (5 orders / 5 per batch) | 1 | `batchOrders` POST |
-| **Total** | **~9** | **~85% reduction** |
+| **Total** | **~7-9** | **~80% reduction** |
 
 ---
 
@@ -79,20 +83,36 @@ export async function placeBatchOrders(
 ): Promise<Array<{ orderId: string | null; error?: string }>>
 ```
 
+### Implementation details
+
 - Accepts an array of order payloads (same shape as individual `placeGridEntryOrder` payloads)
-- Chunks into groups of 5
-- Calls `POST /openApi/swap/v2/trade/batchOrders` with `batchOrders` param (JSON-stringified array)
-- Returns per-order results (orderId or error)
-- Follows the same pattern as existing `cancelBatchOrders()`
+- Chunks into groups of **5** (placement batch max — different from cancel batch max of 10)
+- Calls `POST /openApi/swap/v2/trade/batchOrders` with `batchOrders` param as a JSON-stringified array
+- Uses `client.post()` with `useQueryParams = true` (matching the existing individual order placement pattern at line 573 of `bingx.service.ts`)
+- Returns per-order results from the `{ orders: [...], errors: [...] }` response
+- Uses chunked iteration like `cancelBatchOrders`, but differs in: HTTP method (POST vs DELETE), batch size (5 vs 10), signing approach (useQueryParams vs omitRecvWindow), and return type (per-order results vs void)
+
+### Batch endpoint compatibility
+
+Per BingX API docs, `POST /openApi/swap/v2/trade/batchOrders` accepts a `batchOrders` parameter as `LIST<Order>` where "each order uses the same structure as Place Order". This confirms:
+
+- **LIMIT orders:** Supported (standard type)
+- **TRIGGER_LIMIT orders:** Supported (same structure as Place Order, which supports all listed types)
+- **Embedded `takeProfit` JSON:** Supported — the `takeProfit` param is a stringified JSON sub-object within each order object, which is itself within the stringified `batchOrders` array. The double-serialization is handled by the API parser since this is the documented structure.
+- **TAKE_PROFIT_MARKET with `positionId`/`closePosition`:** Supported — Place Order explicitly lists `positionId` and `closePosition` params, and batch uses the same structure.
+
+### Validation step (implementation plan)
+
+Before implementing the full refactoring, make a single test batch call with 2 orders (one LIMIT with embedded `takeProfit`, one TAKE_PROFIT_MARKET with `positionId`) on a VST (simulated) environment to confirm end-to-end behavior. This de-risks the implementation.
 
 ---
 
 ## Partial failure handling
 
-The batch endpoint returns a result array where each element corresponds to an order in the request. For each:
+The batch endpoint returns `{ orders: [...], errors: [...] }`. For each order:
 
-- **Success** (`orderId` present): Update `gridLevel.orderId` or `gridLevel.tpOrderId` in DB
-- **Failure** (`orderId` absent, error message present): Log the error. Do NOT update DB. The order will be retried on the next cron cycle (3 min).
+- **Success** (in `orders` array, `orderId` present): Update `gridLevel.orderId` or `gridLevel.tpOrderId` in DB
+- **Failure** (in `errors` array): Log at `warn` level. Do NOT update DB. The order will be retried on the next cron cycle (3 min for grid bots, 5 min for DCA/trailing-stop bots).
 
 This is safe because the system is already designed for idempotent retries — each cycle checks current state before acting.
 
@@ -105,7 +125,7 @@ This is safe because the system is already designed for idempotent retries — e
 **Current:** ~4 API calls per bot (getContractInfo, getCurrentPrice, placeDCAOrder).
 
 **Optimization:**
-- Group bots by `symbol` — fetch `getContractInfo()` and `getCurrentPrice()` once per symbol instead of per bot.
+- Group bots by `(symbol, apiKeyId)` pair — fetch `getContractInfo()` and `getCurrentPrice()` once per group instead of per bot. Different API keys may belong to different users, but `getContractInfo` is already cached at module level (shared across keys). `getCurrentPrice` can use any valid client for the same symbol.
 - If multiple DCA bots need orders in the same cycle, batch via `batchOrders`.
 
 ### `trailing-stop-watch`
@@ -113,7 +133,7 @@ This is safe because the system is already designed for idempotent retries — e
 **Current:** ~5 API calls per bot (getContractInfo, getCurrentPrice, getOpenPositions, placeEntry/close).
 
 **Optimization:**
-- Same symbol-grouping for `getContractInfo()`, `getCurrentPrice()`, `getOpenPositions()`.
+- Same `(symbol, apiKeyId)` grouping for `getContractInfo()`, `getCurrentPrice()`, `getOpenPositions()`.
 - Batch entry/close orders if multiple bots act in the same cycle.
 
 ### `dca-spot-bot-watch` (Spot DCA)
@@ -131,7 +151,7 @@ This is safe because the system is already designed for idempotent retries — e
 ### Steps
 
 1. Remove `INNGEST_USE_CONNECT=1` from Vercel environment variables
-2. Ensure `src/app/api/inngest/route.ts` exports all 4 functions (grid, dca, trailing, dca-spot)
+2. Simplify `src/app/api/inngest/route.ts` — remove the `INNGEST_USE_CONNECT` conditional (line 13), always register all 4 functions. Current code: `const functions = process.env.INNGEST_USE_CONNECT === '1' ? [] : [...]` becomes just `const functions = [tradingBotWatch, dcaBotWatch, trailingStopWatch, dcaSpotBotWatch]`
 3. Remove `src/worker.ts`
 4. Remove `worker:dev` and `worker` scripts from `package.json`
 5. Decommission Railway service (after production validation)
@@ -140,9 +160,11 @@ This is safe because the system is already designed for idempotent retries — e
 
 | Vercel Plan | Timeout | Feasibility |
 |-------------|---------|-------------|
-| Hobby | 10s | Tight with many bots — may need to limit concurrent bots |
-| Pro | 60s | Comfortable for typical usage |
+| Hobby | 10s | Tight — cold starts (1-3s) + Inngest step overhead reduce effective time to ~5-7s. Recommend limiting to 3-5 concurrent running grid bots, or upgrading to Pro. |
+| Pro | 60s | Comfortable for typical usage, even with cold starts |
 | Enterprise | 900s | No concerns |
+
+> **Cold start note:** Vercel serverless cold starts (Next.js + Drizzle ORM + Supabase client initialization) can add 1-3 seconds. Combined with Inngest step serialization overhead (~500ms per `step.run`), the effective execution time budget on Hobby is ~5-7s. The batch optimization should comfortably fit within this for a single bot with 20 levels (~9 API calls, each ~200-400ms = ~2-4s).
 
 ### Rollback strategy
 
@@ -168,12 +190,15 @@ Keep `worker.ts` in the repo (undeploy from Railway, don't delete the file) for 
 
 | File | Change |
 |------|--------|
-| `src/services/bingx.service.ts` | Add `placeBatchOrders()` function |
+| `src/services/bingx.service.ts` | Add `placeBatchOrders()` function (batch size 5, distinct from cancel batch size 10) |
 | `src/inngest/functions/trading-bot-watch.ts` | Refactor to collect & batch pattern |
 | `src/inngest/functions/dca-bot-watch.ts` | Symbol grouping for shared queries |
 | `src/inngest/functions/trailing-stop-watch.ts` | Symbol grouping for shared queries |
 | `src/inngest/functions/dca-spot-bot-watch.ts` | Optional spot batch orders |
 | `src/services/bots/grid-short.service.ts` | Extract payload builders (reuse in batch) |
+| `src/services/bots/dca.service.ts` | Optional batch-aware variant of `placeDCAOrder` |
+| `src/services/bots/trailing-stop.service.ts` | Optional batch-aware variant of entry/close |
+| `src/app/api/inngest/route.ts` | Remove `INNGEST_USE_CONNECT` conditional, always register all functions |
 | `src/worker.ts` | Remove (after validation) |
 | `package.json` | Remove worker scripts |
 | Vercel env vars | Remove `INNGEST_USE_CONNECT=1` |
