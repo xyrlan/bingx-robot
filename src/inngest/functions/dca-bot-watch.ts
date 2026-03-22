@@ -30,47 +30,58 @@ export const dcaBotWatch = inngest.createFunction(
 
     if (bots.length === 0) return { processed: 0 };
 
+    // Group bots by (symbol, apiKeyId) to share getContractInfo/getCurrentPrice
+    const groups = new Map<string, typeof bots>();
+    for (const bot of bots) {
+      const key = `${String(bot.symbol).trim().toUpperCase()}:${bot.apiKeyId ?? bot.userId}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(bot);
+    }
+
     let processed = 0;
 
-    for (const bot of bots) {
-      const result = await step.run(`process-dca-${bot.id}`, async () => {
-        const freshBot = await getBotById(bot.id, bot.userId);
-        if (!freshBot || freshBot.status !== 'RUNNING') return 0;
+    for (const [groupKey, groupBots] of groups) {
+      const result = await step.run(`process-dca-group-${groupKey}`, async () => {
+        let groupProcessed = 0;
 
-        const config = freshBot.config as DCAConfig | null;
-        if (!config) return 0;
+        // Get a client from the first bot in the group
+        const firstBot = groupBots[0];
+        const client = firstBot.apiKeyId
+          ? await getBingxClientByApiKeyId(firstBot.apiKeyId)
+          : await getBingxClient(firstBot.userId);
+        if (!client) return 0;
 
-        if (!shouldPlaceDCAOrder(config, freshBot.createdAt)) return 0;
-
-        const client = freshBot.apiKeyId
-          ? await getBingxClientByApiKeyId(freshBot.apiKeyId)
-          : await getBingxClient(freshBot.userId);
-        if (!client) {
-          await setBotStatus(bot.id, bot.userId, 'STOPPED');
-          return 0;
-        }
-
-        const symbol = String(freshBot.symbol).trim().toUpperCase();
+        const symbol = String(firstBot.symbol).trim().toUpperCase();
         const contractInfo = await getContractInfo(client, symbol);
         const quantityPrecision = contractInfo?.quantityPrecision ?? 4;
         const currentPrice = await getCurrentPrice(client, symbol);
         if (!currentPrice) return 0;
 
-        const orderId = await placeDCAOrder(client, symbol, config, currentPrice, quantityPrecision);
-        if (orderId) {
-          const updatedConfig: DCAConfig = { ...config, ordersPlaced: config.ordersPlaced + 1 };
-          await db
-            .update(tradingBots)
-            .set({ config: updatedConfig, updatedAt: new Date() })
-            .where(eq(tradingBots.id, bot.id));
+        for (const bot of groupBots) {
+          const freshBot = await getBotById(bot.id, bot.userId);
+          if (!freshBot || freshBot.status !== 'RUNNING') continue;
 
-          if (updatedConfig.ordersPlaced >= updatedConfig.totalOrders) {
-            await setBotStatus(bot.id, bot.userId, 'STOPPED');
-            logger.info(`DCA bot ${bot.id} completed all ${updatedConfig.totalOrders} orders`);
+          const config = freshBot.config as DCAConfig | null;
+          if (!config) continue;
+          if (!shouldPlaceDCAOrder(config, freshBot.createdAt)) continue;
+
+          const orderId = await placeDCAOrder(client, symbol, config, currentPrice, quantityPrecision);
+          if (orderId) {
+            const updatedConfig: DCAConfig = { ...config, ordersPlaced: config.ordersPlaced + 1 };
+            await db
+              .update(tradingBots)
+              .set({ config: updatedConfig, updatedAt: new Date() })
+              .where(eq(tradingBots.id, bot.id));
+
+            if (updatedConfig.ordersPlaced >= updatedConfig.totalOrders) {
+              await setBotStatus(bot.id, bot.userId, 'STOPPED');
+              logger.info(`DCA bot ${bot.id} completed all ${updatedConfig.totalOrders} orders`);
+            }
+            groupProcessed++;
           }
-          return 1;
         }
-        return 0;
+
+        return groupProcessed;
       });
 
       processed += result ?? 0;
