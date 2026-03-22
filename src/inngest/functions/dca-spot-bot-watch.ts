@@ -29,43 +29,52 @@ export const dcaSpotBotWatch = inngest.createFunction(
 
     if (bots.length === 0) return { processed: 0 };
 
+    const groups = new Map<string, typeof bots>();
+    for (const bot of bots) {
+      const key = `${String(bot.symbol).trim().toUpperCase()}:${bot.apiKeyId ?? bot.userId}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(bot);
+    }
+
     let processed = 0;
 
-    for (const bot of bots) {
-      const result = await step.run(`process-dca-spot-${bot.id}`, async () => {
-        const freshBot = await getBotById(bot.id, bot.userId);
-        if (!freshBot || freshBot.status !== 'RUNNING') return 0;
+    for (const [groupKey, groupBots] of groups) {
+      const result = await step.run(`process-dca-spot-group-${groupKey}`, async () => {
+        let groupProcessed = 0;
 
-        const config = freshBot.config as DCAConfig | null;
-        if (!config) return 0;
+        const firstBot = groupBots[0];
+        const client = firstBot.apiKeyId
+          ? await getBingxClientByApiKeyId(firstBot.apiKeyId)
+          : await getBingxClient(firstBot.userId);
+        if (!client) return 0;
 
-        if (!shouldPlaceDCAOrder(config, freshBot.createdAt)) return 0;
+        const symbol = String(firstBot.symbol).trim().toUpperCase();
 
-        const client = freshBot.apiKeyId
-          ? await getBingxClientByApiKeyId(freshBot.apiKeyId)
-          : await getBingxClient(freshBot.userId);
-        if (!client) {
-          await setBotStatus(bot.id, bot.userId, 'STOPPED');
-          return 0;
-        }
+        for (const bot of groupBots) {
+          const freshBot = await getBotById(bot.id, bot.userId);
+          if (!freshBot || freshBot.status !== 'RUNNING') continue;
 
-        const symbol = String(freshBot.symbol).trim().toUpperCase();
+          const config = freshBot.config as DCAConfig | null;
+          if (!config) continue;
+          if (!shouldPlaceDCAOrder(config, freshBot.createdAt)) continue;
 
-        const orderId = await placeSpotDCAOrder(client, symbol, config);
-        if (orderId) {
-          const updatedConfig: DCAConfig = { ...config, ordersPlaced: config.ordersPlaced + 1 };
-          await db
-            .update(tradingBots)
-            .set({ config: updatedConfig, updatedAt: new Date() })
-            .where(eq(tradingBots.id, bot.id));
+          const orderId = await placeSpotDCAOrder(client, symbol, config);
+          if (orderId) {
+            const updatedConfig: DCAConfig = { ...config, ordersPlaced: config.ordersPlaced + 1 };
+            await db
+              .update(tradingBots)
+              .set({ config: updatedConfig, updatedAt: new Date() })
+              .where(eq(tradingBots.id, bot.id));
 
-          if (updatedConfig.ordersPlaced >= updatedConfig.totalOrders) {
-            await setBotStatus(bot.id, bot.userId, 'STOPPED');
-            logger.info(`DCA Spot bot ${bot.id} completed all ${updatedConfig.totalOrders} orders`);
+            if (updatedConfig.ordersPlaced >= updatedConfig.totalOrders) {
+              await setBotStatus(bot.id, bot.userId, 'STOPPED');
+              logger.info(`DCA Spot bot ${bot.id} completed all ${updatedConfig.totalOrders} orders`);
+            }
+            groupProcessed++;
           }
-          return 1;
         }
-        return 0;
+
+        return groupProcessed;
       });
 
       processed += result ?? 0;
