@@ -522,23 +522,12 @@ export type PlaceGridEntryOrderParams = {
   currentPrice: number | null;
 };
 
-export async function placeGridEntryOrder(params: PlaceGridEntryOrderParams): Promise<string | null> {
-  const {
-    client,
-    symbol,
-    priceLevel,
-    quantity,
-    takeProfitPct,
-    pricePrecision,
-    quantityPrecision,
-    positionSide,
-    currentPrice,
-  } = params;
+/** Build the order payload for a LONG grid entry — no API call. */
+export function buildGridEntryPayload(params: Omit<PlaceGridEntryOrderParams, 'client'>): Record<string, unknown> {
+  const { symbol, priceLevel, quantity, takeProfitPct, pricePrecision, quantityPrecision, positionSide, currentPrice } = params;
 
   const priceStr = toPrecision(priceLevel, pricePrecision);
   const quantityStr = toQuantityPrecision(quantity, quantityPrecision);
-  // BUY LONG: priceLevel < currentPrice → LIMIT (below market, sits in book).
-  //           priceLevel > currentPrice → TRIGGER_LIMIT (above market, avoids sweeping book).
   const useTriggerLimit = currentPrice != null && priceLevel > currentPrice;
   const orderType = useTriggerLimit ? 'TRIGGER_LIMIT' : 'LIMIT';
 
@@ -568,6 +557,13 @@ export async function placeGridEntryOrder(params: PlaceGridEntryOrderParams): Pr
       workingType: 'MARK_PRICE',
     });
   }
+
+  return orderPayload;
+}
+
+export async function placeGridEntryOrder(params: PlaceGridEntryOrderParams): Promise<string | null> {
+  const { client, ...rest } = params;
+  const orderPayload = buildGridEntryPayload(rest);
 
   try {
     const result = (await client.post('/openApi/swap/v2/trade/order', orderPayload, true)) as {
