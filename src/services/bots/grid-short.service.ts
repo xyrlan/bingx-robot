@@ -12,17 +12,12 @@ export type PlaceGridShortEntryParams = {
   currentPrice: number | null;
 };
 
-export async function placeGridShortEntryOrder(params: PlaceGridShortEntryParams): Promise<string | null> {
-  const {
-    client, symbol, priceLevel, quantity, takeProfitPct,
-    pricePrecision, quantityPrecision, currentPrice,
-  } = params;
+/** Build the order payload for a SHORT grid entry — no API call. */
+export function buildGridShortEntryPayload(params: Omit<PlaceGridShortEntryParams, 'client'>): Record<string, unknown> {
+  const { symbol, priceLevel, quantity, takeProfitPct, pricePrecision, quantityPrecision, currentPrice } = params;
 
   const priceStr = toPrecision(priceLevel, pricePrecision);
   const quantityStr = toQuantityPrecision(quantity, quantityPrecision);
-
-  // SHORT: priceLevel > currentPrice → LIMIT (above market, sits in book)
-  //        priceLevel < currentPrice → TRIGGER_LIMIT (below market, avoids sweep)
   const useTriggerLimit = currentPrice != null && priceLevel < currentPrice;
   const orderType = useTriggerLimit ? 'TRIGGER_LIMIT' : 'LIMIT';
 
@@ -41,7 +36,6 @@ export async function placeGridShortEntryOrder(params: PlaceGridShortEntryParams
     orderPayload.stopPrice = parseFloat(priceStr);
   }
 
-  // TP for short: price must go DOWN
   const tpStopPrice = priceLevel * (1 - takeProfitPct);
   const tpStopPriceStr = toPrecision(tpStopPrice, pricePrecision);
   const tpPrice = parseFloat(tpStopPriceStr);
@@ -53,6 +47,13 @@ export async function placeGridShortEntryOrder(params: PlaceGridShortEntryParams
       workingType: 'MARK_PRICE',
     });
   }
+
+  return orderPayload;
+}
+
+export async function placeGridShortEntryOrder(params: PlaceGridShortEntryParams): Promise<string | null> {
+  const { client, ...rest } = params;
+  const orderPayload = buildGridShortEntryPayload(rest);
 
   try {
     const result = (await client.post('/openApi/swap/v2/trade/order', orderPayload, true)) as {

@@ -522,23 +522,12 @@ export type PlaceGridEntryOrderParams = {
   currentPrice: number | null;
 };
 
-export async function placeGridEntryOrder(params: PlaceGridEntryOrderParams): Promise<string | null> {
-  const {
-    client,
-    symbol,
-    priceLevel,
-    quantity,
-    takeProfitPct,
-    pricePrecision,
-    quantityPrecision,
-    positionSide,
-    currentPrice,
-  } = params;
+/** Build the order payload for a LONG grid entry — no API call. */
+export function buildGridEntryPayload(params: Omit<PlaceGridEntryOrderParams, 'client'>): Record<string, unknown> {
+  const { symbol, priceLevel, quantity, takeProfitPct, pricePrecision, quantityPrecision, positionSide, currentPrice } = params;
 
   const priceStr = toPrecision(priceLevel, pricePrecision);
   const quantityStr = toQuantityPrecision(quantity, quantityPrecision);
-  // BUY LONG: priceLevel < currentPrice → LIMIT (below market, sits in book).
-  //           priceLevel > currentPrice → TRIGGER_LIMIT (above market, avoids sweeping book).
   const useTriggerLimit = currentPrice != null && priceLevel > currentPrice;
   const orderType = useTriggerLimit ? 'TRIGGER_LIMIT' : 'LIMIT';
 
@@ -568,6 +557,13 @@ export async function placeGridEntryOrder(params: PlaceGridEntryOrderParams): Pr
       workingType: 'MARK_PRICE',
     });
   }
+
+  return orderPayload;
+}
+
+export async function placeGridEntryOrder(params: PlaceGridEntryOrderParams): Promise<string | null> {
+  const { client, ...rest } = params;
+  const orderPayload = buildGridEntryPayload(rest);
 
   try {
     const result = (await client.post('/openApi/swap/v2/trade/order', orderPayload, true)) as {
@@ -655,6 +651,58 @@ export async function cancelBatchOrders(
     );
 
   }
+}
+
+/**
+ * Place multiple orders via BingX batchOrders API (up to 5 per request).
+ * Splits into chunks if orders.length > 5.
+ * Unlike cancelBatchOrders (DELETE, batch size 10, omitRecvWindow),
+ * this uses POST with useQueryParams=true and batch size 5.
+ */
+export async function placeBatchOrders(
+  client: BingxClient,
+  orders: Record<string, unknown>[]
+): Promise<Array<{ orderId: string | null; error?: string }>> {
+  const BATCH_SIZE = 5;
+  if (orders.length === 0) return [];
+
+  const results: Array<{ orderId: string | null; error?: string }> = [];
+
+  for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 400)); // Rate limit between chunks
+    const chunk = orders.slice(i, i + BATCH_SIZE);
+    const batchOrdersParam = JSON.stringify(chunk);
+
+    try {
+      const response = (await client.post(
+        '/openApi/swap/v2/trade/batchOrders',
+        { batchOrders: batchOrdersParam },
+        true
+      )) as {
+        orders?: Array<{ orderId?: string | number; order?: { orderId?: string | number } }>;
+        errors?: Array<{ msg?: string; code?: number }>;
+      };
+
+      const successOrders = response?.orders ?? [];
+      const errorOrders = response?.errors ?? [];
+
+      for (const order of successOrders) {
+        const raw = order?.orderId ?? order?.order?.orderId;
+        results.push({ orderId: raw != null ? toSafeIdString(raw) ?? null : null });
+      }
+
+      for (const err of errorOrders) {
+        results.push({ orderId: null, error: err?.msg ?? `Error code ${err?.code}` });
+      }
+    } catch (err) {
+      // Entire chunk failed — mark all as failed
+      for (let j = 0; j < chunk.length; j++) {
+        results.push({ orderId: null, error: String(err) });
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
