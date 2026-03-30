@@ -46,8 +46,6 @@ type BotDetails = {
   realizedPnl: number;
 };
 
-type StatusFilter = 'ALL' | 'RUNNING' | 'STOPPED';
-
 function formatPnl(value: number): string {
   const sign = value >= 0 ? '+' : '';
   return `${sign}${value.toFixed(2)} USDT`;
@@ -60,7 +58,6 @@ export function BotsList() {
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   const [restartingId, setRestartingId] = useState<string | null>(null);
   const [editingBot, setEditingBot] = useState<BotDetails | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
   function openEditModal(item: BotDetails) {
     setEditingBot(item);
@@ -179,78 +176,18 @@ export function BotsList() {
     return () => clearInterval(interval);
   }, [hasRunning]);
 
-  const filteredBots = statusFilter === 'ALL'
-    ? bots
-    : bots.filter((b) => b.bot.status === statusFilter);
+  const runningBots = bots.filter((b) => b.bot.status === 'RUNNING');
+  const stoppedBots = bots.filter((b) => b.bot.status === 'STOPPED');
 
-  const runningCount = bots.filter((b) => b.bot.status === 'RUNNING').length;
-  const stoppedCount = bots.filter((b) => b.bot.status === 'STOPPED').length;
-
-  const totalUnrealized = bots.reduce((sum, b) => sum + b.unrealizedPnl, 0);
-  const totalRealized = bots.reduce((sum, b) => sum + b.realizedPnl, 0);
-  const totalEstimatedProfit = bots.reduce(
+  const totalUnrealized = runningBots.reduce((sum, b) => sum + b.unrealizedPnl, 0);
+  const totalRealized = runningBots.reduce((sum, b) => sum + b.realizedPnl, 0);
+  const totalEstimatedProfit = runningBots.reduce(
     (sum, b) => sum + b.positions.reduce((s, p) => s + p.estimatedProfit, 0),
     0
   );
   const totalPnl = totalUnrealized + totalRealized;
 
-  return (
-    <Card variant="default" className="w-full">
-      <Card.Content className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Your Bots</h3>
-          <Button size="sm" variant="outline" onPress={() => fetchBots()} isDisabled={loading}>
-            {loading ? <Spinner size="sm" /> : 'Refresh'}
-          </Button>
-        </div>
-
-        {/* Status filter */}
-        <div className="flex gap-2 mb-4">
-          {([
-            { key: 'ALL' as StatusFilter, label: `All (${bots.length})` },
-            { key: 'RUNNING' as StatusFilter, label: `Running (${runningCount})` },
-            { key: 'STOPPED' as StatusFilter, label: `Stopped (${stoppedCount})` },
-          ]).map((filter) => (
-            <Button
-              key={filter.key}
-              size="sm"
-              variant={statusFilter === filter.key ? 'primary' : 'outline'}
-              onPress={() => setStatusFilter(filter.key)}
-            >
-              {filter.label}
-            </Button>
-          ))}
-        </div>
-
-        {bots.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            {[
-              { label: 'Unrealized', value: totalUnrealized },
-              { label: 'Realized', value: totalRealized },
-              { label: 'Total P&L', value: totalPnl },
-              { label: 'Projected Profit', value: totalEstimatedProfit, title: 'Profit if all take-profit orders execute' },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-default-100 rounded-lg p-3 text-center" title={'title' in stat ? stat.title : undefined}>
-                <p className="text-xs text-default-500">{stat.label}</p>
-                <p className={`text-sm font-semibold ${stat.value >= 0 ? 'text-success' : 'text-danger'}`}>
-                  {formatPnl(stat.value)}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {loading && bots.length === 0 ? (
-          <div className="flex justify-center py-8">
-            <Spinner />
-          </div>
-        ) : filteredBots.length === 0 ? (
-          <p className="text-sm text-muted py-4 text-center">
-            {bots.length === 0 ? 'No bots yet. Create one above!' : 'No bots matching this filter.'}
-          </p>
-        ) : (
-          <Accordion className="w-full" allowsMultipleExpanded variant="surface">
-            {filteredBots.map((item) => {
+  function renderBotItem(item: BotDetails) {
               const { bot, runtime, orders, positions, unrealizedPnl, realizedPnl } = item;
               const exchangeLeverage = positions.find((p) => p.leverage)?.leverage;
               const displayLeverage = exchangeLeverage ?? bot.leverage;
@@ -258,12 +195,11 @@ export function BotsList() {
               return (
                 <Accordion.Item key={bot.id} id={bot.id}>
                   <Accordion.Heading>
-                    <div className="flex flex-wrap items-center justify-between gap-3 py-3 pr-2 w-full">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-3 pr-2 w-full">
                       <Accordion.Trigger className="flex-1 min-w-0 text-left">
-                        <div>
-                          <p className="font-medium">
-                            {bot.symbol}
-                            {' '}
+                        <div className="space-y-1">
+                          <p className="font-medium flex flex-wrap items-center gap-1.5">
+                            <span>{bot.symbol}</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
                               bot.botType === 'GRID_LONG' ? 'bg-success/10 text-success' :
                               bot.botType === 'GRID_SHORT' ? 'bg-danger/10 text-danger' :
@@ -279,7 +215,6 @@ export function BotsList() {
                                bot.botType === 'DCA_SPOT' ? 'DCA Spot' :
                                'Grid Long'}
                             </span>
-                            {' '}
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
                               bot.status === 'RUNNING'
                                 ? 'bg-success/10 text-success'
@@ -288,48 +223,44 @@ export function BotsList() {
                               {bot.status}
                             </span>
                           </p>
-                          <p className="text-sm text-default-500">
+                          <p className="text-sm text-default-500 font-numeric">
                             {Number(bot.priceMin).toFixed(2)} – {Number(bot.priceMax).toFixed(2)} • {bot.gridCount ?? 1} grids
-                            {bot.status === 'RUNNING' && runtime && (
-                              <span className="ml-2">• Running for {runtime}</span>
-                            )}
                           </p>
-                          <p className="text-xs text-default-400 mt-0.5">
+                          <p className="text-xs text-default-400">
                             {displayLeverage && `${displayLeverage}x`}
                             {bot.positionSizeUsdt && ` • ${Number(bot.positionSizeUsdt)} USDT/level`}
                             {bot.takeProfitPercentage && ` • ${Number(bot.takeProfitPercentage)}% TP`}
                             {' • '}
                             {new Date(bot.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                           </p>
+                          {bot.status === 'RUNNING' && runtime && (
+                            <p className="text-xs text-default-400">Running for {runtime}</p>
+                          )}
                           {(unrealizedPnl !== 0 || realizedPnl !== 0) && (
-                            <p className="text-sm mt-1">
+                            <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:gap-x-3 sm:gap-y-0.5 text-sm mt-0.5">
                               <span
-                                className={
+                                className={`font-numeric ${
                                   unrealizedPnl >= 0 ? 'text-success' : 'text-danger'
-                                }
+                                }`}
                               >
                                 Unrealized: {formatPnl(unrealizedPnl)}
                               </span>
-                              <span className="mx-2 text-default-400">|</span>
                               <span
-                                className={
+                                className={`font-numeric ${
                                   realizedPnl >= 0 ? 'text-success' : 'text-danger'
-                                }
+                                }`}
                               >
                                 Realized: {formatPnl(realizedPnl)}
                               </span>
                               {positions.length > 0 && (() => {
                                 const estProfit = positions.reduce((s, p) => s + p.estimatedProfit, 0);
                                 return estProfit !== 0 ? (
-                                  <>
-                                    <span className="mx-2 text-default-400">|</span>
-                                    <span className="text-default-500">
-                                      Projected Profit: {formatPnl(estProfit)}
-                                    </span>
-                                  </>
+                                  <span className="text-default-500 font-numeric">
+                                    Projected: {formatPnl(estProfit)}
+                                  </span>
                                 ) : null;
                               })()}
-                            </p>
+                            </div>
                           )}
                           {bot.botType === 'DCA' && bot.config && (
                             <span className="text-xs text-muted">
@@ -349,12 +280,13 @@ export function BotsList() {
                         </div>
                         <Accordion.Indicator />
                       </Accordion.Trigger>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                         {bot.status === 'RUNNING' && (
                           <>
                             <Button
                               size="sm"
                               variant="outline"
+                              className="touch-target"
                               onPress={() => openEditModal(item)}
                             >
                               Edit
@@ -364,7 +296,7 @@ export function BotsList() {
                               variant="outline"
                               onPress={() => handleStop(bot.id)}
                               isDisabled={stoppingId === bot.id}
-                              className="text-danger border-danger/50 hover:bg-danger/10"
+                              className="text-danger border-danger/50 hover:bg-danger/10 touch-target"
                             >
                               {stoppingId === bot.id ? <Spinner size="sm" /> : 'Stop'}
                             </Button>
@@ -376,7 +308,7 @@ export function BotsList() {
                             variant="outline"
                             onPress={() => handleRestart(bot.id)}
                             isDisabled={restartingId === bot.id}
-                            className="text-success border-success/50 hover:bg-success/10"
+                            className="text-success border-success/50 hover:bg-success/10 touch-target"
                           >
                             {restartingId === bot.id ? <Spinner size="sm" /> : 'Restart'}
                           </Button>
@@ -395,7 +327,7 @@ export function BotsList() {
                         ].map((item) => (
                           <div key={item.label} className="bg-default-100 rounded-md px-2 py-1.5">
                             <p className="text-xs text-default-500">{item.label}</p>
-                            <p className="font-medium">{item.value}</p>
+                            <p className="font-medium font-numeric">{item.value}</p>
                           </div>
                         ))}
                       </div>
@@ -405,23 +337,23 @@ export function BotsList() {
                           <p className="text-sm font-medium mb-2">Open Positions</p>
                           <div className="bg-default-50 rounded-lg divide-y divide-default-200">
                             {positions.map((p, i) => (
-                              <div key={i} className="px-3 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                              <div key={i} className="px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4">
                                 <div className="flex items-center gap-2">
                                   <span className={`text-xs px-1.5 py-0.5 rounded ${
                                     p.positionSide === 'LONG' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
                                   }`}>
                                     {p.positionSide}
                                   </span>
-                                  <span className="text-sm">
+                                  <span className="text-sm font-numeric">
                                     Entry {p.entryPrice.toFixed(2)} × {p.positionAmt}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-3 text-sm">
-                                  <span className={p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'}>
+                                <div className="flex items-center gap-3 text-sm pl-7 sm:pl-0">
+                                  <span className={`font-numeric ${p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'}`}>
                                     {formatPnl(p.unrealizedPnl)}
                                   </span>
                                   {p.estimatedProfit !== 0 && (
-                                    <span className="text-default-500 text-xs">
+                                    <span className="text-default-500 text-xs font-numeric">
                                       Proj. {formatPnl(p.estimatedProfit)}
                                     </span>
                                   )}
@@ -439,27 +371,27 @@ export function BotsList() {
                             {orders.map((o, i) => (
                               <div
                                 key={`${o.priceLevel}-${o.type}-${i}`}
-                                className="px-3 py-2 flex items-center justify-between"
+                                className="px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4"
                               >
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                   <span className={`text-xs px-1.5 py-0.5 rounded ${
                                     o.type === 'ENTRY' ? 'bg-primary/10 text-primary' : 'bg-warning/10 text-warning'
                                   }`}>
                                     {o.type}
                                   </span>
-                                  <span className="text-sm">
+                                  <span className="text-sm font-numeric">
                                     @ {Number(o.priceLevel).toFixed(2)}
                                     {o.quantity != null && (
                                       <span className="text-default-400 ml-1">× {o.quantity}</span>
                                     )}
                                   </span>
                                   {o.stopPrice != null && (
-                                    <span className="text-xs text-default-400">
+                                    <span className="text-xs text-default-400 font-numeric">
                                       TP: {o.stopPrice.toFixed(2)}
                                     </span>
                                   )}
                                 </div>
-                                <span className={`text-xs font-medium ${
+                                <span className={`text-xs font-medium pl-7 sm:pl-0 ${
                                   o.status === 'OPEN' ? 'text-primary' :
                                   o.status === 'FILLED' ? 'text-success' :
                                   'text-default-400'
@@ -481,18 +413,88 @@ export function BotsList() {
                   </Accordion.Panel>
                 </Accordion.Item>
               );
-            })}
-          </Accordion>
-        )}
+  }
 
-        {editingBot && (
-          <EditBotModal
-            item={editingBot}
-            onClose={closeEditModal}
-            onSave={handleUpdate}
-          />
-        )}
-      </Card.Content>
-    </Card>
+  return (
+    <div className="space-y-6">
+      {/* Running Bots Section */}
+      <Card variant="default" className="w-full">
+        <Card.Content className="p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-success animate-pulse" />
+              <h3 className="text-lg font-semibold">Running</h3>
+              <span className="text-sm text-muted font-numeric">({runningBots.length})</span>
+            </div>
+            <Button size="sm" variant="outline" onPress={() => fetchBots()} isDisabled={loading}>
+              {loading ? <Spinner size="sm" /> : 'Refresh'}
+            </Button>
+          </div>
+
+          {runningBots.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              {[
+                { label: 'Unrealized', value: totalUnrealized },
+                { label: 'Realized', value: totalRealized },
+                { label: 'Total P&L', value: totalPnl },
+                { label: 'Projected', value: totalEstimatedProfit, title: 'Profit if all take-profit orders execute' },
+              ].map((stat) => (
+                <div key={stat.label} className="bg-default-100 rounded-lg p-3 text-center" title={'title' in stat ? stat.title : undefined}>
+                  <p className="text-xs text-default-500">{stat.label}</p>
+                  <p className={`text-xs sm:text-sm font-semibold font-numeric truncate ${stat.value >= 0 ? 'text-success' : 'text-danger'}`}>
+                    {formatPnl(stat.value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {loading && bots.length === 0 ? (
+            <div className="flex justify-center py-8">
+              <Spinner />
+            </div>
+          ) : runningBots.length === 0 ? (
+            <p className="text-sm text-muted py-4 text-center">
+              {bots.length === 0 ? 'No bots yet. Create one above!' : 'No running bots.'}
+            </p>
+          ) : (
+            <Accordion className="w-full" allowsMultipleExpanded variant="surface">
+              {runningBots.map(renderBotItem)}
+            </Accordion>
+          )}
+        </Card.Content>
+      </Card>
+
+      {/* Stopped Bots Section */}
+      {(stoppedBots.length > 0 || bots.length > 0) && (
+        <Card variant="default" className="w-full">
+          <Card.Content className="p-4 sm:p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="h-2.5 w-2.5 rounded-full bg-default-300" />
+              <h3 className="text-lg font-semibold text-muted">Stopped</h3>
+              <span className="text-sm text-muted font-numeric">({stoppedBots.length})</span>
+            </div>
+
+            {stoppedBots.length === 0 ? (
+              <p className="text-sm text-muted py-4 text-center">
+                No stopped bots.
+              </p>
+            ) : (
+              <Accordion className="w-full" allowsMultipleExpanded variant="surface">
+                {stoppedBots.map(renderBotItem)}
+              </Accordion>
+            )}
+          </Card.Content>
+        </Card>
+      )}
+
+      {editingBot && (
+        <EditBotModal
+          item={editingBot}
+          onClose={closeEditModal}
+          onSave={handleUpdate}
+        />
+      )}
+    </div>
   );
 }

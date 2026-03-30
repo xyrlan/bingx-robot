@@ -149,6 +149,37 @@ export function BotConfigForm() {
               </p>
             </div>
 
+            {/* Mobile sticky margin summary */}
+            <div className="lg:hidden sticky top-16 z-20 -mx-4 px-4 py-3 bg-background/95 backdrop-blur-sm border-b border-default-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-default-500">Margin:</span>
+                  <span className="font-numeric font-semibold">
+                    {hasValidPosSize && hasValidLeverage ? formatUsdt(totalMarginNeeded) : '—'}
+                  </span>
+                  <span className="text-default-400">/</span>
+                  <span className="font-numeric font-semibold">
+                    {availableMargin !== null ? formatUsdt(availableMargin) : '—'}
+                  </span>
+                </div>
+                <div
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                    balanceLoading || availableMargin === null
+                      ? 'border-default-200 text-default-600 bg-default-100'
+                      : hasEnoughMargin
+                        ? 'border-success/50 text-success bg-success/10'
+                        : 'border-danger/50 text-danger bg-danger/10'
+                  }`}
+                >
+                  {balanceLoading || availableMargin === null
+                    ? '—'
+                    : hasEnoughMargin
+                      ? 'OK'
+                      : 'Insufficient'}
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <form onSubmit={handleStart} className="space-y-4 lg:col-span-2">
                 <div className="rounded-2xl border border-default-200 bg-default-50/60 p-4 space-y-4">
@@ -291,7 +322,7 @@ export function BotConfigForm() {
                   <div className="grid grid-cols-1 gap-3">
                     <div className="rounded-xl border border-default-200 bg-background p-3">
                       <p className="text-xs text-default-500">Margin per grid</p>
-                      <p className="text-sm font-semibold mt-1">
+                      <p className="text-sm font-semibold font-numeric mt-1">
                         {hasValidPosSize && hasValidLeverage ? formatUsdt(marginPerGrid) : '—'}
                       </p>
                       <p className="text-xs text-default-500 mt-1">
@@ -301,7 +332,7 @@ export function BotConfigForm() {
 
                     <div className="rounded-xl border border-default-200 bg-background p-3">
                       <p className="text-xs text-default-500">Required margin (total)</p>
-                      <p className="text-sm font-semibold mt-1">
+                      <p className="text-sm font-semibold font-numeric mt-1">
                         {hasValidPosSize && hasValidLeverage && gridNum >= 1 ? formatUsdt(totalMarginNeeded) : '—'}
                       </p>
                       <p className="text-xs text-default-500 mt-1">= margin per grid * {gridNum} grids</p>
@@ -309,7 +340,7 @@ export function BotConfigForm() {
 
                     <div className="rounded-xl border border-default-200 bg-background p-3">
                       <p className="text-xs text-default-500">Available margin</p>
-                      <p className="text-sm font-semibold mt-1">
+                      <p className="text-sm font-semibold font-numeric mt-1">
                         {availableMargin !== null ? formatUsdt(availableMargin) : '—'}
                       </p>
                       {availableMargin !== null && totalMarginNeeded > 0 && (

@@ -282,7 +282,7 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen py-8 px-4 bg-gradient-to-br from-green-50 to-blue-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="flex flex-col items-center justify-center min-h-screen py-8 px-4 bg-gradient-to-br from-success/5 to-accent/5 dark:from-background dark:to-surface">
       <div className="w-full max-w-md space-y-6">
         {/* User info and logout button - only show if user is logged in */}
         {user && (

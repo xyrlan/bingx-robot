@@ -254,10 +254,12 @@ export function EditBotModal({ item, onClose, onSave }: EditBotModalProps) {
     >
       <Card
         variant="default"
-        className="w-full rounded-t-2xl md:rounded-xl md:max-w-md md:mx-4"
+        className="w-full rounded-t-2xl md:rounded-xl md:max-w-md md:mx-4 max-h-[90vh] overflow-y-auto overscroll-contain"
         onClick={(e) => e.stopPropagation()}
       >
         <Card.Content className="p-6 safe-area-pb">
+          {/* Mobile drag handle */}
+          <div className="md:hidden w-10 h-1 rounded-full bg-default-300 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-4">Edit Bot</h3>
           <p className="text-sm text-default-500 mb-4">
             {bot.symbol} • Orders will be cancelled and new ones will be created in ~1 minute
@@ -304,7 +306,7 @@ export function EditBotModal({ item, onClose, onSave }: EditBotModalProps) {
               <div className="grid grid-cols-1 gap-2">
                 <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-default-600">Required (estimated delta)</span>
-                  <span className="font-semibold">
+                  <span className="font-semibold font-numeric">
                     {availableMargin !== null && symbolConfig !== null
                       ? formatUsdt(Math.max(0, computed.estimatedMarginDeltaNeeded))
                       : '—'}
@@ -312,7 +314,7 @@ export function EditBotModal({ item, onClose, onSave }: EditBotModalProps) {
                 </div>
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-default-600">Available</span>
-                  <span className="font-semibold">
+                  <span className="font-semibold font-numeric">
                     {availableMargin !== null ? formatUsdt(availableMargin) : '—'}
                   </span>
                 </div>

@@ -13,7 +13,7 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card variant="default" className="w-full max-w-md">
-        <Card.Content className="p-8">
+        <Card.Content className="p-6 sm:p-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-foreground mb-2">
               {t('title')}

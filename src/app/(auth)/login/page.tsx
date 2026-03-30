@@ -29,7 +29,7 @@ export default function LoginPage() {
       {/* Login card */}
       <Card variant="default" className="relative z-10 w-full max-w-md backdrop-blur-sm bg-background/80">
 
-        <Card.Content className="p-8">
+        <Card.Content className="p-6 sm:p-8">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-foreground mb-2">
               {t('title')}

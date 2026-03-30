@@ -59,8 +59,8 @@ export function ActiveBotsSummary() {
           <div className="mt-3 space-y-2">
             {running.slice(0, 3).map((bot) => (
               <div key={bot.id} className="flex items-center justify-between text-sm py-1">
-                <span className="font-medium">{bot.symbol}</span>
-                <span className="text-xs text-muted">{bot.gridCount} {t('grids')}</span>
+                <span className="font-medium truncate">{bot.symbol}</span>
+                <span className="text-xs text-muted font-numeric shrink-0 ml-2">{bot.gridCount} {t('grids')}</span>
               </div>
             ))}
           </div>

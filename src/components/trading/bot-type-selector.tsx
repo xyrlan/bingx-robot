@@ -22,19 +22,19 @@ export function BotTypeSelector() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {botTypes.map((type) => (
           <button
             key={type.key}
             onClick={() => setSelected(type.key)}
-            className={`p-3 rounded-lg border text-left transition-colors ${
+            className={`p-3 sm:p-4 rounded-lg border text-left transition-colors touch-target ${
               selected === type.key
                 ? 'border-accent bg-accent/10 text-accent'
                 : 'border-default-200 hover:border-default-300 text-muted'
             }`}
           >
             <p className="text-sm font-medium">{type.label}</p>
-            <p className="text-xs mt-1 opacity-70">{type.description}</p>
+            <p className="text-xs mt-1 text-muted leading-relaxed">{type.description}</p>
           </button>
         ))}
       </div>

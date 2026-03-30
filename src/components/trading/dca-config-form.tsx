@@ -69,8 +69,8 @@ export function DCAConfigForm() {
               <Label>Interval (minutes)</Label>
               <Input
                 name="intervalMinutes"
-                type="number"
-                min={1}
+                type="text"
+                inputMode="numeric"
                 value={intervalMinutes}
                 onChange={(e) => setIntervalMinutes(e.target.value)}
                 placeholder="60"
@@ -80,8 +80,8 @@ export function DCAConfigForm() {
               <Label>Total Orders</Label>
               <Input
                 name="totalOrders"
-                type="number"
-                min={1}
+                type="text"
+                inputMode="numeric"
                 value={totalOrders}
                 onChange={(e) => setTotalOrders(e.target.value)}
                 placeholder="10"
@@ -91,8 +91,8 @@ export function DCAConfigForm() {
               <Label>Order Size (USDT)</Label>
               <Input
                 name="orderSizeUsdt"
-                type="number"
-                min={1}
+                type="text"
+                inputMode="decimal"
                 value={orderSizeUsdt}
                 onChange={(e) => setOrderSizeUsdt(e.target.value)}
                 placeholder="10"

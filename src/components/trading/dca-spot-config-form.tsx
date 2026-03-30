@@ -70,8 +70,8 @@ export function DCASpotConfigForm() {
               <Label>Interval (minutes)</Label>
               <Input
                 name="intervalMinutes"
-                type="number"
-                min={1}
+                type="text"
+                inputMode="numeric"
                 value={intervalMinutes}
                 onChange={(e) => setIntervalMinutes(e.target.value)}
                 placeholder="60"
@@ -81,8 +81,8 @@ export function DCASpotConfigForm() {
               <Label>Total Orders</Label>
               <Input
                 name="totalOrders"
-                type="number"
-                min={1}
+                type="text"
+                inputMode="numeric"
                 value={totalOrders}
                 onChange={(e) => setTotalOrders(e.target.value)}
                 placeholder="10"
@@ -92,8 +92,8 @@ export function DCASpotConfigForm() {
               <Label>Order Size (USDT)</Label>
               <Input
                 name="orderSizeUsdt"
-                type="number"
-                min={1}
+                type="text"
+                inputMode="decimal"
                 value={orderSizeUsdt}
                 onChange={(e) => setOrderSizeUsdt(e.target.value)}
                 placeholder="10"
@@ -101,7 +101,7 @@ export function DCASpotConfigForm() {
             </TextField>
           </div>
           <div className="text-sm text-default-500">
-            Total investment: {(Number(totalOrders) * Number(orderSizeUsdt)) || 0} USDT
+            Total investment: <span className="font-numeric">{(Number(totalOrders) * Number(orderSizeUsdt)) || 0} USDT</span>
           </div>
           <Button
             type="submit"

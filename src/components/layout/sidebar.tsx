@@ -65,11 +65,11 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center gap-1 px-3 py-2 text-xs font-medium transition-colors ${
+                className={`flex flex-col items-center gap-1 px-4 py-3 text-xs font-medium transition-colors touch-manipulation ${
                   active ? 'text-accent' : 'text-muted'
                 }`}
               >
-                <item.icon className="w-5 h-5" />
+                <item.icon className="w-6 h-6" />
                 <span>{t(item.labelKey)}</span>
               </Link>
             );

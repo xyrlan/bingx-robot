@@ -114,7 +114,7 @@ export function SymbolLeverageCard() {
         <h3 className="text-lg font-semibold mb-4">Symbol & Leverage</h3>
         <form onSubmit={handleUpdate} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <TextField className={"col-span-2"} variant="primary" isDisabled>
+            <TextField className="col-span-1 sm:col-span-2" variant="primary" isDisabled>
               <Label>Symbol</Label>
               <Input name="symbol" type="text" value={config.symbol} readOnly />
             </TextField>

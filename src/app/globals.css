@@ -7,10 +7,41 @@
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular";
 }
 
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Prevent iOS auto-zoom on input focus */
+  @media (max-width: 640px) {
+    input, select, textarea {
+      font-size: 16px;
+    }
+  }
+}
 
 @layer components {
   .input {
     @apply dark:bg-accent-soft-foreground bg-background;
+  }
+  /* Minimum 44px touch target (Apple HIG) */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Monospace tabular numbers for prices/amounts */
+  .font-numeric {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Safe area utilities for notched devices */
+  .safe-area-pt {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-area-pl {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .safe-area-pr {
+    padding-right: env(safe-area-inset-right, 0px);
   }
 }
 /*
@@ -58,8 +89,8 @@
    --warning-foreground: oklch(21.03% 0.0059 72.74);
  
    /* Border Radius */
-   --radius: 0.125rem;
-   --field-radius: 0.125rem;
+   --radius: 0.625rem;
+   --field-radius: 0.5rem;
  }
  
  .dark,

@@ -58,9 +58,9 @@ export function OverviewStats() {
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {stats.map((stat) => (
         <Card key={stat.labelKey}>
-          <Card.Content className="p-4">
+          <Card.Content className="px-3 py-4 sm:p-4">
             <p className="text-xs text-muted">{t(stat.labelKey)}</p>
-            <p className={`text-lg font-bold ${stat.color ?? 'text-foreground'}`}>
+            <p className={`text-base sm:text-lg font-bold font-numeric truncate ${stat.color ?? 'text-foreground'}`}>
               {stat.value}
             </p>
           </Card.Content>

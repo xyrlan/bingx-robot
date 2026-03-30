@@ -35,7 +35,7 @@ export default async function DashboardLayout({
             initialTheme={theme}
             fontVariableClass=""
           />
-          <main className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+          <main className="flex-1 p-4 sm:p-6 pb-24 md:pb-6">
             <div className="max-w-5xl mx-auto">
               {children}
             </div>

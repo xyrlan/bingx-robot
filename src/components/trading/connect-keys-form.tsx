@@ -167,27 +167,25 @@ export function ConnectKeysForm() {
                   isActive ? 'border-accent/50 bg-accent/5' : ''
                 }`}
               >
-                <Card.Content className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <p className="font-medium text-sm">
-                          {acc.label}
-                          {isActive && (
-                            <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">
-                              Active
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-muted">
-                          {t('connected')}
-                        </p>
-                      </div>
+                <Card.Content className="px-4 py-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-sm">
+                        {acc.label}
+                        {isActive && (
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">
+                            Active
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted">
+                        {t('connected')}
+                      </p>
                     </div>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="text-danger border-danger/50 hover:bg-danger/10"
+                      className="text-danger border-danger/50 hover:bg-danger/10 self-end sm:self-auto"
                       onPress={() => handleDelete(acc.id)}
                       isDisabled={deletingId === acc.id}
                     >

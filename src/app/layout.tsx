@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
@@ -23,6 +23,12 @@ export const metadata: Metadata = {
   description: "A trading bot for the BingX exchange",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -37,7 +43,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} data-theme={theme} className={`${theme} ${fontVariableClasses}`}>
-      <body className="font-mono antialiased bg-background text-foreground">
+      <body className="font-sans antialiased bg-background text-foreground">
         <NextIntlClientProvider>
           <ToastProvider />
           <NuqsAdapter>

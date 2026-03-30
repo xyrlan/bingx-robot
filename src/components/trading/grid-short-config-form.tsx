@@ -186,16 +186,16 @@ export function GridShortConfigForm() {
             <div className="rounded-lg bg-default-100 p-4 space-y-2">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <span className="text-default-600">
-                  Required margin: <strong>{formatUsdt(totalMarginNeeded)}</strong>
+                  Required margin: <strong className="font-numeric">{formatUsdt(totalMarginNeeded)}</strong>
                 </span>
                 <span className="text-default-600">
                   Available margin:{' '}
-                  <strong>
+                  <strong className="font-numeric">
                     {availableMargin !== null ? formatUsdt(availableMargin) : '\u2014'}
                   </strong>
                 </span>
                 <span className="text-default-600">
-                  Leverage: <strong>{lev}x</strong> (from Symbol & Leverage card)
+                  Leverage: <strong className="font-numeric">{lev}x</strong> (from Symbol & Leverage card)
                 </span>
               </div>
               {availableMargin !== null && !hasEnoughMargin && (

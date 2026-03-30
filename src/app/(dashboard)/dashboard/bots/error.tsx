@@ -15,16 +15,16 @@ export default function BotsError({
 
   return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4">
-      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center dark:border-red-900 dark:bg-red-950">
-        <h2 className="mb-2 text-lg font-semibold text-red-800 dark:text-red-200">
+      <div className="rounded-lg border border-danger/30 bg-danger/10 p-6 text-center">
+        <h2 className="mb-2 text-lg font-semibold text-danger">
           Failed to load bots
         </h2>
-        <p className="mb-4 text-sm text-red-600 dark:text-red-400">
+        <p className="mb-4 text-sm text-danger/80">
           {error.message || 'Could not load your trading bots'}
         </p>
         <button
           onClick={reset}
-          className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+          className="rounded-md bg-danger px-4 py-2 text-sm font-medium text-danger-foreground transition-colors hover:bg-danger/90"
         >
           Retry
         </button>

@@ -70,8 +70,8 @@ export function TrailingStopConfigForm() {
               <Label>Position Size (USDT)</Label>
               <Input
                 name="positionSizeUsdt"
-                type="number"
-                min={1}
+                type="text"
+                inputMode="decimal"
                 value={positionSizeUsdt}
                 onChange={(e) => setPositionSizeUsdt(e.target.value)}
                 placeholder="50"
@@ -81,9 +81,8 @@ export function TrailingStopConfigForm() {
               <Label>Activation (%)</Label>
               <Input
                 name="activationPricePct"
-                type="number"
-                min={0}
-                step="0.1"
+                type="text"
+                inputMode="decimal"
                 value={activationPricePct}
                 onChange={(e) => setActivationPricePct(e.target.value)}
                 placeholder="2"
@@ -93,9 +92,8 @@ export function TrailingStopConfigForm() {
               <Label>Trailing Distance (%)</Label>
               <Input
                 name="trailingPct"
-                type="number"
-                min={0}
-                step="0.1"
+                type="text"
+                inputMode="decimal"
                 value={trailingPct}
                 onChange={(e) => setTrailingPct(e.target.value)}
                 placeholder="1"

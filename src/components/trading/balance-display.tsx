@@ -79,18 +79,18 @@ export function BalanceDisplay() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <div className="p-3 rounded-lg bg-default-100">
                         <p className="text-xs text-default-500 mb-0.5">Total balance</p>
-                        <p className="font-semibold">{formatUsdt(balanceVal)}</p>
+                        <p className="font-semibold font-numeric truncate">{formatUsdt(balanceVal)}</p>
                       </div>
                       {equity !== 0 && (
                         <div className="p-3 rounded-lg bg-default-100">
                           <p className="text-xs text-default-500 mb-0.5">Equity</p>
-                          <p className="font-semibold">{formatUsdt(equity)}</p>
+                          <p className="font-semibold font-numeric truncate">{formatUsdt(equity)}</p>
                         </div>
                       )}
                        {unrealized !== 0 && (
                         <div className="p-3 rounded-lg bg-default-100">
                           <p className="text-xs text-default-500 mb-0.5">Unrealized PnL</p>
-                          <p className={`font-semibold ${unrealized >= 0 ? 'text-success' : 'text-danger'}`}>
+                          <p className={`font-semibold font-numeric truncate ${unrealized >= 0 ? 'text-success' : 'text-danger'}`}>
                             {formatPnl(unrealized)}
                           </p>
                         </div>
@@ -98,13 +98,13 @@ export function BalanceDisplay() {
                       {available !== 0 && (
                         <div className="p-3 rounded-lg bg-default-100">
                           <p className="text-xs text-default-500 mb-0.5">Available margin</p>
-                          <p className="font-semibold">{formatUsdt(available)}</p>
+                          <p className="font-semibold font-numeric truncate">{formatUsdt(available)}</p>
                         </div>
                       )}
                       {realized !== 0 && (
                         <div className="p-3 rounded-lg bg-default-100">
                           <p className="text-xs text-default-500 mb-0.5">Realized PnL</p>
-                          <p className={`font-semibold ${realized >= 0 ? 'text-success' : 'text-danger'}`}>
+                          <p className={`font-semibold font-numeric truncate ${realized >= 0 ? 'text-success' : 'text-danger'}`}>
                             {formatPnl(realized)}
                           </p>
                         </div>
@@ -112,13 +112,13 @@ export function BalanceDisplay() {
                       {used !== 0 && (
                         <div className="p-3 rounded-lg bg-default-100">
                           <p className="text-xs text-default-500 mb-0.5">Used margin</p>
-                          <p className="font-semibold">{formatUsdt(used)}</p>
+                          <p className="font-semibold font-numeric truncate">{formatUsdt(used)}</p>
                         </div>
                       )}
                       {freezed !== 0 && (
                         <div className="p-3 rounded-lg bg-default-100">
                           <p className="text-xs text-default-500 mb-0.5">Frozen margin</p>
-                          <p className="font-semibold">{formatUsdt(freezed)}</p>
+                          <p className="font-semibold font-numeric truncate">{formatUsdt(freezed)}</p>
                         </div>
                       )}
                     </div>
