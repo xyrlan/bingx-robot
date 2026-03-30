@@ -9,6 +9,7 @@ import {
   integer,
   boolean,
   uniqueIndex,
+  index,
   jsonb,
 } from 'drizzle-orm/pg-core';
 
@@ -91,7 +92,7 @@ export const bingxApiKeys = pgTable('bingx_api_keys', {
   secretKeyEncrypted: text('secret_key_encrypted').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [index('bingx_api_keys_user_id_idx').on(table.userId)]);
 
 // ==========================================
 // 5. TRADING BOTS
@@ -117,7 +118,10 @@ export const tradingBots = pgTable('trading_bots', {
   status: botStatusEnum('status').notNull().default('STOPPED'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('trading_bots_user_status_idx').on(table.userId, table.status),
+  index('trading_bots_api_key_idx').on(table.apiKeyId),
+]);
 
 // ==========================================
 // 5b. GRID LEVELS

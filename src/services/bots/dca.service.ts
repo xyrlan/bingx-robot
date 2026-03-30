@@ -40,7 +40,16 @@ export function shouldPlaceDCAOrder(
   botCreatedAt: Date,
 ): boolean {
   if (config.ordersPlaced >= config.totalOrders) return false;
+
+  const intervalMs = config.intervalMinutes * 60 * 1000;
+
+  // If we have a lastOrderAt timestamp, use it for precise interval checking
+  if (config.lastOrderAt) {
+    return Date.now() - config.lastOrderAt >= intervalMs;
+  }
+
+  // Fallback for bots created before lastOrderAt was tracked
   const elapsed = Date.now() - botCreatedAt.getTime();
-  const expectedOrders = Math.floor(elapsed / (config.intervalMinutes * 60 * 1000)) + 1;
+  const expectedOrders = Math.floor(elapsed / intervalMs) + 1;
   return config.ordersPlaced < expectedOrders;
 }

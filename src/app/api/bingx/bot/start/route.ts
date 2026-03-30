@@ -10,6 +10,7 @@ import {
   setBotStatus,
 } from '@/services/bingx.service';
 import { getAvailableMargin } from '@/lib/balance';
+import { dcaConfigSchema, trailingStopConfigSchema } from '@/lib/validations/bot-schemas';
 
 export async function POST(request: Request) {
   try {
@@ -65,24 +66,19 @@ export async function POST(request: Request) {
 
     // --- DCA Bot creation ---
     if (botType === 'DCA') {
-      const dcaConfig = config as { intervalMinutes?: number; totalOrders?: number; orderSizeUsdt?: number; ordersPlaced?: number; side?: string } | undefined;
-      if (!dcaConfig || !dcaConfig.intervalMinutes || !dcaConfig.totalOrders || !dcaConfig.orderSizeUsdt) {
+      const parsed = dcaConfigSchema.safeParse(config);
+      if (!parsed.success) {
         return NextResponse.json(
-          { error: 'DCA config requires intervalMinutes, totalOrders, and orderSizeUsdt' },
+          { error: `Invalid DCA config: ${parsed.error.issues.map((e: { message: string }) => e.message).join(', ')}` },
           { status: 400 }
         );
       }
+      const dcaConfig = parsed.data;
 
       const bot = await createBot(user.id, {
         symbol,
         botType: 'DCA',
-        config: {
-          intervalMinutes: dcaConfig.intervalMinutes,
-          totalOrders: dcaConfig.totalOrders,
-          orderSizeUsdt: dcaConfig.orderSizeUsdt,
-          ordersPlaced: dcaConfig.ordersPlaced ?? 0,
-          side: dcaConfig.side ?? 'BUY',
-        },
+        config: dcaConfig,
         priceMin: '0',
         priceMax: '0',
         positionSizeUsdt: String(dcaConfig.orderSizeUsdt),
@@ -102,24 +98,19 @@ export async function POST(request: Request) {
 
     // --- DCA Spot Bot creation ---
     if (botType === 'DCA_SPOT') {
-      const dcaConfig = config as { intervalMinutes?: number; totalOrders?: number; orderSizeUsdt?: number; ordersPlaced?: number; side?: string } | undefined;
-      if (!dcaConfig || !dcaConfig.intervalMinutes || !dcaConfig.totalOrders || !dcaConfig.orderSizeUsdt) {
+      const parsed = dcaConfigSchema.safeParse(config);
+      if (!parsed.success) {
         return NextResponse.json(
-          { error: 'DCA Spot config requires intervalMinutes, totalOrders, and orderSizeUsdt' },
+          { error: `Invalid DCA Spot config: ${parsed.error.issues.map((e: { message: string }) => e.message).join(', ')}` },
           { status: 400 }
         );
       }
+      const dcaConfig = parsed.data;
 
       const bot = await createBot(user.id, {
         symbol,
         botType: 'DCA_SPOT',
-        config: {
-          intervalMinutes: dcaConfig.intervalMinutes,
-          totalOrders: dcaConfig.totalOrders,
-          orderSizeUsdt: dcaConfig.orderSizeUsdt,
-          ordersPlaced: dcaConfig.ordersPlaced ?? 0,
-          side: dcaConfig.side ?? 'BUY',
-        },
+        config: dcaConfig,
         priceMin: '0',
         priceMax: '0',
         positionSizeUsdt: String(dcaConfig.orderSizeUsdt),
@@ -139,25 +130,19 @@ export async function POST(request: Request) {
 
     // --- Trailing Stop Bot creation ---
     if (botType === 'TRAILING_STOP') {
-      const tsConfig = config as { positionSizeUsdt?: number; activationPricePct?: number; trailingPct?: number; highestPrice?: number; isActivated?: boolean; entryOrderId?: string | null } | undefined;
-      if (!tsConfig || !tsConfig.positionSizeUsdt || tsConfig.activationPricePct == null || !tsConfig.trailingPct) {
+      const parsed = trailingStopConfigSchema.safeParse(config);
+      if (!parsed.success) {
         return NextResponse.json(
-          { error: 'Trailing Stop config requires positionSizeUsdt, activationPricePct, and trailingPct' },
+          { error: `Invalid Trailing Stop config: ${parsed.error.issues.map((e: { message: string }) => e.message).join(', ')}` },
           { status: 400 }
         );
       }
+      const tsConfig = parsed.data;
 
       const bot = await createBot(user.id, {
         symbol,
         botType: 'TRAILING_STOP',
-        config: {
-          positionSizeUsdt: tsConfig.positionSizeUsdt,
-          activationPricePct: tsConfig.activationPricePct,
-          trailingPct: tsConfig.trailingPct,
-          highestPrice: tsConfig.highestPrice ?? 0,
-          isActivated: tsConfig.isActivated ?? false,
-          entryOrderId: tsConfig.entryOrderId ?? null,
-        },
+        config: tsConfig,
         priceMin: '0',
         priceMax: '0',
         positionSizeUsdt: String(tsConfig.positionSizeUsdt),

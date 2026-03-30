@@ -6,9 +6,8 @@ import {
   getContractInfo,
   getCurrentPrice,
   getOpenPositions,
-  getBingxClientByApiKeyId,
-  getBingxClient,
 } from '@/services/bingx.service';
+import { groupBotsBySymbolAndKey, getClientForBot } from '@/inngest/helpers';
 import {
   placeEntryMarketOrder,
   closePosition,
@@ -35,12 +34,7 @@ export const trailingStopWatch = inngest.createFunction(
 
     if (bots.length === 0) return { processed: 0 };
 
-    const groups = new Map<string, typeof bots>();
-    for (const bot of bots) {
-      const key = `${String(bot.symbol).trim().toUpperCase()}:${bot.apiKeyId ?? bot.userId}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(bot);
-    }
+    const groups = groupBotsBySymbolAndKey(bots);
 
     let processed = 0;
 
@@ -49,9 +43,7 @@ export const trailingStopWatch = inngest.createFunction(
         let groupProcessed = 0;
 
         const firstBot = groupBots[0];
-        const client = firstBot.apiKeyId
-          ? await getBingxClientByApiKeyId(firstBot.apiKeyId)
-          : await getBingxClient(firstBot.userId);
+        const client = await getClientForBot(firstBot);
         if (!client) return 0;
 
         const symbol = String(firstBot.symbol).trim().toUpperCase();
@@ -90,13 +82,22 @@ export const trailingStopWatch = inngest.createFunction(
             continue;
           }
 
-          // Step 2: Check positions (from pre-fetched data)
-          const longPositions = allPositions.filter(
+          // Step 2: Check positions - retry if not found immediately after entry
+          let longPositions = allPositions.filter(
             (p) => p.positionSide.toUpperCase() === 'LONG' && p.positionAmt > 0
           );
 
+          // If no position found, re-fetch after a short delay (exchange may still be settling)
           if (longPositions.length === 0) {
-            logger.info(`Trailing stop bot ${bot.id}: no position found, stopping`);
+            await new Promise((r) => setTimeout(r, 2000));
+            const retryPositions = await getOpenPositions(client, symbol);
+            longPositions = retryPositions.filter(
+              (p) => p.positionSide.toUpperCase() === 'LONG' && p.positionAmt > 0
+            );
+          }
+
+          if (longPositions.length === 0) {
+            logger.info(`Trailing stop bot ${bot.id}: no position found after retry, stopping`);
             await setBotStatus(bot.id, bot.userId, 'STOPPED');
             continue;
           }

@@ -5,9 +5,8 @@ import {
   setBotStatus,
   getContractInfo,
   getCurrentPrice,
-  getBingxClientByApiKeyId,
-  getBingxClient,
 } from '@/services/bingx.service';
+import { groupBotsBySymbolAndKey, getClientForBot } from '@/inngest/helpers';
 import { placeDCAOrder, shouldPlaceDCAOrder } from '@/services/bots/dca.service';
 import type { DCAConfig } from '@/services/bots/types';
 import { db } from '@/db';
@@ -31,12 +30,7 @@ export const dcaBotWatch = inngest.createFunction(
     if (bots.length === 0) return { processed: 0 };
 
     // Group bots by (symbol, apiKeyId) to share getContractInfo/getCurrentPrice
-    const groups = new Map<string, typeof bots>();
-    for (const bot of bots) {
-      const key = `${String(bot.symbol).trim().toUpperCase()}:${bot.apiKeyId ?? bot.userId}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(bot);
-    }
+    const groups = groupBotsBySymbolAndKey(bots);
 
     let processed = 0;
 
@@ -46,9 +40,7 @@ export const dcaBotWatch = inngest.createFunction(
 
         // Get a client from the first bot in the group
         const firstBot = groupBots[0];
-        const client = firstBot.apiKeyId
-          ? await getBingxClientByApiKeyId(firstBot.apiKeyId)
-          : await getBingxClient(firstBot.userId);
+        const client = await getClientForBot(firstBot);
         if (!client) return 0;
 
         const symbol = String(firstBot.symbol).trim().toUpperCase();
@@ -67,7 +59,7 @@ export const dcaBotWatch = inngest.createFunction(
 
           const orderId = await placeDCAOrder(client, symbol, config, currentPrice, quantityPrecision);
           if (orderId) {
-            const updatedConfig: DCAConfig = { ...config, ordersPlaced: config.ordersPlaced + 1 };
+            const updatedConfig: DCAConfig = { ...config, ordersPlaced: config.ordersPlaced + 1, lastOrderAt: Date.now() };
             await db
               .update(tradingBots)
               .set({ config: updatedConfig, updatedAt: new Date() })

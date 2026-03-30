@@ -8,6 +8,7 @@ export type DCAConfig = {
   orderSizeUsdt: number;
   ordersPlaced: number;
   side: 'BUY' | 'SELL';
+  lastOrderAt?: number;
 };
 
 export type TrailingStopConfig = {
