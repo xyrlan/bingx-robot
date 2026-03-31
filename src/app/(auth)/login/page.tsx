@@ -15,19 +15,8 @@ export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(loginAction, null);
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
-      {/* Background video */}
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-        src="/login-promo.mp4"
-      />
-
-      {/* Login card */}
-      <Card variant="default" className="relative z-10 w-full max-w-md backdrop-blur-sm bg-background/80">
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <Card variant="default" className="w-full max-w-md">
 
         <Card.Content className="p-6 sm:p-8">
           <div className="text-center mb-8">
