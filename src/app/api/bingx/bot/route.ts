@@ -1,6 +1,24 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/services/auth.service';
-import { getUserBots, getUserBotsByApiKey, getBotsDetailsBatched } from '@/services/bingx.service';
+import {
+  getUserBots,
+  getUserBotsByApiKey,
+  getBotsDetailsBatched,
+  getBingxClient,
+  getBingxClientByApiKeyId,
+  getIncome,
+} from '@/services/bingx.service';
+
+function getBotSymbolsFromConfig(bot: { symbol: string | null; botType: string | null; config: unknown }): string[] {
+  const primary = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
+  if (bot.botType === 'SMA_CROSSOVER' && bot.config && typeof bot.config === 'object') {
+    const cfg = bot.config as Record<string, unknown>;
+    if (Array.isArray(cfg.symbols) && cfg.symbols.length > 0) {
+      return (cfg.symbols as string[]).map((s) => s.trim().toUpperCase());
+    }
+  }
+  return [primary];
+}
 
 function formatRuntime(createdAt: Date): string {
   const ms = Date.now() - new Date(createdAt).getTime();
@@ -42,14 +60,34 @@ export async function GET(request: Request) {
       unrealizedPnl: 0,
       realizedPnl: 0,
     }));
-    const enrichedStopped = stoppedBots.map((bot) => ({
-      bot,
-      runtime: formatRuntime(bot.createdAt),
-      orders: [],
-      positions: [],
-      unrealizedPnl: 0,
-      realizedPnl: 0,
-    }));
+
+    // Fetch realized P&L for stopped bots (no positions, just income history)
+    const enrichedStopped = await Promise.all(
+      stoppedBots.map(async (bot) => {
+        let realizedPnl = 0;
+        try {
+          const client = bot.apiKeyId
+            ? await getBingxClientByApiKeyId(bot.apiKeyId)
+            : await getBingxClient(user.id);
+          if (client) {
+            const symbols = getBotSymbolsFromConfig(bot);
+            for (const sym of symbols) {
+              realizedPnl += await getIncome(client, sym, bot.createdAt.getTime(), Date.now());
+            }
+          }
+        } catch {
+          // If income fetch fails, show 0
+        }
+        return {
+          bot,
+          runtime: formatRuntime(bot.createdAt),
+          orders: [],
+          positions: [],
+          unrealizedPnl: 0,
+          realizedPnl,
+        };
+      })
+    );
 
     const botOrder = new Map(bots.map((b, i) => [b.id, i]));
     const enriched = [...enrichedRunning, ...enrichedDcaSpot, ...enrichedStopped].sort(

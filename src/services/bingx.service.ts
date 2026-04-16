@@ -907,28 +907,47 @@ export async function getIncome(
   endTime?: number
 ): Promise<number> {
   try {
-    const params: Record<string, string | number | undefined> = {
-      symbol: symbol.toUpperCase().replace(/\s/g, ''),
-      limit: 100,
-    };
-    if (startTime != null) params.startTime = startTime;
-    if (endTime != null) params.endTime = endTime;
-    const data = (await client.get('/openApi/swap/v2/user/income', params)) as unknown;
-    let items: Array<{ income?: string | number; symbol?: string }> = [];
-    if (Array.isArray(data)) {
-      items = data;
-    } else if (data && typeof data === 'object') {
-      const o = data as Record<string, unknown>;
-      const arr = Array.isArray(o.data) ? o.data : Array.isArray(o.income) ? o.income : [];
-      items = arr as typeof items;
-    }
-    let total = 0;
+    const PAGE_SIZE = 100;
+    const MAX_PAGES = 20;
     const sym = symbol.toUpperCase().replace(/\s/g, '');
-    for (const item of items) {
-      const itemSym = String(item?.symbol ?? '').toUpperCase();
-      if (itemSym && itemSym !== sym) continue;
-      total += Number(item?.income ?? 0);
+    let total = 0;
+    let currentStart = startTime;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const params: Record<string, string | number | undefined> = {
+        symbol: sym,
+        limit: PAGE_SIZE,
+      };
+      if (currentStart != null) params.startTime = currentStart;
+      if (endTime != null) params.endTime = endTime;
+
+      const data = (await client.get('/openApi/swap/v2/user/income', params)) as unknown;
+      let items: Array<{ income?: string | number; symbol?: string; time?: number }> = [];
+      if (Array.isArray(data)) {
+        items = data;
+      } else if (data && typeof data === 'object') {
+        const o = data as Record<string, unknown>;
+        const arr = Array.isArray(o.data) ? o.data : Array.isArray(o.income) ? o.income : [];
+        items = arr as typeof items;
+      }
+
+      if (items.length === 0) break;
+
+      for (const item of items) {
+        const itemSym = String(item?.symbol ?? '').toUpperCase();
+        if (itemSym && itemSym !== sym) continue;
+        total += Number(item?.income ?? 0);
+      }
+
+      // If we got fewer items than the page size, we've reached the end
+      if (items.length < PAGE_SIZE) break;
+
+      // Move startTime past the last item's time to get next page
+      const lastTime = Math.max(...items.map((i) => Number(i?.time ?? 0)));
+      if (lastTime <= (currentStart ?? 0)) break; // safety: avoid infinite loop
+      currentStart = lastTime + 1;
     }
+
     return total;
   } catch {
     return 0;
