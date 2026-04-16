@@ -70,25 +70,19 @@ export function BotsList() {
   async function handleUpdate(
     botId: string,
     params: {
-      positionSizeUsdt: string;
-      takeProfitPercentage: string;
-      priceMin: string;
-      priceMax: string;
-      gridCount: number;
+      positionSizeUsdt?: string;
+      takeProfitPercentage?: string;
+      priceMin?: string;
+      priceMax?: string;
+      gridCount?: number;
+      config?: Record<string, unknown>;
     }
   ): Promise<string | null> {
     try {
       const res = await fetch('/api/bingx/bot/edit', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          botId,
-          priceMin: params.priceMin,
-          priceMax: params.priceMax,
-          gridCount: params.gridCount,
-          positionSizeUsdt: params.positionSizeUsdt,
-          takeProfitPercentage: params.takeProfitPercentage,
-        }),
+        body: JSON.stringify({ botId, ...params }),
       });
       const data = await res.json();
       if (!res.ok) {
