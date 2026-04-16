@@ -1046,8 +1046,32 @@ export async function getBotDetails(
 }
 
 /**
+ * Returns all symbols a bot operates on. For SMA_CROSSOVER bots,
+ * this includes all symbols from config.symbols.
+ */
+function getBotSymbols(bot: TradingBot): string[] {
+  const primary = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
+
+  if (bot.botType === 'SMA_CROSSOVER' && bot.config && typeof bot.config === 'object') {
+    const cfg = bot.config as Record<string, unknown>;
+    if (Array.isArray(cfg.symbols) && cfg.symbols.length > 0) {
+      return (cfg.symbols as string[]).map((s) => s.trim().toUpperCase());
+    }
+  }
+
+  return [primary];
+}
+
+/**
+ * Whether a bot type uses grid levels for order/position tracking.
+ */
+function isGridBot(botType: string | null): boolean {
+  return botType === 'GRID_LONG' || botType === 'GRID_SHORT';
+}
+
+/**
  * Batch variant: fetches BingX data once per unique symbol to avoid rate limits.
- * Processes bots sequentially with delays between BingX calls.
+ * Handles all bot types: grid, DCA, trailing stop, SMA crossover, DCA spot.
  */
 export async function getBotsDetailsBatched(
   userId: string,
@@ -1070,7 +1094,15 @@ export async function getBotsDetailsBatched(
     }
   >();
 
-  const uniqueSymbols = [...new Set(bots.map((b) => (String(b.symbol ?? '').trim().toUpperCase() || 'BTC-USDT')))];
+  // Collect ALL symbols from all bots (including SMA multi-symbol)
+  const allSymbols = new Set<string>();
+  for (const bot of bots) {
+    for (const sym of getBotSymbols(bot)) {
+      allSymbols.add(sym);
+    }
+  }
+
+  const uniqueSymbols = [...allSymbols];
   for (const symbol of uniqueSymbols) {
     if (!client) break;
     const [openOrders, openPositions, currentPrice] = await Promise.all([
@@ -1087,78 +1119,116 @@ export async function getBotsDetailsBatched(
   const results: BotDetails[] = [];
   for (let i = 0; i < bots.length; i++) {
     const bot = bots[i];
-    const symbol = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
-    const levels = await getGridLevelsByBotId(bot.id);
-    const takeProfitPct = Number(bot.takeProfitPercentage) / 100;
+    const botSymbols = getBotSymbols(bot);
     const runtime = formatRuntime(bot.createdAt);
-    const cached = client ? symbolCache.get(symbol) : null;
-    const openOrders = cached?.openOrders ?? [];
-    const openPositions = cached?.openPositions ?? [];
-    const currentPrice = cached?.currentPrice ?? 0;
-    const openOrderIds = new Set(openOrders.map((o) => String(o.orderId)));
-
     const orders: BotOrderInfo[] = [];
-    for (const level of levels) {
-      const priceLevel = Number(level.priceLevel);
-      const tpStopPrice = priceLevel * (1 + takeProfitPct);
-      if (level.orderId) {
-        const openOrder = openOrders.find((o) => String(o.orderId) === level.orderId);
-        orders.push({
-          priceLevel: String(priceLevel),
-          type: 'ENTRY',
-          orderId: level.orderId,
-          status: openOrderIds.has(level.orderId) ? 'OPEN' : 'FILLED',
-          price: openOrder ? Number(openOrder.price ?? 0) : priceLevel,
-          quantity: openOrder ? Number((openOrder as { origQty?: string }).origQty ?? 0) : undefined,
-        });
-      }
-      if (level.tpOrderId) {
-        const openOrder = openOrders.find((o) => String(o.orderId) === level.tpOrderId);
-        orders.push({
-          priceLevel: String(priceLevel),
-          type: 'TP',
-          orderId: level.tpOrderId,
-          status: openOrderIds.has(level.tpOrderId) ? 'OPEN' : 'FILLED',
-          stopPrice: openOrder ? Number(openOrder.stopPrice ?? 0) : tpStopPrice,
-        });
-      }
-    }
-
-    const positionMatchesLevel = (entryPrice: number, priceLevel: number) => {
-      const diff = Math.abs(entryPrice - priceLevel) / priceLevel;
-      return diff <= POSITION_ENTRY_TOLERANCE_PCT;
-    };
     const positions: BotPositionInfo[] = [];
     let unrealizedPnl = 0;
-    for (const pos of openPositions) {
-      const side = String(pos.positionSide ?? 'LONG').toUpperCase();
-      if (side !== 'LONG' && side !== 'BOTH') continue;
-      const level = levels.find((l) => positionMatchesLevel(pos.entryPrice, Number(l.priceLevel)));
-      const priceLevel = level ? Number(level.priceLevel) : pos.entryPrice;
-      const tpPrice = priceLevel * (1 + takeProfitPct);
-      const unrealized = (currentPrice - pos.entryPrice) * pos.positionAmt;
-      const estimated = (tpPrice - pos.entryPrice) * pos.positionAmt;
-      positions.push({
-        entryPrice: pos.entryPrice,
-        positionAmt: pos.positionAmt,
-        positionSide: pos.positionSide,
-        unrealizedPnl: unrealized,
-        estimatedProfit: estimated,
-        leverage: pos.leverage,
-      });
-      unrealizedPnl += unrealized;
+    let realizedPnl = 0;
+
+    // --- Grid bots: match positions to grid levels ---
+    if (isGridBot(bot.botType)) {
+      const symbol = botSymbols[0];
+      const levels = await getGridLevelsByBotId(bot.id);
+      const takeProfitPct = Number(bot.takeProfitPercentage) / 100;
+      const cached = client ? symbolCache.get(symbol) : null;
+      const openOrders = cached?.openOrders ?? [];
+      const openPositions = cached?.openPositions ?? [];
+      const currentPrice = cached?.currentPrice ?? 0;
+      const openOrderIds = new Set(openOrders.map((o) => String(o.orderId)));
+      const expectedSide = bot.botType === 'GRID_SHORT' ? 'SHORT' : 'LONG';
+
+      for (const level of levels) {
+        const priceLevel = Number(level.priceLevel);
+        const tpStopPrice = priceLevel * (1 + takeProfitPct);
+        if (level.orderId) {
+          const openOrder = openOrders.find((o) => String(o.orderId) === level.orderId);
+          orders.push({
+            priceLevel: String(priceLevel),
+            type: 'ENTRY',
+            orderId: level.orderId,
+            status: openOrderIds.has(level.orderId) ? 'OPEN' : 'FILLED',
+            price: openOrder ? Number(openOrder.price ?? 0) : priceLevel,
+            quantity: openOrder ? Number((openOrder as { origQty?: string }).origQty ?? 0) : undefined,
+          });
+        }
+        if (level.tpOrderId) {
+          const openOrder = openOrders.find((o) => String(o.orderId) === level.tpOrderId);
+          orders.push({
+            priceLevel: String(priceLevel),
+            type: 'TP',
+            orderId: level.tpOrderId,
+            status: openOrderIds.has(level.tpOrderId) ? 'OPEN' : 'FILLED',
+            stopPrice: openOrder ? Number(openOrder.stopPrice ?? 0) : tpStopPrice,
+          });
+        }
+      }
+
+      const positionMatchesLevel = (entryPrice: number, priceLevel: number) => {
+        const diff = Math.abs(entryPrice - priceLevel) / priceLevel;
+        return diff <= POSITION_ENTRY_TOLERANCE_PCT;
+      };
+
+      for (const pos of openPositions) {
+        const side = String(pos.positionSide ?? 'LONG').toUpperCase();
+        if (side !== expectedSide && side !== 'BOTH') continue;
+        const level = levels.find((l) => positionMatchesLevel(pos.entryPrice, Number(l.priceLevel)));
+        const priceLevel = level ? Number(level.priceLevel) : pos.entryPrice;
+        const tpPrice = priceLevel * (1 + takeProfitPct);
+        const priceDelta = side === 'SHORT'
+          ? (pos.entryPrice - currentPrice) * pos.positionAmt
+          : (currentPrice - pos.entryPrice) * pos.positionAmt;
+        const estimated = side === 'SHORT'
+          ? (pos.entryPrice - tpPrice) * pos.positionAmt
+          : (tpPrice - pos.entryPrice) * pos.positionAmt;
+        positions.push({
+          entryPrice: pos.entryPrice,
+          positionAmt: pos.positionAmt,
+          positionSide: pos.positionSide,
+          unrealizedPnl: priceDelta,
+          estimatedProfit: estimated,
+          leverage: pos.leverage,
+        });
+        unrealizedPnl += priceDelta;
+      }
+
+      if (client) {
+        realizedPnl = await getIncome(client, symbol, bot.createdAt.getTime(), Date.now());
+      }
+    } else {
+      // --- Non-grid bots (DCA, Trailing Stop, SMA Crossover, DCA Spot): ---
+      // Aggregate positions and income across all symbols
+      for (const symbol of botSymbols) {
+        const cached = client ? symbolCache.get(symbol) : null;
+        const openPositions = cached?.openPositions ?? [];
+        const currentPrice = cached?.currentPrice ?? 0;
+
+        for (const pos of openPositions) {
+          const side = String(pos.positionSide ?? 'LONG').toUpperCase();
+          const priceDelta = side === 'SHORT'
+            ? (pos.entryPrice - currentPrice) * pos.positionAmt
+            : (currentPrice - pos.entryPrice) * pos.positionAmt;
+          positions.push({
+            entryPrice: pos.entryPrice,
+            positionAmt: pos.positionAmt,
+            positionSide: pos.positionSide,
+            unrealizedPnl: priceDelta,
+            estimatedProfit: 0,
+            leverage: pos.leverage,
+          });
+          unrealizedPnl += priceDelta;
+        }
+
+        if (client) {
+          realizedPnl += await getIncome(client, symbol, bot.createdAt.getTime(), Date.now());
+          if (botSymbols.indexOf(symbol) < botSymbols.length - 1) {
+            await sleep(RATE_LIMIT_DELAY_MS);
+          }
+        }
+      }
     }
 
-    let realizedPnl = 0;
-    if (client) {
-      realizedPnl = await getIncome(
-        client,
-        symbol,
-        bot.createdAt.getTime(),
-        Date.now()
-      );
-      if (i < bots.length - 1) await sleep(RATE_LIMIT_DELAY_MS);
-    }
+    if (i < bots.length - 1) await sleep(RATE_LIMIT_DELAY_MS);
 
     results.push({
       bot,
