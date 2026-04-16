@@ -147,6 +147,32 @@ export const gridLevels = pgTable(
 );
 
 // ==========================================
+// 5c. BOT TRADES (P&L tracking)
+// ==========================================
+
+export const botTrades = pgTable(
+  'bot_trades',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    botId: uuid('bot_id')
+      .references(() => tradingBots.id, { onDelete: 'cascade' })
+      .notNull(),
+    symbol: text('symbol').notNull(),
+    side: text('side').notNull(), // 'LONG' | 'SHORT'
+    type: text('type').notNull(), // 'ENTRY' | 'EXIT_TP' | 'EXIT_TRAILING' | 'EXIT_SIGNAL' | 'EXIT_MANUAL'
+    price: decimal('price', { precision: 18, scale: 8 }).notNull(),
+    quantity: decimal('quantity', { precision: 18, scale: 8 }).notNull(),
+    realizedPnl: decimal('realized_pnl', { precision: 18, scale: 8 }).notNull().default('0'),
+    orderId: text('order_id'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('bot_trades_bot_id_idx').on(table.botId),
+    index('bot_trades_bot_id_type_idx').on(table.botId, table.type),
+  ]
+);
+
+// ==========================================
 // 6. RELATIONS (BingX)
 // ==========================================
 
@@ -168,11 +194,19 @@ export const tradingBotsRelations = relations(tradingBots, ({ one, many }) => ({
     references: [bingxApiKeys.id],
   }),
   gridLevels: many(gridLevels),
+  trades: many(botTrades),
 }));
 
 export const gridLevelsRelations = relations(gridLevels, ({ one }) => ({
   bot: one(tradingBots, {
     fields: [gridLevels.botId],
+    references: [tradingBots.id],
+  }),
+}));
+
+export const botTradesRelations = relations(botTrades, ({ one }) => ({
+  bot: one(tradingBots, {
+    fields: [botTrades.botId],
     references: [tradingBots.id],
   }),
 }));

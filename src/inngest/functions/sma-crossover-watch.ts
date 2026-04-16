@@ -20,6 +20,7 @@ import {
   cancelStopOrder,
   createEmptySymbolState,
 } from '@/services/bots/sma-crossover.service';
+import { recordTrade } from '@/services/bingx.service';
 import type { SMAConfig } from '@/services/bots/types';
 import { db } from '@/db';
 import { tradingBots } from '@/db/schema';
@@ -157,6 +158,12 @@ export const smaCrossoverWatch = inngest.createFunction(
               if (orderId) {
                 await new Promise((r) => setTimeout(r, 400));
                 const quantity = config.positionSizeUsdt / currentPrice;
+
+                await recordTrade({
+                  botId: bot.id, symbol, side: signal, type: 'ENTRY',
+                  price: currentPrice, quantity, orderId,
+                });
+
                 const stopDistance = config.initialStopAtrMult * atr;
                 const initialStop = signal === 'LONG'
                   ? currentPrice - stopDistance
@@ -206,10 +213,28 @@ export const smaCrossoverWatch = inngest.createFunction(
               );
 
               if (currentPos) {
-                await closePositionMarket(
+                const closeOrderId = await closePositionMarket(
                   client, symbol, state.position!, currentPos.positionAmt, quantityPrecision
                 );
+                const exitPnl = state.position === 'SHORT'
+                  ? ((state.entryPrice ?? 0) - currentPrice) * currentPos.positionAmt
+                  : (currentPrice - (state.entryPrice ?? 0)) * currentPos.positionAmt;
+                await recordTrade({
+                  botId: bot.id, symbol, side: state.position!, type: 'EXIT_SIGNAL',
+                  price: currentPrice, quantity: currentPos.positionAmt, realizedPnl: exitPnl,
+                  orderId: closeOrderId,
+                });
                 await new Promise((r) => setTimeout(r, 400));
+              } else if (state.entryPrice) {
+                // Position disappeared (liquidation/manual close) — record estimated exit
+                const qty = config.positionSizeUsdt / state.entryPrice;
+                const exitPnl = state.position === 'SHORT'
+                  ? (state.entryPrice - currentPrice) * qty
+                  : (currentPrice - state.entryPrice) * qty;
+                await recordTrade({
+                  botId: bot.id, symbol, side: state.position!, type: 'EXIT_MANUAL',
+                  price: currentPrice, quantity: qty, realizedPnl: exitPnl,
+                });
               }
 
               // Open reverse ONLY if trend confirms AND ADX allows
@@ -225,6 +250,12 @@ export const smaCrossoverWatch = inngest.createFunction(
                 if (orderId) {
                   await new Promise((r) => setTimeout(r, 400));
                   const quantity = config.positionSizeUsdt / currentPrice;
+
+                  await recordTrade({
+                    botId: bot.id, symbol, side: signal, type: 'ENTRY',
+                    price: currentPrice, quantity, orderId,
+                  });
+
                   const stopDistance = config.initialStopAtrMult * atr;
                   const initialStop = signal === 'LONG'
                     ? currentPrice - stopDistance
@@ -276,11 +307,58 @@ export const smaCrossoverWatch = inngest.createFunction(
                 );
 
                 if (currentPos) {
-                  await closePositionMarket(
+                  const closeOrderId = await closePositionMarket(
                     client, symbol, state.position, currentPos.positionAmt, quantityPrecision
                   );
+                  const exitPnl = state.position === 'SHORT'
+                    ? (state.entryPrice - currentPrice) * currentPos.positionAmt
+                    : (currentPrice - state.entryPrice) * currentPos.positionAmt;
+                  await recordTrade({
+                    botId: bot.id, symbol, side: state.position, type: 'EXIT_TRAILING',
+                    price: currentPrice, quantity: currentPos.positionAmt, realizedPnl: exitPnl,
+                    orderId: closeOrderId,
+                  });
+                } else {
+                  // Position disappeared (liquidation/manual close)
+                  const qty = config.positionSizeUsdt / state.entryPrice;
+                  const exitPnl = state.position === 'SHORT'
+                    ? (state.entryPrice - currentPrice) * qty
+                    : (currentPrice - state.entryPrice) * qty;
+                  await recordTrade({
+                    botId: bot.id, symbol, side: state.position, type: 'EXIT_MANUAL',
+                    price: currentPrice, quantity: qty, realizedPnl: exitPnl,
+                  });
                 }
 
+                updatedStates[symbol] = {
+                  ...createEmptySymbolState(),
+                  lastSignal: state.lastSignal,
+                  lastSignalAt: state.lastSignalAt,
+                };
+                botProcessed++;
+                continue;
+              }
+
+              // Verify position still exists (exchange stop may have fired)
+              const holdPositions = await getOpenPositions(client, symbol);
+              const holdPos = holdPositions.find(
+                (p) => p.positionSide.toUpperCase() === state.position && p.positionAmt > 0
+              );
+
+              if (!holdPos) {
+                // Position disappeared (exchange stop fired, liquidation, or manual close)
+                logger.info(`SMA bot ${bot.id}: position gone for ${symbol} (exchange stop/liquidation)`);
+                if (state.stopOrderId) {
+                  await cancelStopOrder(client, symbol, state.stopOrderId);
+                }
+                const qty = config.positionSizeUsdt / state.entryPrice;
+                const exitPnl = state.position === 'SHORT'
+                  ? (state.entryPrice - currentPrice) * qty
+                  : (currentPrice - state.entryPrice) * qty;
+                await recordTrade({
+                  botId: bot.id, symbol, side: state.position, type: 'EXIT_MANUAL',
+                  price: currentPrice, quantity: qty, realizedPnl: exitPnl,
+                });
                 updatedStates[symbol] = {
                   ...createEmptySymbolState(),
                   lastSignal: state.lastSignal,
@@ -303,15 +381,8 @@ export const smaCrossoverWatch = inngest.createFunction(
                   await new Promise((r) => setTimeout(r, 400));
                 }
 
-                const positions = await getOpenPositions(client, symbol);
-                const currentPos = positions.find(
-                  (p) => p.positionSide.toUpperCase() === state.position && p.positionAmt > 0
-                );
-
-                const quantity = currentPos?.positionAmt ?? config.positionSizeUsdt / currentPrice;
-
                 const newStopOrderId = await placeStopOrder(
-                  client, symbol, state.position, trailing.newStopPrice, quantity, pricePrecision
+                  client, symbol, state.position, trailing.newStopPrice, holdPos.positionAmt, pricePrecision
                 );
 
                 updatedStates[symbol] = {

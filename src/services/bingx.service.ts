@@ -1,6 +1,6 @@
-import { eq, and, or, desc, isNull } from 'drizzle-orm';
+import { eq, and, or, desc, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { bingxApiKeys, tradingBots, gridLevels } from '@/db/schema';
+import { bingxApiKeys, tradingBots, gridLevels, botTrades } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
 import { createBingxClient, type BingxClient } from '@/lib/bingx/client';
 import type { InferSelectModel } from 'drizzle-orm';
@@ -954,6 +954,64 @@ export async function getIncome(
   }
 }
 
+// ========== P&L Trade Recording ==========
+
+export type TradeType = 'ENTRY' | 'EXIT_TP' | 'EXIT_TRAILING' | 'EXIT_SIGNAL' | 'EXIT_MANUAL';
+
+export async function recordTrade(params: {
+  botId: string;
+  symbol: string;
+  side: 'LONG' | 'SHORT';
+  type: TradeType;
+  price: number;
+  quantity: number;
+  realizedPnl?: number;
+  orderId?: string | null;
+}): Promise<void> {
+  try {
+    // Duplicate check: skip if same (botId, orderId, type) already exists
+    if (params.orderId) {
+      const existing = await db
+        .select({ id: botTrades.id })
+        .from(botTrades)
+        .where(
+          and(
+            eq(botTrades.botId, params.botId),
+            eq(botTrades.orderId, params.orderId),
+            eq(botTrades.type, params.type)
+          )
+        )
+        .limit(1);
+      if (existing.length > 0) return;
+    }
+
+    await db.insert(botTrades).values({
+      botId: params.botId,
+      symbol: params.symbol,
+      side: params.side,
+      type: params.type,
+      price: String(params.price),
+      quantity: String(params.quantity),
+      realizedPnl: String(params.realizedPnl ?? 0),
+      orderId: params.orderId ?? null,
+    });
+  } catch (err) {
+    console.error('[recordTrade] Failed:', err);
+  }
+}
+
+export async function getBotRealizedPnl(botId: string): Promise<number> {
+  try {
+    const result = await db
+      .select({ total: sql<string>`COALESCE(SUM(${botTrades.realizedPnl}), 0)` })
+      .from(botTrades)
+      .where(eq(botTrades.botId, botId));
+    return Number(result[0]?.total ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export async function getBotDetails(
   userId: string,
   botId: string
@@ -1016,24 +1074,30 @@ export async function getBotDetails(
     }
 
     const priceNow = currentPrice ?? 0;
-    const sym = symbol.toUpperCase().replace(/\s/g, '');
 
     const positionMatchesLevel = (entryPrice: number, priceLevel: number) => {
       const diff = Math.abs(entryPrice - priceLevel) / priceLevel;
       return diff <= POSITION_ENTRY_TOLERANCE_PCT;
     };
 
+    const expectedSide = bot.botType === 'GRID_SHORT' ? 'SHORT' : 'LONG';
     for (const pos of openPositions) {
       const side = String(pos.positionSide ?? 'LONG').toUpperCase();
-      if (side !== 'LONG' && side !== 'BOTH') continue;
+      if (side !== expectedSide && side !== 'BOTH') continue;
 
       const level = levels.find((l) =>
         positionMatchesLevel(pos.entryPrice, Number(l.priceLevel))
       );
       const priceLevel = level ? Number(level.priceLevel) : pos.entryPrice;
-      const tpPrice = priceLevel * (1 + takeProfitPct);
-      const unrealized = (priceNow - pos.entryPrice) * pos.positionAmt;
-      const estimated = (tpPrice - pos.entryPrice) * pos.positionAmt;
+      const tpPrice = side === 'SHORT'
+        ? priceLevel * (1 - takeProfitPct)
+        : priceLevel * (1 + takeProfitPct);
+      const unrealized = side === 'SHORT'
+        ? (pos.entryPrice - priceNow) * pos.positionAmt
+        : (priceNow - pos.entryPrice) * pos.positionAmt;
+      const estimated = side === 'SHORT'
+        ? (pos.entryPrice - tpPrice) * pos.positionAmt
+        : (tpPrice - pos.entryPrice) * pos.positionAmt;
 
       positions.push({
         entryPrice: pos.entryPrice,
@@ -1046,12 +1110,7 @@ export async function getBotDetails(
       unrealizedPnl += unrealized;
     }
 
-    realizedPnl = await getIncome(
-      client,
-      sym,
-      bot.createdAt.getTime(),
-      Date.now()
-    );
+    realizedPnl = await getBotRealizedPnl(bot.id);
   }
 
   return {
@@ -1238,9 +1297,7 @@ export async function getBotsDetailsBatched(
         unrealizedPnl += priceDelta;
       }
 
-      if (client) {
-        realizedPnl = await getIncome(client, symbol, bot.createdAt.getTime(), Date.now());
-      }
+      realizedPnl = await getBotRealizedPnl(bot.id);
     } else {
       // --- Non-grid bots (DCA, Trailing Stop, SMA Crossover, DCA Spot): ---
       // Aggregate positions and income across all symbols
@@ -1266,13 +1323,8 @@ export async function getBotsDetailsBatched(
           unrealizedPnl += priceDelta;
         }
 
-        if (client) {
-          realizedPnl += await getIncome(client, symbol, bot.createdAt.getTime(), Date.now());
-          if (botSymbols.indexOf(symbol) < botSymbols.length - 1) {
-            await sleep(RATE_LIMIT_DELAY_MS);
-          }
-        }
       }
+      realizedPnl = await getBotRealizedPnl(bot.id);
     }
 
     if (i < bots.length - 1) await sleep(RATE_LIMIT_DELAY_MS);

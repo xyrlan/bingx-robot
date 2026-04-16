@@ -1,14 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/services/auth.service';
-import {
-  getUserBots,
-  getUserBotsByApiKey,
-  getBotsDetailsBatched,
-  getBotSymbols,
-  getBingxClient,
-  getBingxClientByApiKeyId,
-  getIncome,
-} from '@/services/bingx.service';
+import { getUserBots, getUserBotsByApiKey, getBotsDetailsBatched, getBotRealizedPnl } from '@/services/bingx.service';
 
 function formatRuntime(createdAt: Date): string {
   const ms = Date.now() - new Date(createdAt).getTime();
@@ -51,32 +43,17 @@ export async function GET(request: Request) {
       realizedPnl: 0,
     }));
 
-    // Fetch realized P&L for stopped bots sequentially (no positions, just income history)
-    const enrichedStopped = [];
-    for (const bot of stoppedBots) {
-      let realizedPnl = 0;
-      try {
-        const client = bot.apiKeyId
-          ? await getBingxClientByApiKeyId(bot.apiKeyId)
-          : await getBingxClient(user.id);
-        if (client) {
-          const symbols = getBotSymbols(bot);
-          for (const sym of symbols) {
-            realizedPnl += await getIncome(client, sym, bot.createdAt.getTime(), Date.now());
-          }
-        }
-      } catch {
-        // If income fetch fails, show 0
-      }
-      enrichedStopped.push({
+    // Stopped bots: read realized P&L from DB (instant, no API calls)
+    const enrichedStopped = await Promise.all(
+      stoppedBots.map(async (bot) => ({
         bot,
         runtime: formatRuntime(bot.createdAt),
         orders: [],
         positions: [],
         unrealizedPnl: 0,
-        realizedPnl,
-      });
-    }
+        realizedPnl: await getBotRealizedPnl(bot.id),
+      }))
+    );
 
     const botOrder = new Map(bots.map((b, i) => [b.id, i]));
     const enriched = [...enrichedRunning, ...enrichedDcaSpot, ...enrichedStopped].sort(

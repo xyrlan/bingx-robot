@@ -18,6 +18,7 @@ export type TrailingStopConfig = {
   highestPrice: number;
   isActivated: boolean;
   entryOrderId: string | null;
+  entryPrice?: number;
 };
 
 export type SMASymbolState = {

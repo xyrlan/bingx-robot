@@ -332,95 +332,77 @@ export function BotsList() {
                     </div>
                   </Accordion.Heading>
                   <Accordion.Panel>
-                    <Accordion.Body className="space-y-4">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                        {[
-                          { label: 'Leverage', value: displayLeverage ? `${displayLeverage}x` : '1x' },
-                          { label: 'Size/Level', value: bot.positionSizeUsdt ? `${Number(bot.positionSizeUsdt)} USDT` : '—' },
-                          { label: 'TP %', value: bot.takeProfitPercentage ? `${Number(bot.takeProfitPercentage)}%` : '—' },
-                          { label: 'Created', value: new Date(bot.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
-                        ].map((item) => (
-                          <div key={item.label} className="bg-default-100 rounded-md px-2 py-1.5">
-                            <p className="text-xs text-default-500">{item.label}</p>
-                            <p className="font-medium font-numeric">{item.value}</p>
-                          </div>
-                        ))}
-                      </div>
-
+                    <Accordion.Body className="space-y-3">
+                      {/* Positions — compact display with USDT value */}
                       {positions.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium mb-2">Open Positions</p>
-                          <div className="bg-default-50 rounded-lg divide-y divide-default-200">
-                            {positions.map((p, i) => (
-                              <div key={i} className="px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4">
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        <div className="bg-default-50 rounded-lg divide-y divide-default-200">
+                          {positions.map((p, i) => {
+                            const usdtValue = p.entryPrice * p.positionAmt;
+                            return (
+                              <div key={i} className="px-3 py-2 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
                                     p.positionSide === 'LONG' ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
                                   }`}>
                                     {p.positionSide}
                                   </span>
-                                  <span className="text-sm font-numeric">
-                                    Entry {p.entryPrice.toFixed(2)} × {p.positionAmt}
+                                  <span className="text-sm font-numeric truncate">
+                                    {p.entryPrice.toFixed(2)}
+                                  </span>
+                                  <span className="text-xs text-default-400 font-numeric shrink-0">
+                                    {usdtValue.toFixed(2)} USDT
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-3 text-sm pl-7 sm:pl-0">
-                                  <span className={`font-numeric ${p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'}`}>
-                                    {formatPnl(p.unrealizedPnl)}
-                                  </span>
-                                  {p.estimatedProfit !== 0 && (
-                                    <span className="text-default-500 text-xs font-numeric">
-                                      Proj. {formatPnl(p.estimatedProfit)}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {orders.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium mb-2">Orders ({orders.filter(o => o.status === 'OPEN').length} open)</p>
-                          <div className="bg-default-50 rounded-lg divide-y divide-default-200">
-                            {orders.map((o, i) => (
-                              <div
-                                key={`${o.priceLevel}-${o.type}-${i}`}
-                                className="px-3 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4"
-                              >
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                    o.type === 'ENTRY' ? 'bg-primary/10 text-primary' : 'bg-warning/10 text-warning'
-                                  }`}>
-                                    {o.type}
-                                  </span>
-                                  <span className="text-sm font-numeric">
-                                    @ {Number(o.priceLevel).toFixed(2)}
-                                    {o.quantity != null && (
-                                      <span className="text-default-400 ml-1">× {o.quantity}</span>
-                                    )}
-                                  </span>
-                                  {o.stopPrice != null && (
-                                    <span className="text-xs text-default-400 font-numeric">
-                                      TP: {o.stopPrice.toFixed(2)}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className={`text-xs font-medium pl-7 sm:pl-0 ${
-                                  o.status === 'OPEN' ? 'text-primary' :
-                                  o.status === 'FILLED' ? 'text-success' :
-                                  'text-default-400'
-                                }`}>
-                                  {o.status}
+                                <span className={`text-sm font-numeric shrink-0 ${p.unrealizedPnl >= 0 ? 'text-success' : 'text-danger'}`}>
+                                  {formatPnl(p.unrealizedPnl)}
                                 </span>
                               </div>
-                            ))}
-                          </div>
+                            );
+                          })}
                         </div>
                       )}
 
+                      {/* Orders — compact summary instead of individual rows */}
+                      {orders.length > 0 && (() => {
+                        const openEntries = orders.filter(o => o.type === 'ENTRY' && o.status === 'OPEN');
+                        const filledEntries = orders.filter(o => o.type === 'ENTRY' && o.status === 'FILLED');
+                        const openTPs = orders.filter(o => o.type === 'TP' && o.status === 'OPEN');
+                        const filledTPs = orders.filter(o => o.type === 'TP' && o.status === 'FILLED');
+                        const entryPrices = openEntries.map(o => Number(o.priceLevel));
+                        const minEntry = entryPrices.length > 0 ? Math.min(...entryPrices) : null;
+                        const maxEntry = entryPrices.length > 0 ? Math.max(...entryPrices) : null;
+
+                        return (
+                          <div className="bg-default-50 rounded-lg p-3 space-y-2 text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="text-default-500">Entry Orders</span>
+                              <span className="font-numeric">
+                                <span className="text-primary">{openEntries.length} open</span>
+                                {filledEntries.length > 0 && (
+                                  <span className="text-success ml-2">{filledEntries.length} filled</span>
+                                )}
+                              </span>
+                            </div>
+                            {minEntry != null && maxEntry != null && (
+                              <div className="text-xs text-default-400 font-numeric">
+                                Range: {minEntry.toFixed(2)} – {maxEntry.toFixed(2)}
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between">
+                              <span className="text-default-500">Take-Profit Orders</span>
+                              <span className="font-numeric">
+                                <span className="text-warning">{openTPs.length} open</span>
+                                {filledTPs.length > 0 && (
+                                  <span className="text-success ml-2">{filledTPs.length} filled</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {orders.length === 0 && positions.length === 0 && (
-                        <p className="text-sm text-default-500">
+                        <p className="text-sm text-default-500 text-center py-2">
                           No open orders or positions
                         </p>
                       )}

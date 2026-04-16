@@ -6,6 +6,7 @@ import {
   getContractInfo,
   getCurrentPrice,
   getOpenPositions,
+  recordTrade,
 } from '@/services/bingx.service';
 import { groupBotsBySymbolAndKey, getClientForBot } from '@/inngest/helpers';
 import {
@@ -68,10 +69,16 @@ export const trailingStopWatch = inngest.createFunction(
               client, symbol, config.positionSizeUsdt, currentPrice, quantityPrecision
             );
             if (orderId) {
+              const qty = config.positionSizeUsdt / currentPrice;
+              await recordTrade({
+                botId: bot.id, symbol, side: 'LONG', type: 'ENTRY',
+                price: currentPrice, quantity: qty, orderId,
+              });
               const updatedConfig: TrailingStopConfig = {
                 ...config,
                 entryOrderId: orderId,
                 highestPrice: currentPrice,
+                entryPrice: currentPrice,
               };
               await db
                 .update(tradingBots)
@@ -97,7 +104,17 @@ export const trailingStopWatch = inngest.createFunction(
           }
 
           if (longPositions.length === 0) {
-            logger.info(`Trailing stop bot ${bot.id}: no position found after retry, stopping`);
+            logger.info(`Trailing stop bot ${bot.id}: no position found after retry (liquidated/manually closed), stopping`);
+            // Record exit at current price — position was closed outside bot control
+            if (config.entryOrderId) {
+              const entryEstimate = config.entryPrice || currentPrice;
+              const qty = config.positionSizeUsdt / entryEstimate;
+              const pnl = (currentPrice - entryEstimate) * qty;
+              await recordTrade({
+                botId: bot.id, symbol, side: 'LONG', type: 'EXIT_MANUAL',
+                price: currentPrice, quantity: qty, realizedPnl: pnl,
+              });
+            }
             await setBotStatus(bot.id, bot.userId, 'STOPPED');
             continue;
           }
@@ -107,7 +124,13 @@ export const trailingStopWatch = inngest.createFunction(
 
           if (action === 'CLOSE') {
             logger.info(`Trailing stop triggered for bot ${bot.id} at ${currentPrice} (highest: ${updatedHighest})`);
-            await closePosition(client, symbol, position.positionAmt, quantityPrecision);
+            const closeOrderId = await closePosition(client, symbol, position.positionAmt, quantityPrecision);
+            const pnl = (currentPrice - position.entryPrice) * position.positionAmt;
+            await recordTrade({
+              botId: bot.id, symbol, side: 'LONG', type: 'EXIT_TRAILING',
+              price: currentPrice, quantity: position.positionAmt, realizedPnl: pnl,
+              orderId: closeOrderId,
+            });
             await setBotStatus(bot.id, bot.userId, 'STOPPED');
             groupProcessed++;
             continue;
