@@ -32,6 +32,26 @@ export const gridBotStartSchema = z.object({
   path: ['priceMin'],
 });
 
+export const smaConfigSchema = z.object({
+  symbols: z.array(z.string().min(1)).min(1).max(20),
+  timeframe: z.enum(['1h', '4h', '1d']).default('4h'),
+  fastPeriod: z.number().int().min(2).max(50).default(3),
+  mediumPeriod: z.number().int().min(5).max(100).default(20),
+  trendPeriod: z.number().int().min(50).max(500).default(150),
+  activationPct: z.number().min(0.1).max(50).default(1.5),
+  trailingPct: z.number().min(0.1).max(20).default(0.5),
+  initialStopPct: z.number().min(0.1).max(20).default(1.5),
+  positionSizeUsdt: z.number().positive(),
+  leverage: z.number().int().min(1).max(125).default(1),
+  marginType: z.enum(['ISOLATED', 'CROSSED', 'SEPARATE_ISOLATED']).default('SEPARATE_ISOLATED'),
+}).refine((data) => data.fastPeriod < data.mediumPeriod, {
+  message: 'fastPeriod must be less than mediumPeriod',
+  path: ['fastPeriod'],
+}).refine((data) => data.mediumPeriod < data.trendPeriod, {
+  message: 'mediumPeriod must be less than trendPeriod',
+  path: ['mediumPeriod'],
+});
+
 export const botStartSchema = z.object({
   botId: z.string().uuid().optional(),
   apiKeyId: z.string().uuid().optional(),

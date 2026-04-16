@@ -10,7 +10,9 @@ import {
   setBotStatus,
 } from '@/services/bingx.service';
 import { getAvailableMargin } from '@/lib/balance';
-import { dcaConfigSchema, trailingStopConfigSchema } from '@/lib/validations/bot-schemas';
+import { dcaConfigSchema, trailingStopConfigSchema, smaConfigSchema } from '@/lib/validations/bot-schemas';
+import { createEmptySymbolState } from '@/services/bots/sma-crossover.service';
+import type { SMAConfig } from '@/services/bots/types';
 
 export async function POST(request: Request) {
   try {
@@ -148,6 +150,51 @@ export async function POST(request: Request) {
         positionSizeUsdt: String(tsConfig.positionSizeUsdt),
         takeProfitPercentage: '0',
         gridCount: 1,
+        apiKeyId,
+      });
+      await setBotStatus(bot.id, user.id, 'RUNNING');
+
+      await inngest.send({
+        name: 'trading/bot.start',
+        data: { userId: user.id, botId: bot.id },
+      });
+
+      return NextResponse.json({ success: true, botId: bot.id });
+    }
+
+    // --- SMA Crossover Bot creation ---
+    if (botType === 'SMA_CROSSOVER') {
+      const parsed = smaConfigSchema.safeParse(config);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: `Invalid SMA config: ${parsed.error.issues.map((e: { message: string }) => e.message).join(', ')}` },
+          { status: 400 }
+        );
+      }
+      const smaConfig = parsed.data;
+
+      // Initialize symbol states
+      const symbolStates: Record<string, ReturnType<typeof createEmptySymbolState>> = {};
+      for (const sym of smaConfig.symbols) {
+        symbolStates[sym] = createEmptySymbolState();
+      }
+
+      const fullConfig: SMAConfig = {
+        ...smaConfig,
+        symbolStates,
+      };
+
+      const bot = await createBot(user.id, {
+        symbol: smaConfig.symbols[0],
+        botType: 'SMA_CROSSOVER',
+        config: fullConfig,
+        priceMin: '0',
+        priceMax: '0',
+        positionSizeUsdt: String(smaConfig.positionSizeUsdt),
+        takeProfitPercentage: '0',
+        gridCount: 1,
+        leverage: smaConfig.leverage,
+        marginType: smaConfig.marginType,
         apiKeyId,
       });
       await setBotStatus(bot.id, user.id, 'RUNNING');

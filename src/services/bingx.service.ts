@@ -120,7 +120,7 @@ export type CreateBotParams = {
   leverage?: number;
   marginType?: string;
   apiKeyId?: string;
-  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT';
+  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER';
   config?: Record<string, unknown>;
 };
 
@@ -387,6 +387,43 @@ export async function getCurrentPrice(
     return null;
   } catch {
     return null;
+  }
+}
+
+export type Kline = {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  time: number;
+};
+
+export async function getKlines(
+  client: BingxClient,
+  symbol: string,
+  interval: string,
+  limit: number
+): Promise<Kline[]> {
+  try {
+    const data = await client.get('/openApi/swap/v3/quote/klines', {
+      symbol,
+      interval,
+      limit: String(limit),
+    });
+
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map((item: Record<string, unknown>) => ({
+        open: Number(item.open ?? 0),
+        high: Number(item.high ?? 0),
+        low: Number(item.low ?? 0),
+        close: Number(item.close ?? 0),
+        time: Number(item.time ?? 0),
+      }))
+      .sort((a: Kline, b: Kline) => a.time - b.time);
+  } catch {
+    return [];
   }
 }
 
