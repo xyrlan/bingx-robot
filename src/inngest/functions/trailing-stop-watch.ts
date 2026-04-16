@@ -78,6 +78,7 @@ export const trailingStopWatch = inngest.createFunction(
                 ...config,
                 entryOrderId: orderId,
                 highestPrice: currentPrice,
+                entryPrice: currentPrice,
               };
               await db
                 .update(tradingBots)
@@ -106,8 +107,8 @@ export const trailingStopWatch = inngest.createFunction(
             logger.info(`Trailing stop bot ${bot.id}: no position found after retry (liquidated/manually closed), stopping`);
             // Record exit at current price — position was closed outside bot control
             if (config.entryOrderId) {
-              const qty = config.positionSizeUsdt / (config.highestPrice || currentPrice);
-              const entryEstimate = config.highestPrice || currentPrice;
+              const entryEstimate = config.entryPrice || currentPrice;
+              const qty = config.positionSizeUsdt / entryEstimate;
               const pnl = (currentPrice - entryEstimate) * qty;
               await recordTrade({
                 botId: bot.id, symbol, side: 'LONG', type: 'EXIT_MANUAL',

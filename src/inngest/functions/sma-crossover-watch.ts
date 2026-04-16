@@ -339,6 +339,35 @@ export const smaCrossoverWatch = inngest.createFunction(
                 continue;
               }
 
+              // Verify position still exists (exchange stop may have fired)
+              const holdPositions = await getOpenPositions(client, symbol);
+              const holdPos = holdPositions.find(
+                (p) => p.positionSide.toUpperCase() === state.position && p.positionAmt > 0
+              );
+
+              if (!holdPos) {
+                // Position disappeared (exchange stop fired, liquidation, or manual close)
+                logger.info(`SMA bot ${bot.id}: position gone for ${symbol} (exchange stop/liquidation)`);
+                if (state.stopOrderId) {
+                  await cancelStopOrder(client, symbol, state.stopOrderId);
+                }
+                const qty = config.positionSizeUsdt / state.entryPrice;
+                const exitPnl = state.position === 'SHORT'
+                  ? (state.entryPrice - currentPrice) * qty
+                  : (currentPrice - state.entryPrice) * qty;
+                await recordTrade({
+                  botId: bot.id, symbol, side: state.position, type: 'EXIT_MANUAL',
+                  price: currentPrice, quantity: qty, realizedPnl: exitPnl,
+                });
+                updatedStates[symbol] = {
+                  ...createEmptySymbolState(),
+                  lastSignal: state.lastSignal,
+                  lastSignalAt: state.lastSignalAt,
+                };
+                botProcessed++;
+                continue;
+              }
+
               // Update trailing stop if price moved
               const needsStopUpdate =
                 trailing.updatedHighest !== state.highestPrice ||
@@ -352,15 +381,8 @@ export const smaCrossoverWatch = inngest.createFunction(
                   await new Promise((r) => setTimeout(r, 400));
                 }
 
-                const positions = await getOpenPositions(client, symbol);
-                const currentPos = positions.find(
-                  (p) => p.positionSide.toUpperCase() === state.position && p.positionAmt > 0
-                );
-
-                const quantity = currentPos?.positionAmt ?? config.positionSizeUsdt / currentPrice;
-
                 const newStopOrderId = await placeStopOrder(
-                  client, symbol, state.position, trailing.newStopPrice, quantity, pricePrecision
+                  client, symbol, state.position, trailing.newStopPrice, holdPos.positionAmt, pricePrecision
                 );
 
                 updatedStates[symbol] = {

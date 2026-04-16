@@ -1080,17 +1080,24 @@ export async function getBotDetails(
       return diff <= POSITION_ENTRY_TOLERANCE_PCT;
     };
 
+    const expectedSide = bot.botType === 'GRID_SHORT' ? 'SHORT' : 'LONG';
     for (const pos of openPositions) {
       const side = String(pos.positionSide ?? 'LONG').toUpperCase();
-      if (side !== 'LONG' && side !== 'BOTH') continue;
+      if (side !== expectedSide && side !== 'BOTH') continue;
 
       const level = levels.find((l) =>
         positionMatchesLevel(pos.entryPrice, Number(l.priceLevel))
       );
       const priceLevel = level ? Number(level.priceLevel) : pos.entryPrice;
-      const tpPrice = priceLevel * (1 + takeProfitPct);
-      const unrealized = (priceNow - pos.entryPrice) * pos.positionAmt;
-      const estimated = (tpPrice - pos.entryPrice) * pos.positionAmt;
+      const tpPrice = side === 'SHORT'
+        ? priceLevel * (1 - takeProfitPct)
+        : priceLevel * (1 + takeProfitPct);
+      const unrealized = side === 'SHORT'
+        ? (pos.entryPrice - priceNow) * pos.positionAmt
+        : (priceNow - pos.entryPrice) * pos.positionAmt;
+      const estimated = side === 'SHORT'
+        ? (pos.entryPrice - tpPrice) * pos.positionAmt
+        : (tpPrice - pos.entryPrice) * pos.positionAmt;
 
       positions.push({
         entryPrice: pos.entryPrice,
