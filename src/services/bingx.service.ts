@@ -120,7 +120,7 @@ export type CreateBotParams = {
   leverage?: number;
   marginType?: string;
   apiKeyId?: string;
-  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT';
+  botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER';
   config?: Record<string, unknown>;
 };
 
@@ -387,6 +387,43 @@ export async function getCurrentPrice(
     return null;
   } catch {
     return null;
+  }
+}
+
+export type Kline = {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  time: number;
+};
+
+export async function getKlines(
+  client: BingxClient,
+  symbol: string,
+  interval: string,
+  limit: number
+): Promise<Kline[]> {
+  try {
+    const data = await client.get('/openApi/swap/v3/quote/klines', {
+      symbol,
+      interval,
+      limit: String(limit),
+    });
+
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map((item: Record<string, unknown>) => ({
+        open: Number(item.open ?? 0),
+        high: Number(item.high ?? 0),
+        low: Number(item.low ?? 0),
+        close: Number(item.close ?? 0),
+        time: Number(item.time ?? 0),
+      }))
+      .sort((a: Kline, b: Kline) => a.time - b.time);
+  } catch {
+    return [];
   }
 }
 
@@ -870,28 +907,47 @@ export async function getIncome(
   endTime?: number
 ): Promise<number> {
   try {
-    const params: Record<string, string | number | undefined> = {
-      symbol: symbol.toUpperCase().replace(/\s/g, ''),
-      limit: 100,
-    };
-    if (startTime != null) params.startTime = startTime;
-    if (endTime != null) params.endTime = endTime;
-    const data = (await client.get('/openApi/swap/v2/user/income', params)) as unknown;
-    let items: Array<{ income?: string | number; symbol?: string }> = [];
-    if (Array.isArray(data)) {
-      items = data;
-    } else if (data && typeof data === 'object') {
-      const o = data as Record<string, unknown>;
-      const arr = Array.isArray(o.data) ? o.data : Array.isArray(o.income) ? o.income : [];
-      items = arr as typeof items;
-    }
-    let total = 0;
+    const PAGE_SIZE = 100;
+    const MAX_PAGES = 20;
     const sym = symbol.toUpperCase().replace(/\s/g, '');
-    for (const item of items) {
-      const itemSym = String(item?.symbol ?? '').toUpperCase();
-      if (itemSym && itemSym !== sym) continue;
-      total += Number(item?.income ?? 0);
+    let total = 0;
+    let currentStart = startTime;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const params: Record<string, string | number | undefined> = {
+        symbol: sym,
+        limit: PAGE_SIZE,
+      };
+      if (currentStart != null) params.startTime = currentStart;
+      if (endTime != null) params.endTime = endTime;
+
+      const data = (await client.get('/openApi/swap/v2/user/income', params)) as unknown;
+      let items: Array<{ income?: string | number; symbol?: string; time?: number }> = [];
+      if (Array.isArray(data)) {
+        items = data;
+      } else if (data && typeof data === 'object') {
+        const o = data as Record<string, unknown>;
+        const arr = Array.isArray(o.data) ? o.data : Array.isArray(o.income) ? o.income : [];
+        items = arr as typeof items;
+      }
+
+      if (items.length === 0) break;
+
+      for (const item of items) {
+        const itemSym = String(item?.symbol ?? '').toUpperCase();
+        if (itemSym && itemSym !== sym) continue;
+        total += Number(item?.income ?? 0);
+      }
+
+      // If we got fewer items than the page size, we've reached the end
+      if (items.length < PAGE_SIZE) break;
+
+      // Move startTime past the last item's time to get next page
+      const lastTime = Math.max(...items.map((i) => Number(i?.time ?? 0)));
+      if (lastTime <= (currentStart ?? 0)) break; // safety: avoid infinite loop
+      currentStart = lastTime + 1;
     }
+
     return total;
   } catch {
     return 0;
@@ -1009,21 +1065,57 @@ export async function getBotDetails(
 }
 
 /**
- * Batch variant: fetches BingX data once per unique symbol to avoid rate limits.
- * Processes bots sequentially with delays between BingX calls.
+ * Returns all symbols a bot operates on. For SMA_CROSSOVER bots,
+ * this includes all symbols from config.symbols.
+ */
+export function getBotSymbols(bot: TradingBot): string[] {
+  const primary = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
+
+  if (bot.botType === 'SMA_CROSSOVER' && bot.config && typeof bot.config === 'object') {
+    const cfg = bot.config as Record<string, unknown>;
+    if (Array.isArray(cfg.symbols) && cfg.symbols.length > 0) {
+      return (cfg.symbols as string[]).map((s) => s.trim().toUpperCase());
+    }
+  }
+
+  return [primary];
+}
+
+/**
+ * Whether a bot type uses grid levels for order/position tracking.
+ */
+function isGridBot(botType: string | null): boolean {
+  return botType === 'GRID_LONG' || botType === 'GRID_SHORT';
+}
+
+/**
+ * Batch variant: fetches BingX data once per unique (apiKey, symbol) pair.
+ * Handles all bot types: grid, DCA, trailing stop, SMA crossover, DCA spot.
+ * Groups bots by apiKeyId to use the correct credentials for each.
  */
 export async function getBotsDetailsBatched(
   userId: string,
   bots: TradingBot[]
 ): Promise<BotDetails[]> {
+  if (bots.length === 0) return [];
+
   const RATE_LIMIT_DELAY_MS = 400;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  // Use first bot's apiKeyId, or fall back to userId
-  const firstBot = bots[0];
-  const client = firstBot?.apiKeyId
-    ? await getBingxClientByApiKeyId(firstBot.apiKeyId)
-    : await getBingxClient(userId);
+  // Resolve API clients per apiKeyId (or userId as fallback)
+  const clientCache = new Map<string, BingxClient | null>();
+  async function getClientForBotLocal(bot: TradingBot): Promise<BingxClient | null> {
+    const key = bot.apiKeyId ?? `user:${userId}`;
+    if (!clientCache.has(key)) {
+      const c = bot.apiKeyId
+        ? await getBingxClientByApiKeyId(bot.apiKeyId)
+        : await getBingxClient(userId);
+      clientCache.set(key, c);
+    }
+    return clientCache.get(key) ?? null;
+  }
+
+  // Build symbol cache keyed by "apiKeyOrUserId:symbol"
   const symbolCache = new Map<
     string,
     {
@@ -1033,95 +1125,157 @@ export async function getBotsDetailsBatched(
     }
   >();
 
-  const uniqueSymbols = [...new Set(bots.map((b) => (String(b.symbol ?? '').trim().toUpperCase() || 'BTC-USDT')))];
-  for (const symbol of uniqueSymbols) {
-    if (!client) break;
-    const [openOrders, openPositions, currentPrice] = await Promise.all([
-      getOpenOrders(client, symbol),
-      getOpenPositions(client, symbol),
-      getCurrentPrice(client, symbol),
-    ]);
-    symbolCache.set(symbol, { openOrders, openPositions, currentPrice });
-    if (uniqueSymbols.indexOf(symbol) < uniqueSymbols.length - 1) {
-      await sleep(RATE_LIMIT_DELAY_MS);
+  // Collect all (clientKey, symbol) pairs we need
+  const symbolsToFetch = new Map<string, Set<string>>();
+  for (const bot of bots) {
+    const clientKey = bot.apiKeyId ?? `user:${userId}`;
+    if (!symbolsToFetch.has(clientKey)) symbolsToFetch.set(clientKey, new Set());
+    for (const sym of getBotSymbols(bot)) {
+      symbolsToFetch.get(clientKey)!.add(sym);
+    }
+  }
+
+  // Fetch market data per (clientKey, symbol) pair
+  for (const [clientKey, symbols] of symbolsToFetch) {
+    const sampleBot = bots.find((b) => (b.apiKeyId ?? `user:${userId}`) === clientKey);
+    if (!sampleBot) continue;
+    const client = await getClientForBotLocal(sampleBot);
+    if (!client) continue;
+
+    let first = true;
+    for (const symbol of symbols) {
+      if (!first) await sleep(RATE_LIMIT_DELAY_MS);
+      first = false;
+      const [openOrders, openPositions, currentPrice] = await Promise.all([
+        getOpenOrders(client, symbol),
+        getOpenPositions(client, symbol),
+        getCurrentPrice(client, symbol),
+      ]);
+      symbolCache.set(`${clientKey}:${symbol}`, { openOrders, openPositions, currentPrice });
     }
   }
 
   const results: BotDetails[] = [];
   for (let i = 0; i < bots.length; i++) {
     const bot = bots[i];
-    const symbol = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
-    const levels = await getGridLevelsByBotId(bot.id);
-    const takeProfitPct = Number(bot.takeProfitPercentage) / 100;
+    const botSymbols = getBotSymbols(bot);
+    const clientKey = bot.apiKeyId ?? `user:${userId}`;
+    const client = await getClientForBotLocal(bot);
     const runtime = formatRuntime(bot.createdAt);
-    const cached = client ? symbolCache.get(symbol) : null;
-    const openOrders = cached?.openOrders ?? [];
-    const openPositions = cached?.openPositions ?? [];
-    const currentPrice = cached?.currentPrice ?? 0;
-    const openOrderIds = new Set(openOrders.map((o) => String(o.orderId)));
-
     const orders: BotOrderInfo[] = [];
-    for (const level of levels) {
-      const priceLevel = Number(level.priceLevel);
-      const tpStopPrice = priceLevel * (1 + takeProfitPct);
-      if (level.orderId) {
-        const openOrder = openOrders.find((o) => String(o.orderId) === level.orderId);
-        orders.push({
-          priceLevel: String(priceLevel),
-          type: 'ENTRY',
-          orderId: level.orderId,
-          status: openOrderIds.has(level.orderId) ? 'OPEN' : 'FILLED',
-          price: openOrder ? Number(openOrder.price ?? 0) : priceLevel,
-          quantity: openOrder ? Number((openOrder as { origQty?: string }).origQty ?? 0) : undefined,
-        });
-      }
-      if (level.tpOrderId) {
-        const openOrder = openOrders.find((o) => String(o.orderId) === level.tpOrderId);
-        orders.push({
-          priceLevel: String(priceLevel),
-          type: 'TP',
-          orderId: level.tpOrderId,
-          status: openOrderIds.has(level.tpOrderId) ? 'OPEN' : 'FILLED',
-          stopPrice: openOrder ? Number(openOrder.stopPrice ?? 0) : tpStopPrice,
-        });
-      }
-    }
-
-    const positionMatchesLevel = (entryPrice: number, priceLevel: number) => {
-      const diff = Math.abs(entryPrice - priceLevel) / priceLevel;
-      return diff <= POSITION_ENTRY_TOLERANCE_PCT;
-    };
     const positions: BotPositionInfo[] = [];
     let unrealizedPnl = 0;
-    for (const pos of openPositions) {
-      const side = String(pos.positionSide ?? 'LONG').toUpperCase();
-      if (side !== 'LONG' && side !== 'BOTH') continue;
-      const level = levels.find((l) => positionMatchesLevel(pos.entryPrice, Number(l.priceLevel)));
-      const priceLevel = level ? Number(level.priceLevel) : pos.entryPrice;
-      const tpPrice = priceLevel * (1 + takeProfitPct);
-      const unrealized = (currentPrice - pos.entryPrice) * pos.positionAmt;
-      const estimated = (tpPrice - pos.entryPrice) * pos.positionAmt;
-      positions.push({
-        entryPrice: pos.entryPrice,
-        positionAmt: pos.positionAmt,
-        positionSide: pos.positionSide,
-        unrealizedPnl: unrealized,
-        estimatedProfit: estimated,
-        leverage: pos.leverage,
-      });
-      unrealizedPnl += unrealized;
+    let realizedPnl = 0;
+
+    // --- Grid bots: match positions to grid levels ---
+    if (isGridBot(bot.botType)) {
+      const symbol = botSymbols[0];
+      const cacheKey = `${clientKey}:${symbol}`;
+      const levels = await getGridLevelsByBotId(bot.id);
+      const takeProfitPct = Number(bot.takeProfitPercentage) / 100;
+      const cached = client ? symbolCache.get(cacheKey) : null;
+      const openOrders = cached?.openOrders ?? [];
+      const openPositions = cached?.openPositions ?? [];
+      const currentPrice = cached?.currentPrice ?? 0;
+      const openOrderIds = new Set(openOrders.map((o) => String(o.orderId)));
+      const expectedSide = bot.botType === 'GRID_SHORT' ? 'SHORT' : 'LONG';
+
+      for (const level of levels) {
+        const priceLevel = Number(level.priceLevel);
+        const tpStopPrice = expectedSide === 'SHORT'
+          ? priceLevel * (1 - takeProfitPct)
+          : priceLevel * (1 + takeProfitPct);
+        if (level.orderId) {
+          const openOrder = openOrders.find((o) => String(o.orderId) === level.orderId);
+          orders.push({
+            priceLevel: String(priceLevel),
+            type: 'ENTRY',
+            orderId: level.orderId,
+            status: openOrderIds.has(level.orderId) ? 'OPEN' : 'FILLED',
+            price: openOrder ? Number(openOrder.price ?? 0) : priceLevel,
+            quantity: openOrder ? Number((openOrder as { origQty?: string }).origQty ?? 0) : undefined,
+          });
+        }
+        if (level.tpOrderId) {
+          const openOrder = openOrders.find((o) => String(o.orderId) === level.tpOrderId);
+          orders.push({
+            priceLevel: String(priceLevel),
+            type: 'TP',
+            orderId: level.tpOrderId,
+            status: openOrderIds.has(level.tpOrderId) ? 'OPEN' : 'FILLED',
+            stopPrice: openOrder ? Number(openOrder.stopPrice ?? 0) : tpStopPrice,
+          });
+        }
+      }
+
+      const positionMatchesLevel = (entryPrice: number, priceLevel: number) => {
+        const diff = Math.abs(entryPrice - priceLevel) / priceLevel;
+        return diff <= POSITION_ENTRY_TOLERANCE_PCT;
+      };
+
+      for (const pos of openPositions) {
+        const side = String(pos.positionSide ?? 'LONG').toUpperCase();
+        if (side !== expectedSide && side !== 'BOTH') continue;
+        const level = levels.find((l) => positionMatchesLevel(pos.entryPrice, Number(l.priceLevel)));
+        const priceLevel = level ? Number(level.priceLevel) : pos.entryPrice;
+        const tpPrice = expectedSide === 'SHORT'
+          ? priceLevel * (1 - takeProfitPct)
+          : priceLevel * (1 + takeProfitPct);
+        const priceDelta = side === 'SHORT'
+          ? (pos.entryPrice - currentPrice) * pos.positionAmt
+          : (currentPrice - pos.entryPrice) * pos.positionAmt;
+        const estimated = side === 'SHORT'
+          ? (pos.entryPrice - tpPrice) * pos.positionAmt
+          : (tpPrice - pos.entryPrice) * pos.positionAmt;
+        positions.push({
+          entryPrice: pos.entryPrice,
+          positionAmt: pos.positionAmt,
+          positionSide: pos.positionSide,
+          unrealizedPnl: priceDelta,
+          estimatedProfit: estimated,
+          leverage: pos.leverage,
+        });
+        unrealizedPnl += priceDelta;
+      }
+
+      if (client) {
+        realizedPnl = await getIncome(client, symbol, bot.createdAt.getTime(), Date.now());
+      }
+    } else {
+      // --- Non-grid bots (DCA, Trailing Stop, SMA Crossover, DCA Spot): ---
+      // Aggregate positions and income across all symbols
+      for (const symbol of botSymbols) {
+        const cacheKey = `${clientKey}:${symbol}`;
+        const cached = client ? symbolCache.get(cacheKey) : null;
+        const openPositions = cached?.openPositions ?? [];
+        const currentPrice = cached?.currentPrice ?? 0;
+
+        for (const pos of openPositions) {
+          const side = String(pos.positionSide ?? 'LONG').toUpperCase();
+          const priceDelta = side === 'SHORT'
+            ? (pos.entryPrice - currentPrice) * pos.positionAmt
+            : (currentPrice - pos.entryPrice) * pos.positionAmt;
+          positions.push({
+            entryPrice: pos.entryPrice,
+            positionAmt: pos.positionAmt,
+            positionSide: pos.positionSide,
+            unrealizedPnl: priceDelta,
+            estimatedProfit: 0,
+            leverage: pos.leverage,
+          });
+          unrealizedPnl += priceDelta;
+        }
+
+        if (client) {
+          realizedPnl += await getIncome(client, symbol, bot.createdAt.getTime(), Date.now());
+          if (botSymbols.indexOf(symbol) < botSymbols.length - 1) {
+            await sleep(RATE_LIMIT_DELAY_MS);
+          }
+        }
+      }
     }
 
-    let realizedPnl = 0;
-    if (client) {
-      realizedPnl = await getIncome(
-        client,
-        symbol,
-        bot.createdAt.getTime(),
-        Date.now()
-      );
-      if (i < bots.length - 1) await sleep(RATE_LIMIT_DELAY_MS);
-    }
+    if (i < bots.length - 1) await sleep(RATE_LIMIT_DELAY_MS);
 
     results.push({
       bot,

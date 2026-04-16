@@ -27,6 +27,7 @@ export const botTypeEnum = pgEnum('bot_type', [
   'DCA',
   'TRAILING_STOP',
   'DCA_SPOT',
+  'SMA_CROSSOVER',
 ]);
 
 // ==========================================

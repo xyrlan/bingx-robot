@@ -35,7 +35,7 @@ type BotDetails = {
     takeProfitPercentage?: string;
     leverage?: number;
     status: 'STOPPED' | 'RUNNING';
-    botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT';
+    botType?: 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER';
     config?: Record<string, unknown>;
     createdAt: string;
   };
@@ -206,6 +206,7 @@ export function BotsList() {
                               bot.botType === 'DCA' ? 'bg-accent/10 text-accent' :
                               bot.botType === 'TRAILING_STOP' ? 'bg-warning/10 text-warning' :
                               bot.botType === 'DCA_SPOT' ? 'bg-primary/10 text-primary' :
+                              bot.botType === 'SMA_CROSSOVER' ? 'bg-secondary/10 text-secondary' :
                               'bg-success/10 text-success'
                             }`}>
                               {bot.botType === 'GRID_LONG' ? 'Grid Long' :
@@ -213,6 +214,7 @@ export function BotsList() {
                                bot.botType === 'DCA' ? 'DCA' :
                                bot.botType === 'TRAILING_STOP' ? 'Trailing Stop' :
                                bot.botType === 'DCA_SPOT' ? 'DCA Spot' :
+                               bot.botType === 'SMA_CROSSOVER' ? 'SMA Crossover' :
                                'Grid Long'}
                             </span>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -223,9 +225,11 @@ export function BotsList() {
                               {bot.status}
                             </span>
                           </p>
+                          {bot.botType !== 'SMA_CROSSOVER' && (
                           <p className="text-sm text-default-500 font-numeric">
                             {Number(bot.priceMin).toFixed(2)} – {Number(bot.priceMax).toFixed(2)} • {bot.gridCount ?? 1} grids
                           </p>
+                          )}
                           <p className="text-xs text-default-400">
                             {displayLeverage && `${displayLeverage}x`}
                             {bot.positionSizeUsdt && ` • ${Number(bot.positionSizeUsdt)} USDT/level`}
@@ -277,6 +281,17 @@ export function BotsList() {
                               {(bot.config as Record<string, unknown>).isActivated ? 'Trailing active' : 'Waiting for activation'}
                             </span>
                           )}
+                          {bot.botType === 'SMA_CROSSOVER' && bot.config && (() => {
+                            const cfg = bot.config as Record<string, unknown>;
+                            const symbols = (cfg.symbols as string[]) ?? [];
+                            const states = (cfg.symbolStates as Record<string, Record<string, unknown>>) ?? {};
+                            const activePositions = Object.values(states).filter((s) => s.position != null).length;
+                            return (
+                              <span className="text-xs text-muted">
+                                SMA {String(cfg.fastPeriod ?? 3)}/{String(cfg.mediumPeriod ?? 20)}/{String(cfg.trendPeriod ?? 150)} • {String(cfg.timeframe ?? '4h')} • ADX&gt;{String(cfg.adxThreshold ?? 25)} • {symbols.length} symbols • {activePositions} active
+                              </span>
+                            );
+                          })()}
                         </div>
                         <Accordion.Indicator />
                       </Accordion.Trigger>

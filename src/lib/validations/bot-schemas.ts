@@ -32,6 +32,32 @@ export const gridBotStartSchema = z.object({
   path: ['priceMin'],
 });
 
+export const smaConfigSchema = z.object({
+  symbols: z.array(z.string().min(1)).min(1).max(20),
+  timeframe: z.enum(['1h', '4h', '1d']).default('4h'),
+  fastPeriod: z.number().int().min(2).max(50).default(3),
+  mediumPeriod: z.number().int().min(5).max(100).default(20),
+  trendPeriod: z.number().int().min(50).max(500).default(150),
+  adxPeriod: z.number().int().min(5).max(50).default(14),
+  adxThreshold: z.number().min(10).max(50).default(25),
+  atrPeriod: z.number().int().min(5).max(50).default(14),
+  activationAtrMult: z.number().min(0.5).max(10).default(3),
+  trailingAtrMult: z.number().min(0.1).max(5).default(1),
+  initialStopAtrMult: z.number().min(0.5).max(10).default(2),
+  positionSizeUsdt: z.number().min(1),
+  leverage: z.number().int().min(1).max(125).default(1),
+  marginType: z.enum(['ISOLATED', 'CROSSED', 'SEPARATE_ISOLATED']).default('SEPARATE_ISOLATED'),
+}).refine((data) => data.fastPeriod < data.mediumPeriod, {
+  message: 'fastPeriod must be less than mediumPeriod',
+  path: ['fastPeriod'],
+}).refine((data) => data.mediumPeriod < data.trendPeriod, {
+  message: 'mediumPeriod must be less than trendPeriod',
+  path: ['mediumPeriod'],
+}).refine((data) => new Set(data.symbols).size === data.symbols.length, {
+  message: 'Symbols must not contain duplicates',
+  path: ['symbols'],
+});
+
 export const botStartSchema = z.object({
   botId: z.string().uuid().optional(),
   apiKeyId: z.string().uuid().optional(),
