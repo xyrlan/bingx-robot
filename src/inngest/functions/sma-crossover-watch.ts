@@ -12,6 +12,8 @@ import { getClientForBot } from '@/inngest/helpers';
 import {
   detectSignal,
   checkSMATrailingStop,
+  calculateATR,
+  calculateADX,
   placeEntryOrder,
   placeStopOrder,
   closePositionMarket,
@@ -99,8 +101,19 @@ export const smaCrossoverWatch = inngest.createFunction(
               continue;
             }
 
-            // Extract close prices from closed candles only (exclude last — it's in-progress)
-            const closes = klines.slice(0, -1).map((k) => k.close);
+            // Use closed candles only (exclude last — it's in-progress)
+            const closedKlines = klines.slice(0, -1);
+            const closes = closedKlines.map((k) => k.close);
+
+            // Calculate ATR and ADX from closed candles
+            const atr = calculateATR(closedKlines, config.atrPeriod);
+            const adx = calculateADX(closedKlines, config.adxPeriod);
+
+            if (!atr) {
+              logger.info(`SMA bot ${bot.id}: not enough data for ATR calculation on ${symbol}`);
+              updatedStates[symbol] = state;
+              continue;
+            }
 
             const contractInfo = await getContractInfo(client, symbol);
             const pricePrecision = contractInfo?.pricePrecision ?? 2;
@@ -120,9 +133,14 @@ export const smaCrossoverWatch = inngest.createFunction(
               trendPeriod: config.trendPeriod,
             });
 
-            // --- CASE: Trend-confirmed signal, no position → open new ---
+            // --- CASE: Trend-confirmed signal, no position → open new (if ADX allows) ---
             if (signal && !state.position) {
-              logger.info(`SMA bot ${bot.id}: ${signal} signal for ${symbol} at ${currentPrice}`);
+              if (adx != null && adx < config.adxThreshold) {
+                logger.info(`SMA bot ${bot.id}: ${signal} signal for ${symbol} BLOCKED by ADX (${adx.toFixed(1)} < ${config.adxThreshold})`);
+                updatedStates[symbol] = { ...state, lastAtr: atr };
+                continue;
+              }
+              logger.info(`SMA bot ${bot.id}: ${signal} signal for ${symbol} at ${currentPrice} (ADX: ${adx?.toFixed(1) ?? 'N/A'})`);
 
               await ensureMarginTypeAndLeverage(client, symbol, config.marginType, config.leverage);
 
@@ -132,9 +150,10 @@ export const smaCrossoverWatch = inngest.createFunction(
 
               if (orderId) {
                 const quantity = config.positionSizeUsdt / currentPrice;
+                const stopDistance = config.initialStopAtrMult * atr;
                 const initialStop = signal === 'LONG'
-                  ? currentPrice * (1 - config.initialStopPct / 100)
-                  : currentPrice * (1 + config.initialStopPct / 100);
+                  ? currentPrice - stopDistance
+                  : currentPrice + stopDistance;
 
                 const stopOrderId = await placeStopOrder(
                   client, symbol, signal, initialStop, quantity, pricePrecision
@@ -150,10 +169,11 @@ export const smaCrossoverWatch = inngest.createFunction(
                   trailingActivated: false,
                   lastSignal: signal,
                   lastSignalAt: Date.now(),
+                  lastAtr: atr,
                 };
                 botProcessed++;
               } else {
-                updatedStates[symbol] = state;
+                updatedStates[symbol] = { ...state, lastAtr: atr };
               }
               continue;
             }
@@ -183,8 +203,9 @@ export const smaCrossoverWatch = inngest.createFunction(
                 );
               }
 
-              // Open reverse ONLY if trend confirms the new direction
-              if (signal) {
+              // Open reverse ONLY if trend confirms AND ADX allows
+              const adxAllowsReverse = adx == null || adx >= config.adxThreshold;
+              if (signal && adxAllowsReverse) {
                 await ensureMarginTypeAndLeverage(client, symbol, config.marginType, config.leverage);
 
                 const orderId = await placeEntryOrder(
@@ -193,9 +214,10 @@ export const smaCrossoverWatch = inngest.createFunction(
 
                 if (orderId) {
                   const quantity = config.positionSizeUsdt / currentPrice;
+                  const stopDistance = config.initialStopAtrMult * atr;
                   const initialStop = signal === 'LONG'
-                    ? currentPrice * (1 - config.initialStopPct / 100)
-                    : currentPrice * (1 + config.initialStopPct / 100);
+                    ? currentPrice - stopDistance
+                    : currentPrice + stopDistance;
 
                   const stopOrderId = await placeStopOrder(
                     client, symbol, signal, initialStop, quantity, pricePrecision
@@ -211,6 +233,7 @@ export const smaCrossoverWatch = inngest.createFunction(
                     trailingActivated: false,
                     lastSignal: signal,
                     lastSignalAt: Date.now(),
+                    lastAtr: atr,
                   };
                 } else {
                   updatedStates[symbol] = createEmptySymbolState();
@@ -226,7 +249,8 @@ export const smaCrossoverWatch = inngest.createFunction(
 
             // --- CASE: In position, no crossover → manage trailing stop ---
             if (state.position && state.entryPrice) {
-              const trailing = checkSMATrailingStop(state, currentPrice, config);
+              const trailingAtr = atr ?? state.lastAtr ?? 0;
+              const trailing = checkSMATrailingStop(state, currentPrice, config, trailingAtr);
 
               if (trailing.action === 'CLOSE') {
                 logger.info(`SMA bot ${bot.id}: trailing stop hit for ${symbol} at ${currentPrice}`);
@@ -284,19 +308,21 @@ export const smaCrossoverWatch = inngest.createFunction(
                   highestPrice: trailing.updatedHighest,
                   lowestPrice: trailing.updatedLowest,
                   trailingActivated: trailing.action === 'ACTIVATE' ? true : state.trailingActivated,
+                  lastAtr: atr,
                 };
               } else {
                 updatedStates[symbol] = {
                   ...state,
                   highestPrice: trailing.updatedHighest,
                   lowestPrice: trailing.updatedLowest,
+                  lastAtr: atr,
                 };
               }
               continue;
             }
 
             // No signal, no position — nothing to do
-            updatedStates[symbol] = state;
+            updatedStates[symbol] = { ...state, lastAtr: atr };
           } catch (err) {
             logger.error(`SMA bot ${bot.id}: error processing ${symbol}: ${err}`);
             updatedStates[symbol] = updatedStates[symbol] ?? createEmptySymbolState();

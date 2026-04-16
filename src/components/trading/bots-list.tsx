@@ -286,7 +286,7 @@ export function BotsList() {
                             const activePositions = Object.values(states).filter((s) => s.position != null).length;
                             return (
                               <span className="text-xs text-muted">
-                                SMA {String(cfg.fastPeriod ?? 3)}/{String(cfg.mediumPeriod ?? 20)}/{String(cfg.trendPeriod ?? 150)} • {String(cfg.timeframe ?? '4h')} • {symbols.length} symbols • {activePositions} active
+                                SMA {String(cfg.fastPeriod ?? 3)}/{String(cfg.mediumPeriod ?? 20)}/{String(cfg.trendPeriod ?? 150)} • {String(cfg.timeframe ?? '4h')} • ADX&gt;{String(cfg.adxThreshold ?? 25)} • {symbols.length} symbols • {activePositions} active
                               </span>
                             );
                           })()}

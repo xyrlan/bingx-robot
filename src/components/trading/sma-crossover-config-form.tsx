@@ -21,10 +21,15 @@ export function SMACrossoverConfigForm() {
   const [mediumPeriod, setMediumPeriod] = useState('20');
   const [trendPeriod, setTrendPeriod] = useState('150');
 
-  // Trailing stop
-  const [activationPct, setActivationPct] = useState('1.5');
-  const [trailingPct, setTrailingPct] = useState('0.5');
-  const [initialStopPct, setInitialStopPct] = useState('1.5');
+  // ADX filter
+  const [adxPeriod, setAdxPeriod] = useState('14');
+  const [adxThreshold, setAdxThreshold] = useState('25');
+
+  // ATR trailing stop
+  const [atrPeriod, setAtrPeriod] = useState('14');
+  const [activationAtrMult, setActivationAtrMult] = useState('3');
+  const [trailingAtrMult, setTrailingAtrMult] = useState('1');
+  const [initialStopAtrMult, setInitialStopAtrMult] = useState('2');
 
   // Position sizing
   const [positionSizeUsdt, setPositionSizeUsdt] = useState('50');
@@ -69,9 +74,12 @@ export function SMACrossoverConfigForm() {
             fastPeriod: fast,
             mediumPeriod: medium,
             trendPeriod: trend,
-            activationPct: Number(activationPct),
-            trailingPct: Number(trailingPct),
-            initialStopPct: Number(initialStopPct),
+            adxPeriod: Number(adxPeriod),
+            adxThreshold: Number(adxThreshold),
+            atrPeriod: Number(atrPeriod),
+            activationAtrMult: Number(activationAtrMult),
+            trailingAtrMult: Number(trailingAtrMult),
+            initialStopAtrMult: Number(initialStopAtrMult),
             positionSizeUsdt: Number(positionSizeUsdt),
             leverage: Number(leverage),
             marginType,
@@ -170,41 +178,83 @@ export function SMACrossoverConfigForm() {
             </div>
           </div>
 
-          {/* Trailing Stop */}
+          {/* ADX Filter */}
           <div>
-            <h4 className="text-sm font-medium mb-3 text-default-700">Trailing Stop</h4>
-            <div className="grid grid-cols-3 gap-4">
+            <h4 className="text-sm font-medium mb-3 text-default-700">ADX Filter</h4>
+            <p className="text-xs text-default-500 mb-3">Blocks entries when market is not trending (ADX below threshold)</p>
+            <div className="grid grid-cols-2 gap-4">
               <TextField variant="primary" isDisabled={loading}>
-                <Label>Activation (%)</Label>
+                <Label>ADX Period</Label>
                 <Input
-                  name="activationPct"
+                  name="adxPeriod"
                   type="text"
-                  inputMode="decimal"
-                  value={activationPct}
-                  onChange={(e) => setActivationPct(e.target.value)}
-                  placeholder="1.5"
+                  inputMode="numeric"
+                  value={adxPeriod}
+                  onChange={(e) => setAdxPeriod(e.target.value)}
+                  placeholder="14"
                 />
               </TextField>
               <TextField variant="primary" isDisabled={loading}>
-                <Label>Trail (%)</Label>
+                <Label>ADX Threshold</Label>
                 <Input
-                  name="trailingPct"
+                  name="adxThreshold"
                   type="text"
-                  inputMode="decimal"
-                  value={trailingPct}
-                  onChange={(e) => setTrailingPct(e.target.value)}
-                  placeholder="0.5"
+                  inputMode="numeric"
+                  value={adxThreshold}
+                  onChange={(e) => setAdxThreshold(e.target.value)}
+                  placeholder="25"
+                />
+              </TextField>
+            </div>
+          </div>
+
+          {/* ATR Trailing Stop */}
+          <div>
+            <h4 className="text-sm font-medium mb-3 text-default-700">ATR Trailing Stop</h4>
+            <p className="text-xs text-default-500 mb-3">Volatility-adaptive stop distances using ATR multipliers</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <TextField variant="primary" isDisabled={loading}>
+                <Label>ATR Period</Label>
+                <Input
+                  name="atrPeriod"
+                  type="text"
+                  inputMode="numeric"
+                  value={atrPeriod}
+                  onChange={(e) => setAtrPeriod(e.target.value)}
+                  placeholder="14"
                 />
               </TextField>
               <TextField variant="primary" isDisabled={loading}>
-                <Label>Initial Stop (%)</Label>
+                <Label>Activation (ATR x)</Label>
                 <Input
-                  name="initialStopPct"
+                  name="activationAtrMult"
                   type="text"
                   inputMode="decimal"
-                  value={initialStopPct}
-                  onChange={(e) => setInitialStopPct(e.target.value)}
-                  placeholder="1.5"
+                  value={activationAtrMult}
+                  onChange={(e) => setActivationAtrMult(e.target.value)}
+                  placeholder="3"
+                />
+              </TextField>
+              <TextField variant="primary" isDisabled={loading}>
+                <Label>Trail (ATR x)</Label>
+                <Input
+                  name="trailingAtrMult"
+                  type="text"
+                  inputMode="decimal"
+                  value={trailingAtrMult}
+                  onChange={(e) => setTrailingAtrMult(e.target.value)}
+                  placeholder="1"
+                />
+              </TextField>
+              <TextField variant="primary" isDisabled={loading}>
+                <Label>Initial Stop (ATR x)</Label>
+                <Input
+                  name="initialStopAtrMult"
+                  type="text"
+                  inputMode="decimal"
+                  value={initialStopAtrMult}
+                  onChange={(e) => setInitialStopAtrMult(e.target.value)}
+                  placeholder="2"
                 />
               </TextField>
             </div>

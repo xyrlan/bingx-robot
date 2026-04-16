@@ -5,6 +5,7 @@ import {
   toSafeIdString,
   cancelBatchOrders,
 } from '@/services/bingx.service';
+import type { Kline } from '@/services/bingx.service';
 import type { SMAConfig, SMASymbolState } from './types';
 
 // ==========================================
@@ -15,6 +16,95 @@ export function calculateSMA(closes: number[], period: number): number | null {
   if (closes.length < period) return null;
   const slice = closes.slice(-period);
   return slice.reduce((sum, v) => sum + v, 0) / period;
+}
+
+export function calculateATR(klines: Kline[], period: number): number | null {
+  if (klines.length < period + 1) return null;
+
+  const trueRanges: number[] = [];
+  for (let i = 1; i < klines.length; i++) {
+    const high = klines[i].high;
+    const low = klines[i].low;
+    const prevClose = klines[i - 1].close;
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trueRanges.push(tr);
+  }
+
+  if (trueRanges.length < period) return null;
+
+  // Initial ATR = simple average of first `period` TRs
+  let atr = trueRanges.slice(0, period).reduce((s, v) => s + v, 0) / period;
+
+  // Smoothed ATR (Wilder's method) for remaining values
+  for (let i = period; i < trueRanges.length; i++) {
+    atr = (atr * (period - 1) + trueRanges[i]) / period;
+  }
+
+  return atr;
+}
+
+export function calculateADX(klines: Kline[], period: number): number | null {
+  if (klines.length < period * 2 + 1) return null;
+
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const trueRanges: number[] = [];
+
+  for (let i = 1; i < klines.length; i++) {
+    const high = klines[i].high;
+    const low = klines[i].low;
+    const prevHigh = klines[i - 1].high;
+    const prevLow = klines[i - 1].low;
+    const prevClose = klines[i - 1].close;
+
+    const upMove = high - prevHigh;
+    const downMove = prevLow - low;
+
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trueRanges.push(tr);
+  }
+
+  if (trueRanges.length < period) return null;
+
+  // Wilder's smoothing for ATR, +DM, -DM
+  let smoothATR = trueRanges.slice(0, period).reduce((s, v) => s + v, 0);
+  let smoothPlusDM = plusDM.slice(0, period).reduce((s, v) => s + v, 0);
+  let smoothMinusDM = minusDM.slice(0, period).reduce((s, v) => s + v, 0);
+
+  const dxValues: number[] = [];
+
+  // First DI values
+  const plusDI = (smoothPlusDM / smoothATR) * 100;
+  const minusDI = (smoothMinusDM / smoothATR) * 100;
+  const diSum = plusDI + minusDI;
+  if (diSum > 0) dxValues.push((Math.abs(plusDI - minusDI) / diSum) * 100);
+
+  // Subsequent smoothed values
+  for (let i = period; i < trueRanges.length; i++) {
+    smoothATR = smoothATR - smoothATR / period + trueRanges[i];
+    smoothPlusDM = smoothPlusDM - smoothPlusDM / period + plusDM[i];
+    smoothMinusDM = smoothMinusDM - smoothMinusDM / period + minusDM[i];
+
+    if (smoothATR === 0) continue;
+
+    const pDI = (smoothPlusDM / smoothATR) * 100;
+    const mDI = (smoothMinusDM / smoothATR) * 100;
+    const sum = pDI + mDI;
+    if (sum > 0) dxValues.push((Math.abs(pDI - mDI) / sum) * 100);
+  }
+
+  if (dxValues.length < period) return null;
+
+  // ADX = smoothed average of DX
+  let adx = dxValues.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  for (let i = period; i < dxValues.length; i++) {
+    adx = (adx * (period - 1) + dxValues[i]) / period;
+  }
+
+  return adx;
 }
 
 export type SignalResult = {
@@ -84,7 +174,8 @@ export function detectSignal(params: {
 export function checkSMATrailingStop(
   state: SMASymbolState,
   currentPrice: number,
-  config: Pick<SMAConfig, 'activationPct' | 'trailingPct' | 'initialStopPct'>
+  config: Pick<SMAConfig, 'activationAtrMult' | 'trailingAtrMult' | 'initialStopAtrMult'>,
+  atr: number
 ): {
   action: 'HOLD' | 'ACTIVATE' | 'CLOSE';
   updatedHighest: number;
@@ -100,11 +191,12 @@ export function checkSMATrailingStop(
     !isLong ? currentPrice : Infinity
   );
 
-  // Check initial stop loss
+  // Check initial stop loss (ATR-based)
   if (!state.trailingActivated) {
+    const stopDistance = config.initialStopAtrMult * atr;
     const initialStop = isLong
-      ? entryPrice * (1 - config.initialStopPct / 100)
-      : entryPrice * (1 + config.initialStopPct / 100);
+      ? entryPrice - stopDistance
+      : entryPrice + stopDistance;
 
     const hitInitialStop = isLong
       ? currentPrice <= initialStop
@@ -119,19 +211,21 @@ export function checkSMATrailingStop(
       };
     }
 
-    // Check activation threshold
+    // Check activation threshold (ATR-based)
+    const activationDistance = config.activationAtrMult * atr;
     const activationPrice = isLong
-      ? entryPrice * (1 + config.activationPct / 100)
-      : entryPrice * (1 - config.activationPct / 100);
+      ? entryPrice + activationDistance
+      : entryPrice - activationDistance;
 
     const activated = isLong
       ? currentPrice >= activationPrice
       : currentPrice <= activationPrice;
 
     if (activated) {
+      const trailDistance = config.trailingAtrMult * atr;
       const trailStop = isLong
-        ? highest * (1 - config.trailingPct / 100)
-        : lowest * (1 + config.trailingPct / 100);
+        ? highest - trailDistance
+        : lowest + trailDistance;
 
       return {
         action: 'ACTIVATE',
@@ -150,10 +244,11 @@ export function checkSMATrailingStop(
     };
   }
 
-  // Trailing is active — check if stop hit
+  // Trailing is active — check if stop hit (ATR-based)
+  const trailDistance = config.trailingAtrMult * atr;
   const trailStop = isLong
-    ? highest * (1 - config.trailingPct / 100)
-    : lowest * (1 + config.trailingPct / 100);
+    ? highest - trailDistance
+    : lowest + trailDistance;
 
   const hitTrail = isLong
     ? currentPrice <= trailStop
@@ -302,5 +397,6 @@ export function createEmptySymbolState(): SMASymbolState {
     trailingActivated: false,
     lastSignal: null,
     lastSignalAt: null,
+    lastAtr: null,
   };
 }

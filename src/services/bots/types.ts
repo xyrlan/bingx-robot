@@ -30,6 +30,7 @@ export type SMASymbolState = {
   trailingActivated: boolean;
   lastSignal: 'LONG' | 'SHORT' | null;
   lastSignalAt: number | null;
+  lastAtr: number | null;
 };
 
 export type SMAConfig = {
@@ -38,9 +39,12 @@ export type SMAConfig = {
   fastPeriod: number;
   mediumPeriod: number;
   trendPeriod: number;
-  activationPct: number;
-  trailingPct: number;
-  initialStopPct: number;
+  adxPeriod: number;
+  adxThreshold: number;
+  atrPeriod: number;
+  activationAtrMult: number;
+  trailingAtrMult: number;
+  initialStopAtrMult: number;
   positionSizeUsdt: number;
   leverage: number;
   marginType: string;
