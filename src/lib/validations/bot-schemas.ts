@@ -41,7 +41,7 @@ export const smaConfigSchema = z.object({
   activationPct: z.number().min(0.1).max(50).default(1.5),
   trailingPct: z.number().min(0.1).max(20).default(0.5),
   initialStopPct: z.number().min(0.1).max(20).default(1.5),
-  positionSizeUsdt: z.number().positive(),
+  positionSizeUsdt: z.number().min(1),
   leverage: z.number().int().min(1).max(125).default(1),
   marginType: z.enum(['ISOLATED', 'CROSSED', 'SEPARATE_ISOLATED']).default('SEPARATE_ISOLATED'),
 }).refine((data) => data.fastPeriod < data.mediumPeriod, {
@@ -50,6 +50,9 @@ export const smaConfigSchema = z.object({
 }).refine((data) => data.mediumPeriod < data.trendPeriod, {
   message: 'mediumPeriod must be less than trendPeriod',
   path: ['mediumPeriod'],
+}).refine((data) => new Set(data.symbols).size === data.symbols.length, {
+  message: 'Symbols must not contain duplicates',
+  path: ['symbols'],
 });
 
 export const botStartSchema = z.object({

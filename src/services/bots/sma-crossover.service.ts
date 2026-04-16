@@ -17,16 +17,23 @@ export function calculateSMA(closes: number[], period: number): number | null {
   return slice.reduce((sum, v) => sum + v, 0) / period;
 }
 
+export type SignalResult = {
+  crossover: 'LONG' | 'SHORT' | null;
+  trendConfirms: boolean;
+  signal: 'LONG' | 'SHORT' | null;
+};
+
 export function detectSignal(params: {
   closes: number[];
   fastPeriod: number;
   mediumPeriod: number;
   trendPeriod: number;
-}): 'LONG' | 'SHORT' | null {
+}): SignalResult {
   const { closes, fastPeriod, mediumPeriod, trendPeriod } = params;
+  const noSignal: SignalResult = { crossover: null, trendConfirms: false, signal: null };
 
   // Need at least trendPeriod + 1 candles (current + one previous for crossover)
-  if (closes.length < trendPeriod + 1) return null;
+  if (closes.length < trendPeriod + 1) return noSignal;
 
   const currentCloses = closes;
   const prevCloses = closes.slice(0, -1);
@@ -45,19 +52,33 @@ export function detectSignal(params: {
     prevSmaFast == null ||
     prevSmaMedium == null
   )
-    return null;
+    return noSignal;
 
   const currentClose = closes[closes.length - 1];
 
-  // LONG: SMA fast crosses above SMA medium AND price above SMA trend
+  // Detect crossover direction (independent of trend)
   const crossedAbove = prevSmaFast <= prevSmaMedium && smaFast > smaMedium;
-  if (crossedAbove && currentClose > smaTrend) return 'LONG';
-
-  // SHORT: SMA fast crosses below SMA medium AND price below SMA trend
   const crossedBelow = prevSmaFast >= prevSmaMedium && smaFast < smaMedium;
-  if (crossedBelow && currentClose < smaTrend) return 'SHORT';
 
-  return null;
+  if (crossedAbove) {
+    const trendConfirms = currentClose > smaTrend;
+    return {
+      crossover: 'LONG',
+      trendConfirms,
+      signal: trendConfirms ? 'LONG' : null,
+    };
+  }
+
+  if (crossedBelow) {
+    const trendConfirms = currentClose < smaTrend;
+    return {
+      crossover: 'SHORT',
+      trendConfirms,
+      signal: trendConfirms ? 'SHORT' : null,
+    };
+  }
+
+  return noSignal;
 }
 
 export function checkSMATrailingStop(
@@ -201,7 +222,7 @@ export async function placeStopOrder(
   pricePrecision: number
 ): Promise<string | null> {
   const side = positionSide === 'LONG' ? 'SELL' : 'BUY';
-  const stopType = positionSide === 'LONG' ? 'STOP_MARKET' : 'STOP_MARKET';
+  const stopType = 'STOP_MARKET';
   const stopPriceStr = toPrecision(stopPrice, pricePrecision);
 
   const orderPayload: Record<string, unknown> = {
@@ -234,7 +255,7 @@ export async function closePositionMarket(
   quantity: number,
   quantityPrecision: number
 ): Promise<string | null> {
-  const quantityStr = toPrecision(quantity, quantityPrecision);
+  const quantityStr = toQuantityPrecision(quantity, quantityPrecision);
   const side = positionSide === 'LONG' ? 'SELL' : 'BUY';
 
   const orderPayload: Record<string, unknown> = {

@@ -99,8 +99,8 @@ export const smaCrossoverWatch = inngest.createFunction(
               continue;
             }
 
-            // Extract close prices from closed candles (exclude last if it's in-progress)
-            const closes = klines.map((k) => k.close);
+            // Extract close prices from closed candles only (exclude last — it's in-progress)
+            const closes = klines.slice(0, -1).map((k) => k.close);
 
             const contractInfo = await getContractInfo(client, symbol);
             const pricePrecision = contractInfo?.pricePrecision ?? 2;
@@ -112,15 +112,15 @@ export const smaCrossoverWatch = inngest.createFunction(
               continue;
             }
 
-            // Detect signal
-            const signal = detectSignal({
+            // Detect signal (crossover + trend confirmation)
+            const { crossover, signal } = detectSignal({
               closes,
               fastPeriod: config.fastPeriod,
               mediumPeriod: config.mediumPeriod,
               trendPeriod: config.trendPeriod,
             });
 
-            // --- CASE: Signal detected, no position ---
+            // --- CASE: Trend-confirmed signal, no position → open new ---
             if (signal && !state.position) {
               logger.info(`SMA bot ${bot.id}: ${signal} signal for ${symbol} at ${currentPrice}`);
 
@@ -158,9 +158,13 @@ export const smaCrossoverWatch = inngest.createFunction(
               continue;
             }
 
-            // --- CASE: Opposite signal, has position → close and maybe reverse ---
-            if (signal && state.position && signal !== state.position) {
-              logger.info(`SMA bot ${bot.id}: reverse signal ${state.position} → ${signal} for ${symbol}`);
+            // --- CASE: Crossover opposite to current position → close (+ reverse if trend confirms) ---
+            const isOppositeCrossover = crossover && state.position &&
+              ((state.position === 'LONG' && crossover === 'SHORT') ||
+               (state.position === 'SHORT' && crossover === 'LONG'));
+
+            if (isOppositeCrossover) {
+              logger.info(`SMA bot ${bot.id}: opposite crossover ${state.position} → ${crossover} for ${symbol} (trend confirms: ${signal != null})`);
 
               // Cancel existing stop
               if (state.stopOrderId) {
@@ -179,46 +183,48 @@ export const smaCrossoverWatch = inngest.createFunction(
                 );
               }
 
-              // Open reverse if trend confirms
-              await ensureMarginTypeAndLeverage(client, symbol, config.marginType, config.leverage);
+              // Open reverse ONLY if trend confirms the new direction
+              if (signal) {
+                await ensureMarginTypeAndLeverage(client, symbol, config.marginType, config.leverage);
 
-              const orderId = await placeEntryOrder(
-                client, symbol, signal, config.positionSizeUsdt, currentPrice, quantityPrecision
-              );
-
-              if (orderId) {
-                const quantity = config.positionSizeUsdt / currentPrice;
-                const initialStop = signal === 'LONG'
-                  ? currentPrice * (1 - config.initialStopPct / 100)
-                  : currentPrice * (1 + config.initialStopPct / 100);
-
-                const stopOrderId = await placeStopOrder(
-                  client, symbol, signal, initialStop, quantity, pricePrecision
+                const orderId = await placeEntryOrder(
+                  client, symbol, signal, config.positionSizeUsdt, currentPrice, quantityPrecision
                 );
 
-                updatedStates[symbol] = {
-                  position: signal,
-                  entryPrice: currentPrice,
-                  entryOrderId: orderId,
-                  stopOrderId,
-                  highestPrice: signal === 'LONG' ? currentPrice : null,
-                  lowestPrice: signal === 'SHORT' ? currentPrice : null,
-                  trailingActivated: false,
-                  lastSignal: signal,
-                  lastSignalAt: Date.now(),
-                };
+                if (orderId) {
+                  const quantity = config.positionSizeUsdt / currentPrice;
+                  const initialStop = signal === 'LONG'
+                    ? currentPrice * (1 - config.initialStopPct / 100)
+                    : currentPrice * (1 + config.initialStopPct / 100);
+
+                  const stopOrderId = await placeStopOrder(
+                    client, symbol, signal, initialStop, quantity, pricePrecision
+                  );
+
+                  updatedStates[symbol] = {
+                    position: signal,
+                    entryPrice: currentPrice,
+                    entryOrderId: orderId,
+                    stopOrderId,
+                    highestPrice: signal === 'LONG' ? currentPrice : null,
+                    lowestPrice: signal === 'SHORT' ? currentPrice : null,
+                    trailingActivated: false,
+                    lastSignal: signal,
+                    lastSignalAt: Date.now(),
+                  };
+                } else {
+                  updatedStates[symbol] = createEmptySymbolState();
+                }
               } else {
-                // Closed but couldn't reverse — reset state
+                // Closed but trend doesn't confirm reverse — just reset
+                logger.info(`SMA bot ${bot.id}: closed ${state.position} for ${symbol}, no reverse (trend doesn't confirm)`);
                 updatedStates[symbol] = createEmptySymbolState();
               }
               botProcessed++;
               continue;
             }
 
-            // --- CASE: Same-direction crossover while no position (already closed by trailing) ---
-            // No action needed, signal already in effect
-
-            // --- CASE: In position, no new signal → manage trailing stop ---
+            // --- CASE: In position, no crossover → manage trailing stop ---
             if (state.position && state.entryPrice) {
               const trailing = checkSMATrailingStop(state, currentPrice, config);
 
