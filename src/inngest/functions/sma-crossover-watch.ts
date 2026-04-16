@@ -87,12 +87,17 @@ export const smaCrossoverWatch = inngest.createFunction(
           try {
             const state = updatedStates[symbol] ?? createEmptySymbolState();
 
-            // Fetch klines — need trendPeriod + 1 candles minimum
+            // Fetch enough klines for all indicators: SMA(trend), ADX(period*2), ATR(period)
+            const klineLimit = Math.max(
+              config.trendPeriod,
+              config.adxPeriod * 2,
+              config.atrPeriod
+            ) + 15; // +15 buffer for in-progress candle exclusion + smoothing
             const klines = await getKlines(
               client,
               symbol,
               config.timeframe,
-              config.trendPeriod + 10 // extra buffer
+              klineLimit
             );
 
             if (klines.length < config.trendPeriod + 1) {
@@ -143,12 +148,14 @@ export const smaCrossoverWatch = inngest.createFunction(
               logger.info(`SMA bot ${bot.id}: ${signal} signal for ${symbol} at ${currentPrice} (ADX: ${adx?.toFixed(1) ?? 'N/A'})`);
 
               await ensureMarginTypeAndLeverage(client, symbol, config.marginType, config.leverage);
+              await new Promise((r) => setTimeout(r, 400));
 
               const orderId = await placeEntryOrder(
                 client, symbol, signal, config.positionSizeUsdt, currentPrice, quantityPrecision
               );
 
               if (orderId) {
+                await new Promise((r) => setTimeout(r, 400));
                 const quantity = config.positionSizeUsdt / currentPrice;
                 const stopDistance = config.initialStopAtrMult * atr;
                 const initialStop = signal === 'LONG'
@@ -189,6 +196,7 @@ export const smaCrossoverWatch = inngest.createFunction(
               // Cancel existing stop
               if (state.stopOrderId) {
                 await cancelStopOrder(client, symbol, state.stopOrderId);
+                await new Promise((r) => setTimeout(r, 400));
               }
 
               // Close current position
@@ -201,18 +209,21 @@ export const smaCrossoverWatch = inngest.createFunction(
                 await closePositionMarket(
                   client, symbol, state.position!, currentPos.positionAmt, quantityPrecision
                 );
+                await new Promise((r) => setTimeout(r, 400));
               }
 
               // Open reverse ONLY if trend confirms AND ADX allows
               const adxAllowsReverse = adx == null || adx >= config.adxThreshold;
               if (signal && adxAllowsReverse) {
                 await ensureMarginTypeAndLeverage(client, symbol, config.marginType, config.leverage);
+                await new Promise((r) => setTimeout(r, 400));
 
                 const orderId = await placeEntryOrder(
                   client, symbol, signal, config.positionSizeUsdt, currentPrice, quantityPrecision
                 );
 
                 if (orderId) {
+                  await new Promise((r) => setTimeout(r, 400));
                   const quantity = config.positionSizeUsdt / currentPrice;
                   const stopDistance = config.initialStopAtrMult * atr;
                   const initialStop = signal === 'LONG'
@@ -289,6 +300,7 @@ export const smaCrossoverWatch = inngest.createFunction(
                 // Cancel old stop and place updated one
                 if (state.stopOrderId) {
                   await cancelStopOrder(client, symbol, state.stopOrderId);
+                  await new Promise((r) => setTimeout(r, 400));
                 }
 
                 const positions = await getOpenPositions(client, symbol);

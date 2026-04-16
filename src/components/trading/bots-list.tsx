@@ -225,9 +225,11 @@ export function BotsList() {
                               {bot.status}
                             </span>
                           </p>
+                          {bot.botType !== 'SMA_CROSSOVER' && (
                           <p className="text-sm text-default-500 font-numeric">
                             {Number(bot.priceMin).toFixed(2)} – {Number(bot.priceMax).toFixed(2)} • {bot.gridCount ?? 1} grids
                           </p>
+                          )}
                           <p className="text-xs text-default-400">
                             {displayLeverage && `${displayLeverage}x`}
                             {bot.positionSizeUsdt && ` • ${Number(bot.positionSizeUsdt)} USDT/level`}

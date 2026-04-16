@@ -182,6 +182,16 @@ export function checkSMATrailingStop(
   updatedLowest: number;
   newStopPrice: number | null;
 } {
+  // Guard against missing or zero ATR — skip trailing logic to avoid erratic stops
+  if (atr <= 0) {
+    return {
+      action: 'HOLD',
+      updatedHighest: state.highestPrice ?? currentPrice,
+      updatedLowest: state.lowestPrice ?? currentPrice,
+      newStopPrice: null,
+    };
+  }
+
   const entryPrice = state.entryPrice ?? currentPrice;
   const isLong = state.position === 'LONG';
 
