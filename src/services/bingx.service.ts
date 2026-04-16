@@ -1068,7 +1068,7 @@ export async function getBotDetails(
  * Returns all symbols a bot operates on. For SMA_CROSSOVER bots,
  * this includes all symbols from config.symbols.
  */
-function getBotSymbols(bot: TradingBot): string[] {
+export function getBotSymbols(bot: TradingBot): string[] {
   const primary = String(bot.symbol ?? '').trim().toUpperCase() || 'BTC-USDT';
 
   if (bot.botType === 'SMA_CROSSOVER' && bot.config && typeof bot.config === 'object') {
@@ -1089,21 +1089,33 @@ function isGridBot(botType: string | null): boolean {
 }
 
 /**
- * Batch variant: fetches BingX data once per unique symbol to avoid rate limits.
+ * Batch variant: fetches BingX data once per unique (apiKey, symbol) pair.
  * Handles all bot types: grid, DCA, trailing stop, SMA crossover, DCA spot.
+ * Groups bots by apiKeyId to use the correct credentials for each.
  */
 export async function getBotsDetailsBatched(
   userId: string,
   bots: TradingBot[]
 ): Promise<BotDetails[]> {
+  if (bots.length === 0) return [];
+
   const RATE_LIMIT_DELAY_MS = 400;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  // Use first bot's apiKeyId, or fall back to userId
-  const firstBot = bots[0];
-  const client = firstBot?.apiKeyId
-    ? await getBingxClientByApiKeyId(firstBot.apiKeyId)
-    : await getBingxClient(userId);
+  // Resolve API clients per apiKeyId (or userId as fallback)
+  const clientCache = new Map<string, BingxClient | null>();
+  async function getClientForBotLocal(bot: TradingBot): Promise<BingxClient | null> {
+    const key = bot.apiKeyId ?? `user:${userId}`;
+    if (!clientCache.has(key)) {
+      const c = bot.apiKeyId
+        ? await getBingxClientByApiKeyId(bot.apiKeyId)
+        : await getBingxClient(userId);
+      clientCache.set(key, c);
+    }
+    return clientCache.get(key) ?? null;
+  }
+
+  // Build symbol cache keyed by "apiKeyOrUserId:symbol"
   const symbolCache = new Map<
     string,
     {
@@ -1113,25 +1125,33 @@ export async function getBotsDetailsBatched(
     }
   >();
 
-  // Collect ALL symbols from all bots (including SMA multi-symbol)
-  const allSymbols = new Set<string>();
+  // Collect all (clientKey, symbol) pairs we need
+  const symbolsToFetch = new Map<string, Set<string>>();
   for (const bot of bots) {
+    const clientKey = bot.apiKeyId ?? `user:${userId}`;
+    if (!symbolsToFetch.has(clientKey)) symbolsToFetch.set(clientKey, new Set());
     for (const sym of getBotSymbols(bot)) {
-      allSymbols.add(sym);
+      symbolsToFetch.get(clientKey)!.add(sym);
     }
   }
 
-  const uniqueSymbols = [...allSymbols];
-  for (const symbol of uniqueSymbols) {
-    if (!client) break;
-    const [openOrders, openPositions, currentPrice] = await Promise.all([
-      getOpenOrders(client, symbol),
-      getOpenPositions(client, symbol),
-      getCurrentPrice(client, symbol),
-    ]);
-    symbolCache.set(symbol, { openOrders, openPositions, currentPrice });
-    if (uniqueSymbols.indexOf(symbol) < uniqueSymbols.length - 1) {
-      await sleep(RATE_LIMIT_DELAY_MS);
+  // Fetch market data per (clientKey, symbol) pair
+  for (const [clientKey, symbols] of symbolsToFetch) {
+    const sampleBot = bots.find((b) => (b.apiKeyId ?? `user:${userId}`) === clientKey);
+    if (!sampleBot) continue;
+    const client = await getClientForBotLocal(sampleBot);
+    if (!client) continue;
+
+    let first = true;
+    for (const symbol of symbols) {
+      if (!first) await sleep(RATE_LIMIT_DELAY_MS);
+      first = false;
+      const [openOrders, openPositions, currentPrice] = await Promise.all([
+        getOpenOrders(client, symbol),
+        getOpenPositions(client, symbol),
+        getCurrentPrice(client, symbol),
+      ]);
+      symbolCache.set(`${clientKey}:${symbol}`, { openOrders, openPositions, currentPrice });
     }
   }
 
@@ -1139,6 +1159,8 @@ export async function getBotsDetailsBatched(
   for (let i = 0; i < bots.length; i++) {
     const bot = bots[i];
     const botSymbols = getBotSymbols(bot);
+    const clientKey = bot.apiKeyId ?? `user:${userId}`;
+    const client = await getClientForBotLocal(bot);
     const runtime = formatRuntime(bot.createdAt);
     const orders: BotOrderInfo[] = [];
     const positions: BotPositionInfo[] = [];
@@ -1148,9 +1170,10 @@ export async function getBotsDetailsBatched(
     // --- Grid bots: match positions to grid levels ---
     if (isGridBot(bot.botType)) {
       const symbol = botSymbols[0];
+      const cacheKey = `${clientKey}:${symbol}`;
       const levels = await getGridLevelsByBotId(bot.id);
       const takeProfitPct = Number(bot.takeProfitPercentage) / 100;
-      const cached = client ? symbolCache.get(symbol) : null;
+      const cached = client ? symbolCache.get(cacheKey) : null;
       const openOrders = cached?.openOrders ?? [];
       const openPositions = cached?.openPositions ?? [];
       const currentPrice = cached?.currentPrice ?? 0;
@@ -1159,7 +1182,9 @@ export async function getBotsDetailsBatched(
 
       for (const level of levels) {
         const priceLevel = Number(level.priceLevel);
-        const tpStopPrice = priceLevel * (1 + takeProfitPct);
+        const tpStopPrice = expectedSide === 'SHORT'
+          ? priceLevel * (1 - takeProfitPct)
+          : priceLevel * (1 + takeProfitPct);
         if (level.orderId) {
           const openOrder = openOrders.find((o) => String(o.orderId) === level.orderId);
           orders.push({
@@ -1193,7 +1218,9 @@ export async function getBotsDetailsBatched(
         if (side !== expectedSide && side !== 'BOTH') continue;
         const level = levels.find((l) => positionMatchesLevel(pos.entryPrice, Number(l.priceLevel)));
         const priceLevel = level ? Number(level.priceLevel) : pos.entryPrice;
-        const tpPrice = priceLevel * (1 + takeProfitPct);
+        const tpPrice = expectedSide === 'SHORT'
+          ? priceLevel * (1 - takeProfitPct)
+          : priceLevel * (1 + takeProfitPct);
         const priceDelta = side === 'SHORT'
           ? (pos.entryPrice - currentPrice) * pos.positionAmt
           : (currentPrice - pos.entryPrice) * pos.positionAmt;
@@ -1218,7 +1245,8 @@ export async function getBotsDetailsBatched(
       // --- Non-grid bots (DCA, Trailing Stop, SMA Crossover, DCA Spot): ---
       // Aggregate positions and income across all symbols
       for (const symbol of botSymbols) {
-        const cached = client ? symbolCache.get(symbol) : null;
+        const cacheKey = `${clientKey}:${symbol}`;
+        const cached = client ? symbolCache.get(cacheKey) : null;
         const openPositions = cached?.openPositions ?? [];
         const currentPrice = cached?.currentPrice ?? 0;
 
