@@ -103,7 +103,17 @@ export const trailingStopWatch = inngest.createFunction(
           }
 
           if (longPositions.length === 0) {
-            logger.info(`Trailing stop bot ${bot.id}: no position found after retry, stopping`);
+            logger.info(`Trailing stop bot ${bot.id}: no position found after retry (liquidated/manually closed), stopping`);
+            // Record exit at current price — position was closed outside bot control
+            if (config.entryOrderId) {
+              const qty = config.positionSizeUsdt / (config.highestPrice || currentPrice);
+              const entryEstimate = config.highestPrice || currentPrice;
+              const pnl = (currentPrice - entryEstimate) * qty;
+              await recordTrade({
+                botId: bot.id, symbol, side: 'LONG', type: 'EXIT_MANUAL',
+                price: currentPrice, quantity: qty, realizedPnl: pnl,
+              });
+            }
             await setBotStatus(bot.id, bot.userId, 'STOPPED');
             continue;
           }
@@ -113,11 +123,12 @@ export const trailingStopWatch = inngest.createFunction(
 
           if (action === 'CLOSE') {
             logger.info(`Trailing stop triggered for bot ${bot.id} at ${currentPrice} (highest: ${updatedHighest})`);
-            await closePosition(client, symbol, position.positionAmt, quantityPrecision);
+            const closeOrderId = await closePosition(client, symbol, position.positionAmt, quantityPrecision);
             const pnl = (currentPrice - position.entryPrice) * position.positionAmt;
             await recordTrade({
               botId: bot.id, symbol, side: 'LONG', type: 'EXIT_TRAILING',
               price: currentPrice, quantity: position.positionAmt, realizedPnl: pnl,
+              orderId: closeOrderId,
             });
             await setBotStatus(bot.id, bot.userId, 'STOPPED');
             groupProcessed++;

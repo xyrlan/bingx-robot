@@ -213,7 +213,7 @@ export const smaCrossoverWatch = inngest.createFunction(
               );
 
               if (currentPos) {
-                await closePositionMarket(
+                const closeOrderId = await closePositionMarket(
                   client, symbol, state.position!, currentPos.positionAmt, quantityPrecision
                 );
                 const exitPnl = state.position === 'SHORT'
@@ -222,8 +222,19 @@ export const smaCrossoverWatch = inngest.createFunction(
                 await recordTrade({
                   botId: bot.id, symbol, side: state.position!, type: 'EXIT_SIGNAL',
                   price: currentPrice, quantity: currentPos.positionAmt, realizedPnl: exitPnl,
+                  orderId: closeOrderId,
                 });
                 await new Promise((r) => setTimeout(r, 400));
+              } else if (state.entryPrice) {
+                // Position disappeared (liquidation/manual close) — record estimated exit
+                const qty = config.positionSizeUsdt / state.entryPrice;
+                const exitPnl = state.position === 'SHORT'
+                  ? (state.entryPrice - currentPrice) * qty
+                  : (currentPrice - state.entryPrice) * qty;
+                await recordTrade({
+                  botId: bot.id, symbol, side: state.position!, type: 'EXIT_MANUAL',
+                  price: currentPrice, quantity: qty, realizedPnl: exitPnl,
+                });
               }
 
               // Open reverse ONLY if trend confirms AND ADX allows
@@ -296,7 +307,7 @@ export const smaCrossoverWatch = inngest.createFunction(
                 );
 
                 if (currentPos) {
-                  await closePositionMarket(
+                  const closeOrderId = await closePositionMarket(
                     client, symbol, state.position, currentPos.positionAmt, quantityPrecision
                   );
                   const exitPnl = state.position === 'SHORT'
@@ -305,6 +316,17 @@ export const smaCrossoverWatch = inngest.createFunction(
                   await recordTrade({
                     botId: bot.id, symbol, side: state.position, type: 'EXIT_TRAILING',
                     price: currentPrice, quantity: currentPos.positionAmt, realizedPnl: exitPnl,
+                    orderId: closeOrderId,
+                  });
+                } else {
+                  // Position disappeared (liquidation/manual close)
+                  const qty = config.positionSizeUsdt / state.entryPrice;
+                  const exitPnl = state.position === 'SHORT'
+                    ? (state.entryPrice - currentPrice) * qty
+                    : (currentPrice - state.entryPrice) * qty;
+                  await recordTrade({
+                    botId: bot.id, symbol, side: state.position, type: 'EXIT_MANUAL',
+                    price: currentPrice, quantity: qty, realizedPnl: exitPnl,
                   });
                 }
 
