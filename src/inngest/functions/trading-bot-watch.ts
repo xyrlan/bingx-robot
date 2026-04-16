@@ -18,6 +18,7 @@ import {
   updateGridLevelTpOrderId,
   toPrecision,
   toSafeIdString,
+  recordTrade,
 } from '@/services/bingx.service';
 import { buildGridShortEntryPayload } from '@/services/bots/grid-short.service';
 
@@ -263,6 +264,28 @@ export const tradingBotWatch = inngest.createFunction(
               }
             }
             continue;
+          }
+
+          // Record completed TP cycle: entry filled + TP filled + position gone
+          if (level.orderId && !openOrderIdsSet.has(level.orderId) &&
+              level.tpOrderId && !openOrderIdsSet.has(level.tpOrderId)) {
+            const entryPrice = priceLevel;
+            const exitPrice = isShort
+              ? priceLevel * (1 - takeProfitPct)
+              : priceLevel * (1 + takeProfitPct);
+            const qty = positionSizeUsdt / priceLevel;
+            const pnl = isShort
+              ? (entryPrice - exitPrice) * qty
+              : (exitPrice - entryPrice) * qty;
+
+            await recordTrade({
+              botId: bot.id, symbol, side: positionSide as 'LONG' | 'SHORT',
+              type: 'ENTRY', price: entryPrice, quantity: qty, orderId: level.orderId,
+            });
+            await recordTrade({
+              botId: bot.id, symbol, side: positionSide as 'LONG' | 'SHORT',
+              type: 'EXIT_TP', price: exitPrice, quantity: qty, realizedPnl: pnl, orderId: level.tpOrderId,
+            });
           }
 
           // Skip inactive levels

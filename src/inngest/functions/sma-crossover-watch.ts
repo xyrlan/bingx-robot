@@ -20,6 +20,7 @@ import {
   cancelStopOrder,
   createEmptySymbolState,
 } from '@/services/bots/sma-crossover.service';
+import { recordTrade } from '@/services/bingx.service';
 import type { SMAConfig } from '@/services/bots/types';
 import { db } from '@/db';
 import { tradingBots } from '@/db/schema';
@@ -157,6 +158,12 @@ export const smaCrossoverWatch = inngest.createFunction(
               if (orderId) {
                 await new Promise((r) => setTimeout(r, 400));
                 const quantity = config.positionSizeUsdt / currentPrice;
+
+                await recordTrade({
+                  botId: bot.id, symbol, side: signal, type: 'ENTRY',
+                  price: currentPrice, quantity, orderId,
+                });
+
                 const stopDistance = config.initialStopAtrMult * atr;
                 const initialStop = signal === 'LONG'
                   ? currentPrice - stopDistance
@@ -209,6 +216,13 @@ export const smaCrossoverWatch = inngest.createFunction(
                 await closePositionMarket(
                   client, symbol, state.position!, currentPos.positionAmt, quantityPrecision
                 );
+                const exitPnl = state.position === 'SHORT'
+                  ? ((state.entryPrice ?? 0) - currentPrice) * currentPos.positionAmt
+                  : (currentPrice - (state.entryPrice ?? 0)) * currentPos.positionAmt;
+                await recordTrade({
+                  botId: bot.id, symbol, side: state.position!, type: 'EXIT_SIGNAL',
+                  price: currentPrice, quantity: currentPos.positionAmt, realizedPnl: exitPnl,
+                });
                 await new Promise((r) => setTimeout(r, 400));
               }
 
@@ -225,6 +239,12 @@ export const smaCrossoverWatch = inngest.createFunction(
                 if (orderId) {
                   await new Promise((r) => setTimeout(r, 400));
                   const quantity = config.positionSizeUsdt / currentPrice;
+
+                  await recordTrade({
+                    botId: bot.id, symbol, side: signal, type: 'ENTRY',
+                    price: currentPrice, quantity, orderId,
+                  });
+
                   const stopDistance = config.initialStopAtrMult * atr;
                   const initialStop = signal === 'LONG'
                     ? currentPrice - stopDistance
@@ -279,6 +299,13 @@ export const smaCrossoverWatch = inngest.createFunction(
                   await closePositionMarket(
                     client, symbol, state.position, currentPos.positionAmt, quantityPrecision
                   );
+                  const exitPnl = state.position === 'SHORT'
+                    ? (state.entryPrice - currentPrice) * currentPos.positionAmt
+                    : (currentPrice - state.entryPrice) * currentPos.positionAmt;
+                  await recordTrade({
+                    botId: bot.id, symbol, side: state.position, type: 'EXIT_TRAILING',
+                    price: currentPrice, quantity: currentPos.positionAmt, realizedPnl: exitPnl,
+                  });
                 }
 
                 updatedStates[symbol] = {

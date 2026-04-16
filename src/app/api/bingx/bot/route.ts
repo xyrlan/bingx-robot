@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/services/auth.service';
-import { getUserBots, getUserBotsByApiKey, getBotsDetailsBatched } from '@/services/bingx.service';
+import { getUserBots, getUserBotsByApiKey, getBotsDetailsBatched, getBotRealizedPnl } from '@/services/bingx.service';
 
 function formatRuntime(createdAt: Date): string {
   const ms = Date.now() - new Date(createdAt).getTime();
@@ -43,16 +43,17 @@ export async function GET(request: Request) {
       realizedPnl: 0,
     }));
 
-    // Stopped bots: return instantly with zero P&L.
-    // Use /api/bingx/bot/[botId]/details to fetch realized P&L on demand.
-    const enrichedStopped = stoppedBots.map((bot) => ({
-      bot,
-      runtime: formatRuntime(bot.createdAt),
-      orders: [],
-      positions: [],
-      unrealizedPnl: 0,
-      realizedPnl: 0,
-    }));
+    // Stopped bots: read realized P&L from DB (instant, no API calls)
+    const enrichedStopped = await Promise.all(
+      stoppedBots.map(async (bot) => ({
+        bot,
+        runtime: formatRuntime(bot.createdAt),
+        orders: [],
+        positions: [],
+        unrealizedPnl: 0,
+        realizedPnl: await getBotRealizedPnl(bot.id),
+      }))
+    );
 
     const botOrder = new Map(bots.map((b, i) => [b.id, i]));
     const enriched = [...enrichedRunning, ...enrichedDcaSpot, ...enrichedStopped].sort(

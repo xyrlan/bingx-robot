@@ -5,6 +5,7 @@ import {
   setBotStatus,
   getContractInfo,
   getCurrentPrice,
+  recordTrade,
 } from '@/services/bingx.service';
 import { groupBotsBySymbolAndKey, getClientForBot } from '@/inngest/helpers';
 import { placeDCAOrder, shouldPlaceDCAOrder } from '@/services/bots/dca.service';
@@ -59,6 +60,12 @@ export const dcaBotWatch = inngest.createFunction(
 
           const orderId = await placeDCAOrder(client, symbol, config, currentPrice, quantityPrecision);
           if (orderId) {
+            const qty = config.orderSizeUsdt / currentPrice;
+            const side = config.side === 'SELL' ? 'SHORT' : 'LONG';
+            await recordTrade({
+              botId: bot.id, symbol, side: side as 'LONG' | 'SHORT', type: 'ENTRY',
+              price: currentPrice, quantity: qty, orderId,
+            });
             const updatedConfig: DCAConfig = { ...config, ordersPlaced: config.ordersPlaced + 1, lastOrderAt: Date.now() };
             await db
               .update(tradingBots)

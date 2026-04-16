@@ -6,6 +6,7 @@ import {
   getContractInfo,
   getCurrentPrice,
   getOpenPositions,
+  recordTrade,
 } from '@/services/bingx.service';
 import { groupBotsBySymbolAndKey, getClientForBot } from '@/inngest/helpers';
 import {
@@ -68,6 +69,11 @@ export const trailingStopWatch = inngest.createFunction(
               client, symbol, config.positionSizeUsdt, currentPrice, quantityPrecision
             );
             if (orderId) {
+              const qty = config.positionSizeUsdt / currentPrice;
+              await recordTrade({
+                botId: bot.id, symbol, side: 'LONG', type: 'ENTRY',
+                price: currentPrice, quantity: qty, orderId,
+              });
               const updatedConfig: TrailingStopConfig = {
                 ...config,
                 entryOrderId: orderId,
@@ -108,6 +114,11 @@ export const trailingStopWatch = inngest.createFunction(
           if (action === 'CLOSE') {
             logger.info(`Trailing stop triggered for bot ${bot.id} at ${currentPrice} (highest: ${updatedHighest})`);
             await closePosition(client, symbol, position.positionAmt, quantityPrecision);
+            const pnl = (currentPrice - position.entryPrice) * position.positionAmt;
+            await recordTrade({
+              botId: bot.id, symbol, side: 'LONG', type: 'EXIT_TRAILING',
+              price: currentPrice, quantity: position.positionAmt, realizedPnl: pnl,
+            });
             await setBotStatus(bot.id, bot.userId, 'STOPPED');
             groupProcessed++;
             continue;
