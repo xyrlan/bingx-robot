@@ -298,6 +298,7 @@ export function BotsList() {
                       <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                         {bot.status === 'RUNNING' && (
                           <>
+                            {(bot.botType === 'GRID_LONG' || bot.botType === 'GRID_SHORT') && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -306,6 +307,7 @@ export function BotsList() {
                             >
                               Edit
                             </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="outline"
