@@ -28,10 +28,16 @@ export function BotConfigForm() {
   const [balanceLoading, setBalanceLoading] = useState(true);
 
   useEffect(() => {
+    if (!activeAccountId) {
+      setAvailableMargin(null);
+      setSymbolConfig(null);
+      setBalanceLoading(false);
+      return;
+    }
     async function fetchData() {
       setBalanceLoading(true);
       try {
-        const apiKeyParam = activeAccountId ? `?apiKeyId=${activeAccountId}` : '';
+        const apiKeyParam = `?apiKeyId=${activeAccountId}`;
         const [balanceRes, configRes] = await Promise.all([
           fetch(`/api/bingx/balance${apiKeyParam}`),
           fetch(`/api/bingx/symbol-config${apiKeyParam}`),
@@ -81,6 +87,7 @@ export function BotConfigForm() {
   const canSubmit =
     !loading &&
     !balanceLoading &&
+    !!activeAccountId &&
     symbolConfig !== null &&
     availableMargin !== null &&
     hasEnoughMargin &&
@@ -93,6 +100,11 @@ export function BotConfigForm() {
   async function handleStart(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
+
+    if (!activeAccountId) {
+      toast.danger('Select an account first');
+      return;
+    }
 
     if (availableMargin === null || !hasEnoughMargin) {
       if (availableMargin === null) {
