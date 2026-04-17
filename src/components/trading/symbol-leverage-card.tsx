@@ -35,9 +35,14 @@ export function SymbolLeverageCard() {
   const [configLoading, setConfigLoading] = useState(true);
 
   async function fetchConfig() {
+    if (!activeAccountId) {
+      setConfig(null);
+      setConfigLoading(false);
+      return;
+    }
     setConfigLoading(true);
     try {
-      const res = await fetch(`/api/bingx/symbol-config${activeAccountId ? `?apiKeyId=${activeAccountId}` : ''}`);
+      const res = await fetch(`/api/bingx/symbol-config?apiKeyId=${activeAccountId}`);
       const data = await res.json();
       if (res.ok) {
         setConfig(data);

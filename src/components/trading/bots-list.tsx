@@ -102,9 +102,14 @@ export function BotsList() {
   }
 
   async function fetchBots(silent = false) {
+    if (!activeAccountId) {
+      setBots([]);
+      if (!silent) setLoading(false);
+      return;
+    }
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`/api/bingx/bot?details=true${activeAccountId ? `&apiKeyId=${activeAccountId}` : ''}`);
+      const res = await fetch(`/api/bingx/bot?details=true&apiKeyId=${activeAccountId}`);
       const data = await res.json();
       if (res.ok) {
         setBots(data.bots ?? []);
