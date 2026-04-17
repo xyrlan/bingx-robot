@@ -4,6 +4,7 @@ import { Card, Spinner } from '@heroui/react';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { useActiveAccount } from '@/contexts/active-account';
 
 type BotSummary = {
   id: string;
@@ -14,16 +15,27 @@ type BotSummary = {
 
 export function ActiveBotsSummary() {
   const t = useTranslations('Dashboard');
+  const { activeAccountId } = useActiveAccount();
   const [bots, setBots] = useState<BotSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/bingx/bot')
+    if (!activeAccountId) return;
+    let cancelled = false;
+    fetch(`/api/bingx/bot?apiKeyId=${activeAccountId}`)
       .then((r) => r.json())
-      .then((data) => setBots(Array.isArray(data) ? data : data.bots ?? []))
+      .then((data) => {
+        if (cancelled) return;
+        setBots(Array.isArray(data) ? data : data.bots ?? []);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAccountId]);
 
   if (loading) {
     return (
