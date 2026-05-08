@@ -336,10 +336,11 @@ Reverse-chronological timeline of `ai_decisions`:
 ## Phasing
 
 ### Phase 0 — Foundation (1–2 weeks)
-- Drizzle migrations for the 5 new tables.
+- Drizzle migrations for the 5 core tables (`aiPmConfigs`, `aiDecisions`, `aiSignals`, `backtestRuns`, `aiChatMessages`).
 - Backtest engine MVP: GRID_LONG and DCA only. Other strategies deferred.
 - Settings page + `aiPmConfigs` CRUD.
 - No AI yet — infrastructure only.
+- `paper_bots` table designed and migrated alongside Phase 1 paper-trading harness, not in Phase 0.
 
 ### Phase 1 — MVP AI (2–3 weeks)
 - Signal layer (Haiku) + 30 min cron.
