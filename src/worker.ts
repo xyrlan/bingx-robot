@@ -10,10 +10,11 @@ import { createServer } from 'http';
 import { connect, ConnectionState } from 'inngest/connect';
 import { inngest } from '@/inngest/client';
 import { tradingBotWatch } from '@/inngest/functions/trading-bot-watch';
-import { dcaBotWatch } from '@/inngest/functions/dca-bot-watch';
-import { trailingStopWatch } from '@/inngest/functions/trailing-stop-watch';
-import { dcaSpotBotWatch } from '@/inngest/functions/dca-spot-bot-watch';
-import { smaCrossoverWatch } from '@/inngest/functions/sma-crossover-watch';
+// Temporarily disabled to reduce Inngest executions — only Grid Long is in use.
+// import { dcaBotWatch } from '@/inngest/functions/dca-bot-watch';
+// import { trailingStopWatch } from '@/inngest/functions/trailing-stop-watch';
+// import { dcaSpotBotWatch } from '@/inngest/functions/dca-spot-bot-watch';
+// import { smaCrossoverWatch } from '@/inngest/functions/sma-crossover-watch';
 
 const PORT = Number(process.env.WORKER_PORT ?? 8080);
 
@@ -22,7 +23,7 @@ const PORT = Number(process.env.WORKER_PORT ?? 8080);
     apps: [
       {
         client: inngest,
-        functions: [tradingBotWatch, dcaBotWatch, trailingStopWatch, dcaSpotBotWatch, smaCrossoverWatch],
+        functions: [tradingBotWatch],
       },
     ],
     instanceId: process.env.HOSTNAME ?? process.env.RENDER_INSTANCE_ID ?? undefined,
