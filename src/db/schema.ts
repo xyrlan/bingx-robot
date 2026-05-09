@@ -30,6 +30,39 @@ export const botTypeEnum = pgEnum('bot_type', [
   'SMA_CROSSOVER',
 ]);
 
+export const aiPmModeEnum = pgEnum('ai_pm_mode', [
+  'CONSERVATIVE',
+  'BALANCED',
+  'AGGRESSIVE',
+  'CUSTOM',
+]);
+
+export const aiDecisionStatusEnum = pgEnum('ai_decision_status', [
+  'PROPOSED',
+  'REJECTED_GUARDRAIL',
+  'REJECTED_BACKTEST',
+  'REJECTED_REVIEWER',
+  'EXECUTED',
+  'EXECUTION_FAILED',
+]);
+
+export const aiActionTypeEnum = pgEnum('ai_action_type', [
+  'CREATE_BOT',
+  'STOP_BOT',
+  'ADJUST_PARAMS',
+  'REALLOCATE_CAPITAL',
+  'NO_ACTION',
+]);
+
+export const aiTriggerSourceEnum = pgEnum('ai_trigger_source', [
+  'CRON_TICK',
+  'EVENT_DRAWDOWN',
+  'EVENT_FUNDING_FLIP',
+  'EVENT_FILL',
+  'EVENT_ERROR',
+  'CHAT',
+]);
+
 // ==========================================
 // 2. USERS & PROFILES
 // ==========================================
