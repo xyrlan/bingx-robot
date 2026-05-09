@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull, sql } from 'drizzle-orm';
+import { eq, and, desc, isNull, sql, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { bingxApiKeys, tradingBots, gridLevels, botTrades } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
@@ -156,6 +156,31 @@ export async function getBotById(botId: string, userId: string): Promise<Trading
 export async function getRunningBots(): Promise<TradingBot[]> {
   return db.query.tradingBots.findMany({
     where: eq(tradingBots.status, 'RUNNING'),
+  });
+}
+
+export async function getRunningAiBots(botType?: TradingBot['botType']): Promise<TradingBot[]> {
+  const rows = await db
+    .select({ bot: tradingBots })
+    .from(tradingBots)
+    .innerJoin(bingxApiKeys, eq(tradingBots.apiKeyId, bingxApiKeys.id))
+    .where(
+      and(
+        eq(tradingBots.status, 'RUNNING'),
+        eq(bingxApiKeys.managedByAi, true),
+        botType ? eq(tradingBots.botType, botType) : undefined,
+      ),
+    );
+  return rows.map(r => r.bot);
+}
+
+export async function getRunningBotsByIds(botIds: string[]): Promise<TradingBot[]> {
+  if (botIds.length === 0) return [];
+  return db.query.tradingBots.findMany({
+    where: and(
+      inArray(tradingBots.id, botIds),
+      eq(tradingBots.status, 'RUNNING'),
+    ),
   });
 }
 

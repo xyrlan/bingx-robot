@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import {
-  getRunningBots,
+  getRunningBotsByIds,
   getBotById,
   getContractInfo,
   getCurrentPrice,
@@ -22,6 +22,7 @@ import {
 } from '@/services/bots/sma-crossover.service';
 import { recordTrade } from '@/services/bingx.service';
 import type { SMAConfig } from '@/services/bots/types';
+import type { BotTickEventPayload } from '@/inngest/events';
 import { db } from '@/db';
 import { tradingBots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -50,11 +51,11 @@ export const smaCrossoverWatch = inngest.createFunction(
     retries: 3,
     concurrency: { limit: 1 },
   },
-  { cron: '2 * * * *' },
-  async ({ step, logger }) => {
+  { event: 'bot.tick.SMA_CROSSOVER' },
+  async ({ step, logger, event }) => {
+    const { botIds } = event.data as BotTickEventPayload;
     const bots = await step.run('fetch-sma-bots', async () => {
-      const allRunning = await getRunningBots();
-      return allRunning.filter((b) => b.botType === 'SMA_CROSSOVER');
+      return getRunningBotsByIds(botIds);
     });
 
     if (bots.length === 0) return { processed: 0 };

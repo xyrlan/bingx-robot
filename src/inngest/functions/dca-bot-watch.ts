@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import {
-  getRunningBots,
+  getRunningBotsByIds,
   getBotById,
   setBotStatus,
   getContractInfo,
@@ -10,6 +10,7 @@ import {
 import { groupBotsBySymbolAndKey, getClientForBot } from '@/inngest/helpers';
 import { placeDCAOrder, shouldPlaceDCAOrder } from '@/services/bots/dca.service';
 import type { DCAConfig } from '@/services/bots/types';
+import type { BotTickEventPayload } from '@/inngest/events';
 import { db } from '@/db';
 import { tradingBots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -21,11 +22,11 @@ export const dcaBotWatch = inngest.createFunction(
     retries: 3,
     concurrency: { limit: 1 },
   },
-  { cron: '*/5 * * * *' },
-  async ({ step, logger }) => {
+  { event: 'bot.tick.DCA' },
+  async ({ step, logger, event }) => {
+    const { botIds } = event.data as BotTickEventPayload;
     const bots = await step.run('fetch-dca-bots', async () => {
-      const allRunning = await getRunningBots();
-      return allRunning.filter((b) => b.botType === 'DCA');
+      return getRunningBotsByIds(botIds);
     });
 
     if (bots.length === 0) return { processed: 0 };
