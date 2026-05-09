@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import {
-  getRunningBots,
+  getRunningAiBots,
   getBotById,
   getContractInfo,
   getCurrentPrice,
@@ -53,8 +53,7 @@ export const smaCrossoverWatch = inngest.createFunction(
   { cron: '2 * * * *' },
   async ({ step, logger }) => {
     const bots = await step.run('fetch-sma-bots', async () => {
-      const allRunning = await getRunningBots();
-      return allRunning.filter((b) => b.botType === 'SMA_CROSSOVER');
+      return getRunningAiBots('SMA_CROSSOVER');
     });
 
     if (bots.length === 0) return { processed: 0 };
