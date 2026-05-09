@@ -1,6 +1,7 @@
 import { inngest } from '@/inngest/client';
+import type { BotTickEventPayload } from '@/inngest/events';
 import {
-  getRunningBots,
+  getRunningBotsByIds,
   getBotById,
   getBingxClient,
   getBingxClientByApiKeyId,
@@ -60,10 +61,11 @@ export const tradingBotWatch = inngest.createFunction(
     retries: 3,
     concurrency: {limit: 1}
   },
-  { cron: '*/3 * * * *' },
-  async ({ step, logger }) => {
+  { event: 'bot.tick.GRID' },
+  async ({ step, logger, event }) => {
+    const { botIds } = event.data as BotTickEventPayload;
     const bots = await step.run('fetch-running-bots', async () => {
-      return getRunningBots();
+      return getRunningBotsByIds(botIds);
     });
 
     if (bots.length === 0) {
@@ -71,12 +73,9 @@ export const tradingBotWatch = inngest.createFunction(
       return { processed: 0 };
     }
 
-    // Only process grid bots (skip DCA, TRAILING_STOP, etc.)
-    const gridBots = bots.filter(b => !b.botType || b.botType === 'GRID_LONG' || b.botType === 'GRID_SHORT');
-
     let processed = 0;
 
-    for (const bot of gridBots) {
+    for (const bot of bots) {
       const setup = await step.run(`setup-bot-${bot.id}`, async () => {
         const freshBot = await getBotById(bot.id, bot.userId);
         if (!freshBot || freshBot.status !== 'RUNNING') {
