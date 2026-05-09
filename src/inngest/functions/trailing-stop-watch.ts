@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import {
-  getRunningAiBots,
+  getRunningBotsByIds,
   getBotById,
   setBotStatus,
   getContractInfo,
@@ -15,6 +15,7 @@ import {
   checkTrailingStop,
 } from '@/services/bots/trailing-stop.service';
 import type { TrailingStopConfig } from '@/services/bots/types';
+import type { BotTickEventPayload } from '@/inngest/events';
 import { db } from '@/db';
 import { tradingBots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -26,10 +27,11 @@ export const trailingStopWatch = inngest.createFunction(
     retries: 3,
     concurrency: { limit: 1 },
   },
-  { cron: '*/3 * * * *' },
-  async ({ step, logger }) => {
+  { event: 'bot.tick.TRAILING' },
+  async ({ step, logger, event }) => {
+    const { botIds } = event.data as BotTickEventPayload;
     const bots = await step.run('fetch-trailing-bots', async () => {
-      return getRunningAiBots('TRAILING_STOP');
+      return getRunningBotsByIds(botIds);
     });
 
     if (bots.length === 0) return { processed: 0 };
