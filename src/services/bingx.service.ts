@@ -159,6 +159,21 @@ export async function getRunningBots(): Promise<TradingBot[]> {
   });
 }
 
+export async function getRunningAiBots(botType?: TradingBot['botType']): Promise<TradingBot[]> {
+  const rows = await db
+    .select({ bot: tradingBots })
+    .from(tradingBots)
+    .innerJoin(bingxApiKeys, eq(tradingBots.apiKeyId, bingxApiKeys.id))
+    .where(
+      and(
+        eq(tradingBots.status, 'RUNNING'),
+        eq(bingxApiKeys.managedByAi, true),
+        botType ? eq(tradingBots.botType, botType) : undefined,
+      ),
+    );
+  return rows.map(r => r.bot);
+}
+
 export async function setBotStatus(
   botId: string,
   userId: string,
