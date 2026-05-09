@@ -445,6 +445,39 @@ Estimates are rough; gate is "Done criteria met", not time.
 
 ---
 
+### Session 0.5 — Master orchestrator + event fan-out
+**Objective:** Eliminate idle Inngest invocations. Replace per-strategy cron triggers with a single master cron that loads running AI bots once, groups by `botType`, and dispatches Inngest events only for groups with active bots. Strategy functions become event-triggered (not cron-triggered). This is the same pattern that the AI tick (Session 11) will reuse.
+
+**Why before Session 1:** Two reasons. First, current state has 5 functions firing on cron whether or not bots exist — wastes ~80% of free-tier invocations. Second, the master/fan-out pattern is the right shape for the AI tick later; building it once now means Session 11 plugs in without re-architecting.
+
+**Scope (files):**
+- New: `src/inngest/functions/master-tick.ts` — cron `*/1 * * * *` (or smallest needed cadence). Loads running AI bots, groups by `botType`, applies per-type cadence (DCA every 5 min, TRAILING every 3, SMA every hour), sends `bot.tick.<TYPE>` events with batched `botIds`.
+- New: `src/inngest/events.ts` — central event-name + payload type definitions for `bot.tick.GRID`, `bot.tick.DCA`, `bot.tick.DCA_SPOT`, `bot.tick.TRAILING`, `bot.tick.SMA_CROSSOVER`.
+- Modified: each of `dca-bot-watch.ts`, `dca-spot-bot-watch.ts`, `trailing-stop-watch.ts`, `sma-crossover-watch.ts` — change trigger from `{ cron: ... }` to `{ event: 'bot.tick.<TYPE>' }`. Read `event.data.botIds` instead of calling `getRunningAiBots`. Inner logic unchanged.
+- Modified: `trading-bot-watch.ts` — same treatment for grid (event `bot.tick.GRID`). Note: grid is currently the only strategy NOT scoped to `managed_by_ai` because manual users still use it. Master tick must dispatch grid for ALL running grid bots, not only AI-managed ones. Two events possible: `bot.tick.GRID` for manual scope, `bot.tick.GRID.AI` for managed scope. MVP: keep simple, dispatch `bot.tick.GRID` with all running grid bots regardless of `managed_by_ai`.
+- Modified: `src/app/api/inngest/route.ts` and `src/worker.ts` — register `masterTick` alongside the five strategy handlers (which still register, just trigger differently now).
+
+**Out of scope:** WebSocket worker, real-time tick integration, AI logic, schema additions.
+
+**Dependencies:** Session 0.
+
+**Done criteria:**
+- `master-tick` runs every minute and produces a structured log line summarizing how many bots per type were dispatched.
+- A run with zero bots of any type sends zero events; only `master-tick` is invoked, no strategy invocations.
+- A run with bots in DCA only dispatches `bot.tick.DCA` once and triggers exactly one `dca-bot-watch` invocation.
+- Per-type cadence respected: TRAILING dispatched every 3rd master tick, DCA every 5th, SMA every 60th, GRID every 5th. Verified via Inngest dashboard event log over 30 minutes.
+- Inngest free-tier invocation count for non-grid strategies drops to ~0/month when no bots are configured (vs ~31k/month before).
+- Existing strategy functions keep the same processing logic; only their trigger and bot-fetch step change.
+- Manual smoke (existing test users): start a DCA bot, observe `master-tick` → `bot.tick.DCA` → `dca-bot-watch` chain in Inngest dashboard within 5 minutes.
+
+**Considerations / risks:**
+- Single-point: if `master-tick` errors, all strategies miss that interval. Inngest retries (3×) cover transient failures. Monitor failure alerts.
+- Event payload size: with 1000 bots batched in `botIds`, payload is ~80KB — well under Inngest's 4MB event limit. No paging needed at this scale.
+- Cadence drift: master cron `*/1 * * * *` ticks roughly on the minute. Per-type modulo on `Math.floor(Date.now() / 60_000)` handles cadence deterministically. Edge case: if a tick is delayed (rare), modulo math still picks correct cadence based on current wall-clock minute — does NOT skip a window.
+- Backward compatibility: until master-tick is wired AND strategy triggers are switched, both code paths must NOT run simultaneously (would double-fire). Implementation order: ship strategy-trigger swap + master-tick atomically as one PR, not piecemeal.
+
+---
+
 ### Session 1 — AI schema migrations
 **Objective:** Add the six new tables + enums for the AI Portfolio Manager.
 
