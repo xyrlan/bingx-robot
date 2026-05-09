@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import {
-  getRunningBots,
+  getRunningAiBots,
   getBotById,
   setBotStatus,
   getContractInfo,
@@ -29,8 +29,7 @@ export const trailingStopWatch = inngest.createFunction(
   { cron: '*/3 * * * *' },
   async ({ step, logger }) => {
     const bots = await step.run('fetch-trailing-bots', async () => {
-      const allRunning = await getRunningBots();
-      return allRunning.filter((b) => b.botType === 'TRAILING_STOP');
+      return getRunningAiBots('TRAILING_STOP');
     });
 
     if (bots.length === 0) return { processed: 0 };
