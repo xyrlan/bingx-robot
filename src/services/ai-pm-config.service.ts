@@ -85,9 +85,19 @@ export async function setEnabled(userId: string, value: boolean): Promise<void> 
     .where(eq(aiPmConfigs.userId, userId));
 }
 
-type AnthropicFactory = (apiKey: string) => { messages: { create: (params: unknown) => Promise<unknown> } };
+interface AnthropicLike {
+  messages: {
+    create: (params: {
+      model: string;
+      max_tokens: number;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    }) => Promise<unknown>;
+  };
+}
 
-const defaultFactory: AnthropicFactory = (apiKey) => new Anthropic({ apiKey });
+type AnthropicFactory = (apiKey: string) => AnthropicLike;
+
+const defaultFactory: AnthropicFactory = (apiKey) => new Anthropic({ apiKey }) as unknown as AnthropicLike;
 
 /**
  * Validates an Anthropic API key by calling messages.create with the cheapest
