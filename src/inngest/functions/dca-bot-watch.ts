@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import {
-  getRunningBots,
+  getRunningAiBots,
   getBotById,
   setBotStatus,
   getContractInfo,
@@ -24,8 +24,7 @@ export const dcaBotWatch = inngest.createFunction(
   { cron: '*/5 * * * *' },
   async ({ step, logger }) => {
     const bots = await step.run('fetch-dca-bots', async () => {
-      const allRunning = await getRunningBots();
-      return allRunning.filter((b) => b.botType === 'DCA');
+      return getRunningAiBots('DCA');
     });
 
     if (bots.length === 0) return { processed: 0 };
