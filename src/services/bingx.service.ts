@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull, sql } from 'drizzle-orm';
+import { eq, and, desc, isNull, sql, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { bingxApiKeys, tradingBots, gridLevels, botTrades } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
@@ -172,6 +172,16 @@ export async function getRunningAiBots(botType?: TradingBot['botType']): Promise
       ),
     );
   return rows.map(r => r.bot);
+}
+
+export async function getRunningBotsByIds(botIds: string[]): Promise<TradingBot[]> {
+  if (botIds.length === 0) return [];
+  return db.query.tradingBots.findMany({
+    where: and(
+      inArray(tradingBots.id, botIds),
+      eq(tradingBots.status, 'RUNNING'),
+    ),
+  });
 }
 
 export async function setBotStatus(
