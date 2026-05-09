@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import {
-  getRunningBots,
+  getRunningAiBots,
   getBotById,
   setBotStatus,
 } from '@/services/bingx.service';
@@ -22,8 +22,7 @@ export const dcaSpotBotWatch = inngest.createFunction(
   { cron: '*/5 * * * *' },
   async ({ step, logger }) => {
     const bots = await step.run('fetch-dca-spot-bots', async () => {
-      const allRunning = await getRunningBots();
-      return allRunning.filter((b) => b.botType === 'DCA_SPOT');
+      return getRunningAiBots('DCA_SPOT');
     });
 
     if (bots.length === 0) return { processed: 0 };
