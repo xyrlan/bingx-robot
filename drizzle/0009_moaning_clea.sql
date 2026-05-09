@@ -1,0 +1,2 @@
+ALTER TABLE "bingx_api_keys" ADD COLUMN "managed_by_ai" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "bingx_api_keys_managed_by_ai_idx" ON "bingx_api_keys" USING btree ("managed_by_ai");

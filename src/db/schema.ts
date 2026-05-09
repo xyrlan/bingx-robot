@@ -91,9 +91,13 @@ export const bingxApiKeys = pgTable('bingx_api_keys', {
   label: text('label').notNull().default('Main'),
   apiKey: text('api_key').notNull(),
   secretKeyEncrypted: text('secret_key_encrypted').notNull(),
+  managedByAi: boolean('managed_by_ai').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => [index('bingx_api_keys_user_id_idx').on(table.userId)]);
+}, (table) => [
+  index('bingx_api_keys_user_id_idx').on(table.userId),
+  index('bingx_api_keys_managed_by_ai_idx').on(table.managedByAi),
+]);
 
 // ==========================================
 // 5. TRADING BOTS
