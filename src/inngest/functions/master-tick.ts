@@ -18,6 +18,7 @@ const TYPE_TO_EVENT: Record<BotType, BotTickEventName> = {
 interface BotRow {
   id: string;
   botType: BotType;
+  managedByAi: boolean | null;
 }
 
 export const masterTick = inngest.createFunction(
@@ -34,7 +35,11 @@ export const masterTick = inngest.createFunction(
 
     const bots = await step.run('load-running-bots', async (): Promise<BotRow[]> => {
       const rows = await db
-        .select({ id: tradingBots.id, botType: tradingBots.botType })
+        .select({
+          id: tradingBots.id,
+          botType: tradingBots.botType,
+          managedByAi: bingxApiKeys.managedByAi,
+        })
         .from(tradingBots)
         .leftJoin(bingxApiKeys, eq(tradingBots.apiKeyId, bingxApiKeys.id))
         .where(eq(tradingBots.status, 'RUNNING'));
@@ -50,6 +55,11 @@ export const masterTick = inngest.createFunction(
     for (const bot of bots) {
       const eventName = TYPE_TO_EVENT[bot.botType];
       if (!eventName) continue;
+
+      // GRID stays available to all bots; non-GRID strategies require managed_by_ai = true
+      const isGrid = bot.botType === 'GRID_LONG' || bot.botType === 'GRID_SHORT';
+      if (!isGrid && bot.managedByAi !== true) continue;
+
       // Cadence is keyed off the source bot type, not the target event.
       // GRID_LONG and GRID_SHORT share cadence (5 min). Either one in the group is sufficient.
       if (!shouldDispatch(bot.botType, tickNumber)) continue;

@@ -9,6 +9,7 @@ config({ path: path.resolve(__dirname, '.env') });
 export default defineConfig({
   test: {
     globals: true,
+    fileParallelism: false,
     env: {
       // Fallbacks used only when not already set by .env.local / .env above
       DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://test:test@localhost:5432/test',

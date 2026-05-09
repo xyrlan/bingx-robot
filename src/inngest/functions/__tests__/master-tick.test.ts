@@ -18,7 +18,7 @@ async function seedKey() {
     label: 'k',
     apiKey: 'k',
     secretKeyEncrypted: 'k',
-    managedByAi: false,
+    managedByAi: true,
   }).returning();
   return k;
 }
@@ -112,6 +112,69 @@ describe('masterTick dispatch logic', () => {
     await handler({ step: fakeStep, logger: fakeLogger });
 
     expect(sent.find(e => e.name === 'bot.tick.DCA')).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
+  it('does not dispatch DCA when managedByAi is false (non-GRID requires AI scope)', async () => {
+    // Seed a manual key (not AI-managed)
+    const [manualKey] = await db.insert(bingxApiKeys).values({
+      userId: TEST_USER_ID,
+      label: 'manual',
+      apiKey: 'm',
+      secretKeyEncrypted: 'm',
+      managedByAi: false,
+    }).returning();
+    await seedBot(manualKey.id, 'DCA');
+
+    const sent: { name: string; data: unknown }[] = [];
+    const fakeStep = {
+      run: async <T>(_id: string, fn: () => Promise<T>) => fn(),
+      sendEvent: async (_id: string, events: { name: string; data: unknown }[]) => {
+        sent.push(...events);
+      },
+    };
+    const fakeLogger = { info: () => {} };
+
+    const now = 5 * 60_000; // tickNumber = 5 (multiple of 5)
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+
+    const { masterTick } = await import('@/inngest/functions/master-tick');
+    type Handler = (ctx: { step: unknown; logger: unknown }) => Promise<unknown>;
+    const handler = (masterTick as unknown as { fn: Handler }).fn;
+    await handler({ step: fakeStep, logger: fakeLogger });
+
+    expect(sent.find(e => e.name === 'bot.tick.DCA')).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
+  it('dispatches GRID even when managedByAi is false (grid is open to manual users)', async () => {
+    const [manualKey] = await db.insert(bingxApiKeys).values({
+      userId: TEST_USER_ID,
+      label: 'manual',
+      apiKey: 'm',
+      secretKeyEncrypted: 'm',
+      managedByAi: false,
+    }).returning();
+    await seedBot(manualKey.id, 'GRID_LONG');
+
+    const sent: { name: string; data: unknown }[] = [];
+    const fakeStep = {
+      run: async <T>(_id: string, fn: () => Promise<T>) => fn(),
+      sendEvent: async (_id: string, events: { name: string; data: unknown }[]) => {
+        sent.push(...events);
+      },
+    };
+    const fakeLogger = { info: () => {} };
+
+    const now = 5 * 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+
+    const { masterTick } = await import('@/inngest/functions/master-tick');
+    type Handler = (ctx: { step: unknown; logger: unknown }) => Promise<unknown>;
+    const handler = (masterTick as unknown as { fn: Handler }).fn;
+    await handler({ step: fakeStep, logger: fakeLogger });
+
+    expect(sent.find(e => e.name === 'bot.tick.GRID')).toBeDefined();
     vi.restoreAllMocks();
   });
 });
