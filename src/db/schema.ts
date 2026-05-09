@@ -210,6 +210,158 @@ export const botTrades = pgTable(
 );
 
 // ==========================================
+// 6. AI PORTFOLIO MANAGER
+// ==========================================
+
+/**
+ * Per-user AI portfolio manager configuration.
+ * One row per user. Points to a dedicated AI-managed BingX subaccount key.
+ * Stores guardrails, profile, kill switch, and BYOK Anthropic API key.
+ */
+export const aiPmConfigs = pgTable('ai_pm_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  bingxApiKeyId: uuid('bingx_api_key_id')
+    .notNull()
+    .references(() => bingxApiKeys.id, { onDelete: 'cascade' }),
+  anthropicApiKeyEncrypted: text('anthropic_api_key_encrypted').notNull(),
+  enabled: boolean('enabled').default(false).notNull(),
+  mode: aiPmModeEnum('mode').default('BALANCED').notNull(),
+  maxCapitalUsdt: decimal('max_capital_usdt', { precision: 20, scale: 8 }),
+  maxDrawdownPct: decimal('max_drawdown_pct', { precision: 5, scale: 2 }),
+  maxLeverage: integer('max_leverage'),
+  allowedSymbols: jsonb('allowed_symbols').$type<string[]>(),
+  allowedStrategies: jsonb('allowed_strategies').$type<string[]>(),
+  maxConcurrentBots: integer('max_concurrent_bots').default(5),
+  monthlyLlmBudgetUsd: decimal('monthly_llm_budget_usd', { precision: 10, scale: 2 }),
+  killSwitch: boolean('kill_switch').default(false).notNull(),
+  paperMode: boolean('paper_mode').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ai_pm_configs_user_idx').on(table.userId),
+  uniqueIndex('ai_pm_configs_apikey_idx').on(table.bingxApiKeyId),
+]);
+
+/**
+ * Audit log of every AI decision proposed, rejected, or executed.
+ * Insert-only; updates restricted to defined status transitions enforced at the service layer.
+ */
+export const aiDecisions = pgTable('ai_decisions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  triggeredBy: aiTriggerSourceEnum('triggered_by').notNull(),
+  triggerDetail: text('trigger_detail'),
+  actionType: aiActionTypeEnum('action_type').notNull(),
+  status: aiDecisionStatusEnum('status').notNull(),
+  symbol: text('symbol'),
+  strategy: botTypeEnum('strategy'),
+  params: jsonb('params'),
+  reasoning: text('reasoning'),
+  signalSnapshot: jsonb('signal_snapshot'),
+  backtestRunId: uuid('backtest_run_id').references(() => backtestRuns.id, { onDelete: 'set null' }),
+  rejectionReason: text('rejection_reason'),
+  modelUsed: text('model_used'),
+  tokensInput: integer('tokens_input'),
+  tokensOutput: integer('tokens_output'),
+  costUsd: decimal('cost_usd', { precision: 10, scale: 6 }),
+  resultBotId: uuid('result_bot_id').references(() => tradingBots.id, { onDelete: 'set null' }),
+  executedAt: timestamp('executed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('ai_decisions_user_created_idx').on(table.userId, table.createdAt),
+  index('ai_decisions_status_idx').on(table.status),
+]);
+
+/**
+ * Simulated bots used when aiPmConfigs.paperMode = true.
+ * Executor writes here instead of creating real BingX bots.
+ * Trades are simulated by feeding live OHLCV through the same pure-core simulators that backtest uses.
+ */
+export const paperBots = pgTable('paper_bots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  decisionId: uuid('decision_id').references(() => aiDecisions.id, { onDelete: 'set null' }),
+  symbol: text('symbol').notNull(),
+  strategy: botTypeEnum('strategy').notNull(),
+  params: jsonb('params').notNull(),
+  capitalUsdt: decimal('capital_usdt', { precision: 20, scale: 8 }).notNull(),
+  status: botStatusEnum('status').notNull().default('STOPPED'),
+  pnlUsdt: decimal('pnl_usdt', { precision: 20, scale: 8 }).default('0'),
+  trades: jsonb('trades').$type<unknown[]>(),
+  startedAt: timestamp('started_at'),
+  stoppedAt: timestamp('stopped_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('paper_bots_user_status_idx').on(table.userId, table.status),
+]);
+
+/**
+ * Signal layer output cache. One row per (user, symbol, tick).
+ * Used by analyst dashboard watchlist and by Decision layer to read recent context.
+ */
+export const aiSignals = pgTable('ai_signals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  symbol: text('symbol').notNull(),
+  regime: text('regime').notNull(),
+  score: integer('score').notNull(),
+  reason: text('reason'),
+  indicatorsSnapshot: jsonb('indicators_snapshot'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('ai_signals_user_symbol_idx').on(table.userId, table.symbol, table.createdAt),
+]);
+
+/**
+ * Cached backtest results, deduplicated by (symbol, strategy, paramsHash, windowDays).
+ * Same input always returns the same row — backtest is deterministic.
+ */
+export const backtestRuns = pgTable('backtest_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  symbol: text('symbol').notNull(),
+  strategy: botTypeEnum('strategy').notNull(),
+  paramsHash: text('params_hash').notNull(),
+  params: jsonb('params').notNull(),
+  windowDays: integer('window_days').notNull(),
+  pnlPct: decimal('pnl_pct', { precision: 10, scale: 4 }),
+  maxDrawdownPct: decimal('max_drawdown_pct', { precision: 10, scale: 4 }),
+  sharpeApprox: decimal('sharpe_approx', { precision: 10, scale: 4 }),
+  winRatePct: decimal('win_rate_pct', { precision: 5, scale: 2 }),
+  totalTrades: integer('total_trades'),
+  metricsJson: jsonb('metrics_json'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('backtest_runs_dedup_idx').on(table.symbol, table.strategy, table.paramsHash, table.windowDays),
+]);
+
+/**
+ * Persistent chat history for the AI Portfolio Manager conversational UI.
+ * decisionId optionally links a tool-call message to the decision it produced.
+ */
+export const aiChatMessages = pgTable('ai_chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(),
+  content: text('content'),
+  toolCalls: jsonb('tool_calls'),
+  decisionId: uuid('decision_id').references(() => aiDecisions.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('ai_chat_user_created_idx').on(table.userId, table.createdAt),
+]);
+
+// ==========================================
 // 6. RELATIONS (BingX)
 // ==========================================
 
