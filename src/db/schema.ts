@@ -399,3 +399,64 @@ export const botTradesRelations = relations(botTrades, ({ one }) => ({
     references: [tradingBots.id],
   }),
 }));
+
+export const aiPmConfigsRelations = relations(aiPmConfigs, ({ one }) => ({
+  user: one(users, {
+    fields: [aiPmConfigs.userId],
+    references: [users.id],
+  }),
+  bingxApiKey: one(bingxApiKeys, {
+    fields: [aiPmConfigs.bingxApiKeyId],
+    references: [bingxApiKeys.id],
+  }),
+}));
+
+export const aiDecisionsRelations = relations(aiDecisions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [aiDecisions.userId],
+    references: [users.id],
+  }),
+  resultBot: one(tradingBots, {
+    fields: [aiDecisions.resultBotId],
+    references: [tradingBots.id],
+  }),
+  backtestRun: one(backtestRuns, {
+    fields: [aiDecisions.backtestRunId],
+    references: [backtestRuns.id],
+  }),
+  chatMessages: many(aiChatMessages),
+  paperBots: many(paperBots),
+}));
+
+export const paperBotsRelations = relations(paperBots, ({ one }) => ({
+  user: one(users, {
+    fields: [paperBots.userId],
+    references: [users.id],
+  }),
+  decision: one(aiDecisions, {
+    fields: [paperBots.decisionId],
+    references: [aiDecisions.id],
+  }),
+}));
+
+export const aiSignalsRelations = relations(aiSignals, ({ one }) => ({
+  user: one(users, {
+    fields: [aiSignals.userId],
+    references: [users.id],
+  }),
+}));
+
+export const backtestRunsRelations = relations(backtestRuns, ({ many }) => ({
+  decisions: many(aiDecisions),
+}));
+
+export const aiChatMessagesRelations = relations(aiChatMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [aiChatMessages.userId],
+    references: [users.id],
+  }),
+  decision: one(aiDecisions, {
+    fields: [aiChatMessages.decisionId],
+    references: [aiDecisions.id],
+  }),
+}));
