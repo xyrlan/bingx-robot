@@ -9,6 +9,7 @@ import 'dotenv/config';
 import { createServer } from 'http';
 import { connect, ConnectionState } from 'inngest/connect';
 import { inngest } from '@/inngest/client';
+import { masterTick } from '@/inngest/functions/master-tick';
 import { tradingBotWatch } from '@/inngest/functions/trading-bot-watch';
 import { dcaBotWatch } from '@/inngest/functions/dca-bot-watch';
 import { trailingStopWatch } from '@/inngest/functions/trailing-stop-watch';
@@ -23,6 +24,7 @@ const PORT = Number(process.env.WORKER_PORT ?? 8080);
       {
         client: inngest,
         functions: [
+          masterTick,
           tradingBotWatch,
           dcaBotWatch,
           trailingStopWatch,
