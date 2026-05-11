@@ -14,17 +14,16 @@ const STRINGS = {
   enabledLabel: 'Enabled',
   enabledDesc: 'AI portfolio manager is active.',
   disabledDesc: 'AI portfolio manager is paused.',
-  paperModeLabel: 'Paper mode',
-  paperModeDesc: 'Simulate trades without real orders.',
 };
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, Button, Spinner, Switch, Modal, toast, useOverlayState } from '@heroui/react';
 import { KeyRound, Settings, Trash2, AlertTriangle } from 'lucide-react';
 import type { AiPmConfigPublic } from './types';
 import { AnthropicKeyForm } from './AnthropicKeyForm';
 import { GuardrailForm } from './GuardrailForm';
 import { KillSwitch } from './KillSwitch';
+import { PaperModeToggle } from './PaperModeToggle';
 
 interface SubaccountAiCardProps {
   subaccount: { id: string; label: string };
@@ -33,51 +32,45 @@ interface SubaccountAiCardProps {
 }
 
 export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiCardProps) {
-  const [showEnableForm, setShowEnableForm] = useState(false);
+  const [showEnableFlow, setShowEnableFlow] = useState(false);
+  // pendingConfig: set after AnthropicKeyForm creates the config; drives GuardrailForm step
+  const [pendingConfig, setPendingConfig] = useState<AiPmConfigPublic | null>(null);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showReplaceKey, setShowReplaceKey] = useState(false);
+  // Optimistic enabled state
+  const [optimisticEnabled, setOptimisticEnabled] = useState(config?.enabled ?? false);
   const [patchingEnabled, setPatchingEnabled] = useState(false);
-  const [patchingPaper, setPatchingPaper] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const disableModalState = useOverlayState();
 
-  // ---- Patch helper ----
-  async function patchConfig(body: Partial<Pick<AiPmConfigPublic, 'enabled' | 'paperMode' | 'killSwitch'>>) {
-    if (!config) return;
-    const res = await fetch(`/api/ai-pm/config/${config.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const data = await res.json() as { error?: string };
-      toast.danger(data.error ?? 'Failed to update');
-      return;
-    }
-    await onChange();
-  }
+  // Keep optimistic state in sync when parent refreshes config
+  useEffect(() => {
+    setOptimisticEnabled(config?.enabled ?? false);
+  }, [config?.enabled]);
 
-  // ---- Toggle enabled ----
+  // ---- Toggle enabled (optimistic) ----
   async function handleEnabledChange(checked: boolean) {
+    if (!config) return;
+    setOptimisticEnabled(checked);
     setPatchingEnabled(true);
     try {
-      await patchConfig({ enabled: checked });
+      const res = await fetch(`/api/ai-pm/config/${config.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: checked }),
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        setOptimisticEnabled(!checked);
+        toast.danger(data.error ?? 'Failed to update');
+        return;
+      }
+      await onChange();
     } catch {
+      setOptimisticEnabled(!checked);
       toast.danger('Network error — please try again');
     } finally {
       setPatchingEnabled(false);
-    }
-  }
-
-  // ---- Toggle paper mode ----
-  async function handlePaperChange(checked: boolean) {
-    setPatchingPaper(true);
-    try {
-      await patchConfig({ paperMode: checked });
-    } catch {
-      toast.danger('Network error — please try again');
-    } finally {
-      setPatchingPaper(false);
     }
   }
 
@@ -102,10 +95,24 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
     }
   }
 
-  // ---- After saving a new config ----
+  // ---- After AnthropicKeyForm saves a NEW config: move to GuardrailForm step ----
+  function handleKeySaved(cfg: AiPmConfigPublic) {
+    setPendingConfig(cfg);
+    // Notify parent so list refreshes, but keep enable flow open for guardrail step
+    void onChange();
+  }
+
+  // ---- After GuardrailForm saves in the enable flow ----
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async function handleSaved(_cfg: AiPmConfigPublic) {
-    setShowEnableForm(false);
+  async function handleGuardrailSaved(_cfg: AiPmConfigPublic) {
+    setPendingConfig(null);
+    setShowEnableFlow(false);
+    await onChange();
+  }
+
+  // ---- After saving in edit/replace flows ----
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function handleEditSaved(_cfg: AiPmConfigPublic) {
     setShowEditProfile(false);
     setShowReplaceKey(false);
     await onChange();
@@ -151,37 +158,49 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
           </div>
         </div>
 
-        {/* === No config: show Enable AI button + expandable form === */}
+        {/* === No config: show Enable AI button + expandable two-step form === */}
         {!config && (
           <div className="space-y-3">
-            {!showEnableForm ? (
+            {!showEnableFlow ? (
               <Button
                 variant="primary"
-                onPress={() => setShowEnableForm(true)}
+                onPress={() => setShowEnableFlow(true)}
                 aria-label={`Enable AI for ${subaccount.label}`}
               >
                 {STRINGS.enableAi}
               </Button>
             ) : (
               <div className="space-y-4">
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    Set up Anthropic key
-                  </p>
-                  <AnthropicKeyForm
-                    existingConfigId={null}
-                    bingxApiKeyId={subaccount.id}
-                    defaultMode="BALANCED"
-                    onSaved={handleSaved}
-                    onCancel={() => setShowEnableForm(false)}
-                  />
-                </div>
-                <div className="border-t border-default-200 pt-4">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-3">
-                    Configure guardrails
-                  </p>
-                  {/* GuardrailForm can't save without a configId yet — it will be shown post-create */}
-                </div>
+                {/* Step 1: Anthropic key — hidden once key is saved */}
+                {pendingConfig === null && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      Set up Anthropic key
+                    </p>
+                    <AnthropicKeyForm
+                      existingConfigId={null}
+                      bingxApiKeyId={subaccount.id}
+                      defaultMode="BALANCED"
+                      onSaved={handleKeySaved}
+                      onCancel={() => setShowEnableFlow(false)}
+                    />
+                  </div>
+                )}
+
+                {/* Step 2: Guardrails — shown once config is created */}
+                {pendingConfig !== null && (
+                  <div className="border-t border-default-200 pt-4">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-3">
+                      Configure guardrails
+                    </p>
+                    <GuardrailForm
+                      config={pendingConfig}
+                      configId={pendingConfig.id}
+                      onSaved={handleGuardrailSaved}
+                      onCancel={() => handleGuardrailSaved(pendingConfig)}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -192,10 +211,10 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
           <div className="space-y-4">
             {/* Switches */}
             <div className="space-y-3">
-              {/* Enabled toggle */}
+              {/* Enabled toggle — optimistic */}
               <div className="flex items-start gap-3">
                 <Switch
-                  isSelected={config.enabled}
+                  isSelected={optimisticEnabled}
                   onChange={handleEnabledChange}
                   isDisabled={patchingEnabled || deleting}
                   aria-label={STRINGS.enabledLabel}
@@ -207,30 +226,18 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{STRINGS.enabledLabel}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {config.enabled ? STRINGS.enabledDesc : STRINGS.disabledDesc}
+                    {optimisticEnabled ? STRINGS.enabledDesc : STRINGS.disabledDesc}
                   </p>
                 </div>
                 {patchingEnabled && <Spinner size="sm" />}
               </div>
 
-              {/* Paper mode toggle */}
-              <div className="flex items-start gap-3">
-                <Switch
-                  isSelected={config.paperMode}
-                  onChange={handlePaperChange}
-                  isDisabled={patchingPaper || deleting}
-                  aria-label={STRINGS.paperModeLabel}
-                >
-                  <Switch.Control>
-                    <Switch.Thumb />
-                  </Switch.Control>
-                </Switch>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{STRINGS.paperModeLabel}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{STRINGS.paperModeDesc}</p>
-                </div>
-                {patchingPaper && <Spinner size="sm" />}
-              </div>
+              {/* Paper mode toggle — delegates to PaperModeToggle (has its own optimistic state) */}
+              <PaperModeToggle
+                configId={config.id}
+                paperMode={config.paperMode}
+                onChange={onChange}
+              />
             </div>
 
             {/* Action buttons */}
@@ -280,7 +287,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 <GuardrailForm
                   config={config}
                   configId={config.id}
-                  onSaved={handleSaved}
+                  onSaved={handleEditSaved}
                   onCancel={() => setShowEditProfile(false)}
                 />
               </div>
@@ -292,7 +299,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 <AnthropicKeyForm
                   existingConfigId={config.id}
                   bingxApiKeyId={config.bingxApiKeyId}
-                  onSaved={handleSaved}
+                  onSaved={handleEditSaved}
                   onCancel={() => setShowReplaceKey(false)}
                 />
               </div>
