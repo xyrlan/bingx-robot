@@ -53,7 +53,8 @@ describe('writeCache', () => {
   it('inserts and returns the new row', async () => {
     const inserted = { id: 'new-id' };
     const returning = vi.fn().mockResolvedValue([inserted]);
-    const values = vi.fn().mockReturnValue({ returning });
+    const onConflictDoNothing = vi.fn().mockReturnValue({ returning });
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing });
     vi.mocked(db.insert).mockReturnValue({ values } as never);
 
     const r = await writeCache({
@@ -71,5 +72,62 @@ describe('writeCache', () => {
     });
     expect(r).toEqual(inserted);
     expect(values).toHaveBeenCalledOnce();
+    expect(onConflictDoNothing).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to re-read when onConflictDoNothing returns empty (race)', async () => {
+    const existing = { id: 'existing-id', symbol: 'BTC-USDT' };
+    // Insert returns empty (conflict)
+    const returning = vi.fn().mockResolvedValue([]);
+    const onConflictDoNothing = vi.fn().mockReturnValue({ returning });
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing });
+    vi.mocked(db.insert).mockReturnValue({ values } as never);
+
+    // Re-read returns the existing row
+    const where = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([existing]) });
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.select).mockReturnValue({ from } as never);
+
+    const r = await writeCache({
+      symbol: 'BTC-USDT',
+      strategy: 'DCA',
+      paramsHash: 'hash',
+      params: { x: 1 },
+      windowDays: 30,
+      pnlPct: '1.0000',
+      maxDrawdownPct: '0.5000',
+      sharpeApprox: '1.0000',
+      winRatePct: '50.00',
+      totalTrades: 1,
+      metricsJson: null,
+    });
+    expect(r).toEqual(existing);
+  });
+
+  it('throws when conflict path returns no row on re-read', async () => {
+    const returning = vi.fn().mockResolvedValue([]);
+    const onConflictDoNothing = vi.fn().mockReturnValue({ returning });
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing });
+    vi.mocked(db.insert).mockReturnValue({ values } as never);
+
+    const where = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) });
+    const from = vi.fn().mockReturnValue({ where });
+    vi.mocked(db.select).mockReturnValue({ from } as never);
+
+    await expect(
+      writeCache({
+        symbol: 'BTC-USDT',
+        strategy: 'DCA',
+        paramsHash: 'hash',
+        params: {},
+        windowDays: 30,
+        pnlPct: '0',
+        maxDrawdownPct: '0',
+        sharpeApprox: '0',
+        winRatePct: '0',
+        totalTrades: 0,
+        metricsJson: null,
+      }),
+    ).rejects.toThrow(/no row found on re-read/i);
   });
 });

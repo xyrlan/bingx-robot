@@ -46,6 +46,22 @@ export async function findCached(
 }
 
 export async function writeCache(row: BacktestInsert): Promise<BacktestRow> {
-  const [inserted] = await db.insert(backtestRuns).values(row).returning();
-  return inserted;
+  const [inserted] = await db
+    .insert(backtestRuns)
+    .values(row)
+    .onConflictDoNothing({
+      target: [backtestRuns.symbol, backtestRuns.strategy, backtestRuns.paramsHash, backtestRuns.windowDays],
+    })
+    .returning();
+
+  if (inserted) return inserted;
+
+  // Race: someone else inserted the same key first. Re-read it.
+  const existing = await findCached(row.symbol, row.strategy as BacktestableStrategy, row.paramsHash, row.windowDays);
+  if (!existing) {
+    throw new Error(
+      `writeCache conflict on ${row.symbol}|${row.strategy}|${row.paramsHash}|${row.windowDays} but no row found on re-read`,
+    );
+  }
+  return existing;
 }
