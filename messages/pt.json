@@ -75,6 +75,7 @@
     "overview": "Visão Geral",
     "bots": "Bots",
     "aiPm": "Gestor de Portfólio com IA",
+    "aiActivity": "Atividade da IA",
     "accounts": "Contas",
     "settings": "Configurações",
     "signOut": "Sair"
@@ -141,6 +142,61 @@
       "showKey": "Mostrar chave",
       "emptyNoSubaccounts": "Nenhuma subconta BingX ainda.",
       "addSubaccountLink": "Adicionar uma subconta →"
+    },
+    "Activity": {
+      "title": "Atividade da IA",
+      "subtitle": "Decisões, sinais, bots de papel e gastos.",
+      "refresh": "Atualizar",
+      "reset": "Limpar",
+      "loadMore": "Carregar mais",
+      "loading": "Carregando…",
+      "errorBanner": "Falha ao carregar atividade",
+      "retry": "Tentar novamente",
+      "emptyAll": "Nenhuma decisão da IA ainda. Ative a IA em uma subconta nas Configurações.",
+      "emptyFiltered": "Nenhuma decisão corresponde aos filtros.",
+      "filterStatus": "Status",
+      "filterAction": "Ação",
+      "filterSymbol": "Símbolo",
+      "filterFrom": "De",
+      "filterTo": "Até",
+      "status": {
+        "PROPOSED": "Proposta",
+        "REJECTED_GUARDRAIL": "Rejeitada (guardrail)",
+        "REJECTED_BACKTEST": "Rejeitada (backtest)",
+        "REJECTED_REVIEWER": "Rejeitada (revisor)",
+        "EXECUTED": "Executada",
+        "EXECUTION_FAILED": "Falha na execução"
+      },
+      "action": {
+        "CREATE_BOT": "Criar bot",
+        "STOP_BOT": "Parar bot",
+        "ADJUST_PARAMS": "Ajustar parâmetros",
+        "REALLOCATE_CAPITAL": "Realocar capital",
+        "NO_ACTION": "Sem ação"
+      },
+      "detail": {
+        "reasoning": "Raciocínio",
+        "rejection": "Motivo da rejeição",
+        "signal": "Snapshot do sinal",
+        "params": "Parâmetros",
+        "linkedBot": "Bot vinculado",
+        "linkedPaperBot": "Bot de papel vinculado",
+        "noLink": "—",
+        "model": "Modelo",
+        "tokensIn": "Tokens entrada",
+        "tokensOut": "Tokens saída",
+        "cost": "Custo (USD)"
+      },
+      "rails": {
+        "signalsTitle": "Sinais recentes",
+        "signalsEmpty": "Nenhum sinal ainda.",
+        "paperBotsTitle": "Bots de papel ativos",
+        "paperBotsEmpty": "Nenhum bot de papel ativo.",
+        "spendTitle": "Hoje",
+        "decisions": "Decisões",
+        "cronTitle": "Último tick da IA",
+        "cronNever": "Nunca"
+      }
     }
   },
   "Dashboard": {

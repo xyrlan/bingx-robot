@@ -74,6 +74,7 @@
     "overview": "概览",
     "bots": "机器人",
     "aiPm": "AI 投资组合管理器",
+    "aiActivity": "AI 活动",
     "accounts": "账户",
     "settings": "设置",
     "signOut": "退出"
@@ -140,6 +141,61 @@
       "showKey": "显示密钥",
       "emptyNoSubaccounts": "尚无 BingX 子账户。",
       "addSubaccountLink": "添加子账户 →"
+    },
+    "Activity": {
+      "title": "AI 活动",
+      "subtitle": "决策、信号、模拟机器人和花费。",
+      "refresh": "刷新",
+      "reset": "重置",
+      "loadMore": "加载更多",
+      "loading": "加载中…",
+      "errorBanner": "加载活动失败",
+      "retry": "重试",
+      "emptyAll": "暂无 AI 决策。请在设置中为子账户启用 AI。",
+      "emptyFiltered": "没有匹配筛选条件的决策。",
+      "filterStatus": "状态",
+      "filterAction": "操作",
+      "filterSymbol": "交易对",
+      "filterFrom": "从",
+      "filterTo": "到",
+      "status": {
+        "PROPOSED": "已提议",
+        "REJECTED_GUARDRAIL": "已拒绝（护栏）",
+        "REJECTED_BACKTEST": "已拒绝（回测）",
+        "REJECTED_REVIEWER": "已拒绝（审核）",
+        "EXECUTED": "已执行",
+        "EXECUTION_FAILED": "执行失败"
+      },
+      "action": {
+        "CREATE_BOT": "创建机器人",
+        "STOP_BOT": "停止机器人",
+        "ADJUST_PARAMS": "调整参数",
+        "REALLOCATE_CAPITAL": "重新分配资金",
+        "NO_ACTION": "无操作"
+      },
+      "detail": {
+        "reasoning": "推理",
+        "rejection": "拒绝原因",
+        "signal": "信号快照",
+        "params": "参数",
+        "linkedBot": "关联机器人",
+        "linkedPaperBot": "关联模拟机器人",
+        "noLink": "—",
+        "model": "模型",
+        "tokensIn": "输入 token",
+        "tokensOut": "输出 token",
+        "cost": "费用 (USD)"
+      },
+      "rails": {
+        "signalsTitle": "最新信号",
+        "signalsEmpty": "暂无信号。",
+        "paperBotsTitle": "活跃的模拟机器人",
+        "paperBotsEmpty": "暂无活跃的模拟机器人。",
+        "spendTitle": "今日",
+        "decisions": "决策",
+        "cronTitle": "上次 AI 触发",
+        "cronNever": "从未"
+      }
     }
   },
   "Dashboard": {
