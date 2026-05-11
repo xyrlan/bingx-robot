@@ -6,7 +6,7 @@ const STRINGS = {
   description: 'Simulate trades without real orders.',
 };
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Switch, toast } from '@heroui/react';
 
 interface PaperModeToggleProps {
@@ -18,6 +18,10 @@ interface PaperModeToggleProps {
 export function PaperModeToggle({ configId, paperMode, onChange }: PaperModeToggleProps) {
   const [optimistic, setOptimistic] = useState(paperMode);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setOptimistic(paperMode);
+  }, [paperMode]);
 
   async function handleChange(checked: boolean) {
     setOptimistic(checked);

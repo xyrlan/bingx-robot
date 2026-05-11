@@ -35,8 +35,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
   const [showEnableFlow, setShowEnableFlow] = useState(false);
   // pendingConfig: set after AnthropicKeyForm creates the config; drives GuardrailForm step
   const [pendingConfig, setPendingConfig] = useState<AiPmConfigPublic | null>(null);
-  const [showEditProfile, setShowEditProfile] = useState(false);
-  const [showReplaceKey, setShowReplaceKey] = useState(false);
+  const [activePanel, setActivePanel] = useState<'none' | 'edit' | 'replace'>('none');
   // Optimistic enabled state
   const [optimisticEnabled, setOptimisticEnabled] = useState(config?.enabled ?? false);
   const [patchingEnabled, setPatchingEnabled] = useState(false);
@@ -113,8 +112,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
   // ---- After saving in edit/replace flows ----
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function handleEditSaved(_cfg: AiPmConfigPublic) {
-    setShowEditProfile(false);
-    setShowReplaceKey(false);
+    setActivePanel('none');
     await onChange();
   }
 
@@ -245,7 +243,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
               <Button
                 variant="outline"
                 size="sm"
-                onPress={() => { setShowEditProfile((v) => !v); setShowReplaceKey(false); }}
+                onPress={() => setActivePanel((p) => (p === 'edit' ? 'none' : 'edit'))}
                 isDisabled={deleting}
                 aria-label="Edit AI profile and guardrails"
               >
@@ -255,7 +253,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
               <Button
                 variant="outline"
                 size="sm"
-                onPress={() => { setShowReplaceKey((v) => !v); setShowEditProfile(false); }}
+                onPress={() => setActivePanel((p) => (p === 'replace' ? 'none' : 'replace'))}
                 isDisabled={deleting}
                 aria-label="Replace Anthropic API key"
               >
@@ -282,25 +280,25 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
             </div>
 
             {/* Inline: Edit profile form */}
-            {showEditProfile && (
+            {activePanel === 'edit' && (
               <div className="border-t border-default-200 pt-4">
                 <GuardrailForm
                   config={config}
                   configId={config.id}
                   onSaved={handleEditSaved}
-                  onCancel={() => setShowEditProfile(false)}
+                  onCancel={() => setActivePanel('none')}
                 />
               </div>
             )}
 
             {/* Inline: Replace Anthropic key form */}
-            {showReplaceKey && (
+            {activePanel === 'replace' && (
               <div className="border-t border-default-200 pt-4">
                 <AnthropicKeyForm
                   existingConfigId={config.id}
                   bingxApiKeyId={config.bingxApiKeyId}
                   onSaved={handleEditSaved}
-                  onCancel={() => setShowReplaceKey(false)}
+                  onCancel={() => setActivePanel('none')}
                 />
               </div>
             )}
