@@ -1,16 +1,7 @@
 'use client';
 
-// i18n: replace in Task 3
-const STRINGS = {
-  activate: 'Activate kill switch',
-  release: 'Release kill switch',
-  confirmTitle: 'Activate kill switch?',
-  confirmBody: 'This will immediately halt all AI activity on this subaccount. Continue?',
-  confirmYes: 'Confirm',
-  confirmNo: 'Cancel',
-};
-
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button, Spinner, Modal, toast, useOverlayState } from '@heroui/react';
 import { ShieldCheck, AlertTriangle } from 'lucide-react';
 
@@ -21,6 +12,7 @@ interface KillSwitchProps {
 }
 
 export function KillSwitch({ configId, killSwitchOn, onChange }: KillSwitchProps) {
+  const t = useTranslations('AiPm.Settings');
   const [loading, setLoading] = useState(false);
   const confirmState = useOverlayState();
 
@@ -71,19 +63,19 @@ export function KillSwitch({ configId, killSwitchOn, onChange }: KillSwitchProps
         }`}
         onPress={handlePress}
         isDisabled={loading}
-        aria-label={killSwitchOn ? STRINGS.release : STRINGS.activate}
+        aria-label={killSwitchOn ? t('killSwitchRelease') : t('killSwitchActivate')}
       >
         {loading ? (
           <Spinner size="sm" />
         ) : killSwitchOn ? (
           <>
             <ShieldCheck className="w-4 h-4 mr-1.5" aria-hidden="true" />
-            {STRINGS.release}
+            {t('killSwitchRelease')}
           </>
         ) : (
           <>
             <AlertTriangle className="w-4 h-4 mr-1.5" aria-hidden="true" />
-            {STRINGS.activate}
+            {t('killSwitchActivate')}
           </>
         )}
       </Button>
@@ -97,28 +89,28 @@ export function KillSwitch({ configId, killSwitchOn, onChange }: KillSwitchProps
               <Modal.Icon className="text-red-500">
                 <AlertTriangle className="w-6 h-6" aria-hidden="true" />
               </Modal.Icon>
-              <Modal.Heading>{STRINGS.confirmTitle}</Modal.Heading>
+              <Modal.Heading>{t('killSwitchActivate')}?</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
-              <p className="text-sm text-slate-600 dark:text-slate-400">{STRINGS.confirmBody}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">{t('killSwitchConfirm')}</p>
             </Modal.Body>
             <Modal.Footer>
               <Button
                 variant="outline"
                 onPress={() => confirmState.close()}
                 isDisabled={loading}
-                aria-label={STRINGS.confirmNo}
+                aria-label={t('cancel')}
               >
-                {STRINGS.confirmNo}
+                {t('cancel')}
               </Button>
               <Button
                 variant="primary"
                 className="bg-red-600 hover:bg-red-700 border-red-600 text-white"
                 onPress={handleConfirm}
                 isDisabled={loading}
-                aria-label={STRINGS.confirmYes}
+                aria-label="Confirm"
               >
-                {loading ? <Spinner size="sm" /> : STRINGS.confirmYes}
+                {loading ? <Spinner size="sm" /> : 'Confirm'}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

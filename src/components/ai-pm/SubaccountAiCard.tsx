@@ -1,22 +1,7 @@
 'use client';
 
-// i18n: replace in Task 3
-const STRINGS = {
-  enableAi: 'Enable AI',
-  editProfile: 'Edit profile',
-  replaceKey: 'Replace Anthropic key',
-  disableAi: 'Disable AI',
-  confirmDisable: 'This will delete the AI configuration for this subaccount. Are you sure?',
-  statusEnabled: 'Enabled',
-  statusDisabled: 'Disabled',
-  statusPaper: 'Paper',
-  statusKillSwitch: 'Kill switch',
-  enabledLabel: 'Enabled',
-  enabledDesc: 'AI portfolio manager is active.',
-  disabledDesc: 'AI portfolio manager is paused.',
-};
-
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Card, Button, Spinner, Switch, Modal, toast, useOverlayState } from '@heroui/react';
 import { KeyRound, Settings, Trash2, AlertTriangle } from 'lucide-react';
 import type { AiPmConfigPublic } from './types';
@@ -32,6 +17,7 @@ interface SubaccountAiCardProps {
 }
 
 export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiCardProps) {
+  const t = useTranslations('AiPm.Settings');
   const [showEnableFlow, setShowEnableFlow] = useState(false);
   // pendingConfig: set after AnthropicKeyForm creates the config; drives GuardrailForm step
   const [pendingConfig, setPendingConfig] = useState<AiPmConfigPublic | null>(null);
@@ -129,16 +115,16 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
               : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
           }`}
         >
-          {isActive ? STRINGS.statusEnabled : STRINGS.statusDisabled}
+          {isActive ? t('enabled') : t('disabled')}
         </span>
         {config.paperMode && (
           <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-            {STRINGS.statusPaper}
+            {t('paperMode')}
           </span>
         )}
         {config.killSwitch && (
           <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">
-            {STRINGS.statusKillSwitch}
+            {t('killSwitch')}
           </span>
         )}
       </div>
@@ -165,7 +151,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 onPress={() => setShowEnableFlow(true)}
                 aria-label={`Enable AI for ${subaccount.label}`}
               >
-                {STRINGS.enableAi}
+                {t('enableAi')}
               </Button>
             ) : (
               <div className="space-y-4">
@@ -215,16 +201,16 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                   isSelected={optimisticEnabled}
                   onChange={handleEnabledChange}
                   isDisabled={patchingEnabled || deleting}
-                  aria-label={STRINGS.enabledLabel}
+                  aria-label={t('enabled')}
                 >
                   <Switch.Control>
                     <Switch.Thumb />
                   </Switch.Control>
                 </Switch>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{STRINGS.enabledLabel}</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('enabled')}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {optimisticEnabled ? STRINGS.enabledDesc : STRINGS.disabledDesc}
+                    {optimisticEnabled ? 'AI portfolio manager is active.' : 'AI portfolio manager is paused.'}
                   </p>
                 </div>
                 {patchingEnabled && <Spinner size="sm" />}
@@ -248,17 +234,17 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 aria-label="Edit AI profile and guardrails"
               >
                 <Settings className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                {STRINGS.editProfile}
+                {t('editProfile')}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onPress={() => setActivePanel((p) => (p === 'replace' ? 'none' : 'replace'))}
                 isDisabled={deleting}
-                aria-label="Replace Anthropic API key"
+                aria-label={t('replaceKey')}
               >
                 <KeyRound className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                {STRINGS.replaceKey}
+                {t('replaceKey')}
               </Button>
               <Button
                 variant="outline"
@@ -266,14 +252,14 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 className="text-red-600 border-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
                 onPress={() => disableModalState.open()}
                 isDisabled={deleting}
-                aria-label="Disable AI for this subaccount"
+                aria-label={t('disableAi')}
               >
                 {deleting ? (
                   <Spinner size="sm" />
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                    {STRINGS.disableAi}
+                    {t('disableAi')}
                   </>
                 )}
               </Button>
@@ -324,28 +310,28 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
               <Modal.Icon className="text-red-500">
                 <AlertTriangle className="w-6 h-6" aria-hidden="true" />
               </Modal.Icon>
-              <Modal.Heading>Disable AI?</Modal.Heading>
+              <Modal.Heading>{t('disableAi')}?</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
-              <p className="text-sm text-slate-600 dark:text-slate-400">{STRINGS.confirmDisable}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">{t('disableAiConfirm')}</p>
             </Modal.Body>
             <Modal.Footer>
               <Button
                 variant="outline"
                 onPress={() => disableModalState.close()}
                 isDisabled={deleting}
-                aria-label="Cancel"
+                aria-label={t('cancel')}
               >
-                Cancel
+                {t('cancel')}
               </Button>
               <Button
                 variant="primary"
                 className="bg-red-600 hover:bg-red-700 border-red-600 text-white"
                 onPress={handleDelete}
                 isDisabled={deleting}
-                aria-label="Confirm disable AI"
+                aria-label={t('disableAi')}
               >
-                {deleting ? <Spinner size="sm" /> : 'Disable AI'}
+                {deleting ? <Spinner size="sm" /> : t('disableAi')}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

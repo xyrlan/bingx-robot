@@ -74,6 +74,7 @@
   "Nav": {
     "overview": "Visão Geral",
     "bots": "Bots",
+    "aiPm": "Gestor de Portfólio com IA",
     "accounts": "Contas",
     "settings": "Configurações",
     "signOut": "Sair"
@@ -88,6 +89,41 @@
     "secretKey": "Chave Secreta",
     "connected": "Conectado",
     "confirmDelete": "Tem certeza? Bots usando esta conta irão parar de funcionar."
+  },
+  "AiPm": {
+    "Settings": {
+      "title": "Gestor de Portfólio com IA",
+      "subtitle": "Configure a IA por subconta: modo papel, guardrails, kill switch.",
+      "enableAi": "Ativar IA",
+      "anthropicKey": "Chave da API Anthropic",
+      "testKey": "Testar chave",
+      "saveKey": "Salvar",
+      "keyTested": "Chave válida",
+      "keyTestFailed": "Teste falhou",
+      "guardrails": "Guardrails",
+      "modeConservative": "Conservador",
+      "modeBalanced": "Equilibrado",
+      "modeAggressive": "Agressivo",
+      "modeCustom": "Personalizado",
+      "maxCapital": "Capital máximo (USDT)",
+      "maxBots": "Máximo de bots simultâneos",
+      "allowedSymbols": "Símbolos permitidos (separados por vírgula)",
+      "allowedStrategies": "Estratégias permitidas",
+      "enabled": "Ativado",
+      "disabled": "Desativado",
+      "paperMode": "Modo papel",
+      "paperModeHelp": "Simule negociações sem ordens reais.",
+      "killSwitch": "Kill switch",
+      "killSwitchActivate": "Ativar kill switch",
+      "killSwitchRelease": "Desativar kill switch",
+      "killSwitchConfirm": "Isso interromperá imediatamente toda atividade de IA nesta subconta. Continuar?",
+      "editProfile": "Editar perfil",
+      "replaceKey": "Substituir chave Anthropic",
+      "disableAi": "Desativar IA",
+      "disableAiConfirm": "Desativar IA para esta subconta? Os bots em execução não serão parados, mas nenhuma nova decisão será tomada.",
+      "cancel": "Cancelar",
+      "save": "Salvar"
+    }
   },
   "Dashboard": {
     "balance": "Saldo",

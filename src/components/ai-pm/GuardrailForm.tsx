@@ -1,23 +1,7 @@
 'use client';
 
-// i18n: replace in Task 3
-const STRINGS = {
-  conservative: 'Conservative',
-  balanced: 'Balanced',
-  aggressive: 'Aggressive',
-  customFields: 'Custom fields',
-  maxCapitalLabel: 'Max Capital (USDT)',
-  maxConcurrentBotsLabel: 'Max Concurrent Bots',
-  allowedSymbolsLabel: 'Allowed Symbols (comma-separated)',
-  allowedSymbolsPlaceholder: 'e.g. BTC-USDT,ETH-USDT',
-  allowedStrategiesLabel: 'Allowed Strategies',
-  saveButton: 'Save',
-  saving: 'Saving...',
-  cancelButton: 'Cancel',
-  savedSuccess: 'Guardrails saved',
-};
-
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Card, TextField, Input, Label, Button, Spinner, Checkbox, toast } from '@heroui/react';
 import type { AiPmConfigPublic } from './types';
 
@@ -40,6 +24,7 @@ const STRATEGIES = ['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER'] as cons
 type Strategy = (typeof STRATEGIES)[number];
 
 export function GuardrailForm({ config, configId, onSaved, onCancel }: GuardrailFormProps) {
+  const t = useTranslations('AiPm.Settings');
   const initialMode: Mode = config?.mode ?? 'BALANCED';
   const [mode, setMode] = useState<Mode>(initialMode);
   const [maxCapital, setMaxCapital] = useState<string>(
@@ -107,7 +92,7 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
         toast.danger(data.error ?? 'Failed to save guardrails');
         return;
       }
-      toast.success(STRINGS.savedSuccess);
+      toast.success(t('guardrails') + ' saved');
       onSaved(data.config!);
     } catch {
       toast.danger('Network error — please try again');
@@ -120,27 +105,34 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
     <div className="space-y-4">
       {/* Profile cards */}
       <div className="grid grid-cols-3 gap-3">
-        {(['CONSERVATIVE', 'BALANCED', 'AGGRESSIVE'] as const).map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            onClick={() => selectPreset(preset)}
-            className={`rounded-xl border p-3 text-left text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-              mode === preset
-                ? 'border-accent bg-accent/10 text-accent'
-                : 'border-default-200 bg-default-50/60 text-slate-700 dark:text-slate-300 hover:border-accent/50'
-            }`}
-            aria-pressed={mode === preset}
-            aria-label={`Select ${STRINGS[preset.toLowerCase() as keyof typeof STRINGS] ?? preset} profile`}
-          >
-            <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
-              {preset === 'CONSERVATIVE' && 'Low risk'}
-              {preset === 'BALANCED' && 'Moderate risk'}
-              {preset === 'AGGRESSIVE' && 'High risk'}
-            </span>
-            <span>{STRINGS[preset.toLowerCase() as 'conservative' | 'balanced' | 'aggressive']}</span>
-          </button>
-        ))}
+        {(['CONSERVATIVE', 'BALANCED', 'AGGRESSIVE'] as const).map((preset) => {
+          const presetLabel = preset === 'CONSERVATIVE'
+            ? t('modeConservative')
+            : preset === 'BALANCED'
+            ? t('modeBalanced')
+            : t('modeAggressive');
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => selectPreset(preset)}
+              className={`rounded-xl border p-3 text-left text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                mode === preset
+                  ? 'border-accent bg-accent/10 text-accent'
+                  : 'border-default-200 bg-default-50/60 text-slate-700 dark:text-slate-300 hover:border-accent/50'
+              }`}
+              aria-pressed={mode === preset}
+              aria-label={`Select ${presetLabel} profile`}
+            >
+              <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
+                {preset === 'CONSERVATIVE' && 'Low risk'}
+                {preset === 'BALANCED' && 'Moderate risk'}
+                {preset === 'AGGRESSIVE' && 'High risk'}
+              </span>
+              <span>{presetLabel}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Custom fields toggle */}
@@ -150,7 +142,7 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
         onClick={() => setShowCustom((v) => !v)}
         aria-expanded={showCustom}
       >
-        {showCustom ? 'Hide' : 'Show'} {STRINGS.customFields}
+        {showCustom ? 'Hide' : 'Show'} {t('modeCustom')}
       </button>
 
       {showCustom && (
@@ -158,41 +150,41 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
           <Card.Content className="p-4 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <TextField variant="primary" isDisabled={saving}>
-                <Label>{STRINGS.maxCapitalLabel}</Label>
+                <Label>{t('maxCapital')}</Label>
                 <Input
                   type="number"
                   min={0}
                   value={maxCapital}
                   onChange={(e) => handleCustomFieldChange(() => setMaxCapital(e.target.value))}
-                  aria-label={STRINGS.maxCapitalLabel}
+                  aria-label={t('maxCapital')}
                 />
               </TextField>
               <TextField variant="primary" isDisabled={saving}>
-                <Label>{STRINGS.maxConcurrentBotsLabel}</Label>
+                <Label>{t('maxBots')}</Label>
                 <Input
                   type="number"
                   min={1}
                   value={maxBots}
                   onChange={(e) => handleCustomFieldChange(() => setMaxBots(e.target.value))}
-                  aria-label={STRINGS.maxConcurrentBotsLabel}
+                  aria-label={t('maxBots')}
                 />
               </TextField>
             </div>
             <TextField variant="primary" isDisabled={saving}>
-              <Label>{STRINGS.allowedSymbolsLabel}</Label>
+              <Label>{t('allowedSymbols')}</Label>
               <Input
                 type="text"
                 value={allowedSymbols}
                 onChange={(e) => handleCustomFieldChange(() => setAllowedSymbols(e.target.value))}
-                placeholder={STRINGS.allowedSymbolsPlaceholder}
-                aria-label={STRINGS.allowedSymbolsLabel}
+                placeholder="e.g. BTC-USDT,ETH-USDT"
+                aria-label={t('allowedSymbols')}
               />
             </TextField>
 
             {/* Strategy multi-checkbox */}
-            <div role="group" aria-label={STRINGS.allowedStrategiesLabel}>
+            <div role="group" aria-label={t('allowedStrategies')}>
               <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">
-                {STRINGS.allowedStrategiesLabel}
+                {t('allowedStrategies')}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {STRATEGIES.map((strategy) => (
@@ -220,18 +212,18 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
           variant="primary"
           onPress={handleSave}
           isDisabled={saving}
-          aria-label="Save guardrail settings"
+          aria-label={t('save')}
         >
-          {saving ? <Spinner size="sm" /> : STRINGS.saveButton}
+          {saving ? <Spinner size="sm" /> : t('save')}
         </Button>
         {onCancel && (
           <Button
             variant="outline"
             onPress={onCancel}
             isDisabled={saving}
-            aria-label="Cancel"
+            aria-label={t('cancel')}
           >
-            {STRINGS.cancelButton}
+            {t('cancel')}
           </Button>
         )}
       </div>

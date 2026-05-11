@@ -1,12 +1,7 @@
 'use client';
 
-// i18n: replace in Task 3
-const STRINGS = {
-  label: 'Paper mode',
-  description: 'Simulate trades without real orders.',
-};
-
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Switch, toast } from '@heroui/react';
 
 interface PaperModeToggleProps {
@@ -16,6 +11,7 @@ interface PaperModeToggleProps {
 }
 
 export function PaperModeToggle({ configId, paperMode, onChange }: PaperModeToggleProps) {
+  const t = useTranslations('AiPm.Settings');
   const [optimistic, setOptimistic] = useState(paperMode);
   const [loading, setLoading] = useState(false);
 
@@ -55,15 +51,15 @@ export function PaperModeToggle({ configId, paperMode, onChange }: PaperModeTogg
         isSelected={optimistic}
         onChange={handleChange}
         isDisabled={loading}
-        aria-label={STRINGS.label}
+        aria-label={t('paperMode')}
       >
         <Switch.Control>
           <Switch.Thumb />
         </Switch.Control>
       </Switch>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{STRINGS.label}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">{STRINGS.description}</p>
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('paperMode')}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t('paperModeHelp')}</p>
       </div>
     </div>
   );

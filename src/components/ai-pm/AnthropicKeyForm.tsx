@@ -1,18 +1,7 @@
 'use client';
 
-// i18n: replace in Task 3
-const STRINGS = {
-  anthropicKeyLabel: 'Anthropic API Key',
-  anthropicKeyPlaceholder: 'sk-ant-...',
-  testButton: 'Test',
-  testing: 'Testing...',
-  saveButton: 'Save',
-  saving: 'Saving...',
-  testSuccess: 'Key verified successfully',
-  cancelButton: 'Cancel',
-};
-
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { TextField, Input, Label, Button, Spinner, toast } from '@heroui/react';
 import { Eye, EyeOff } from 'lucide-react';
 import type { AiPmConfigPublic } from './types';
@@ -32,6 +21,7 @@ export function AnthropicKeyForm({
   onSaved,
   onCancel,
 }: AnthropicKeyFormProps) {
+  const t = useTranslations('AiPm.Settings');
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -107,7 +97,7 @@ export function AnthropicKeyForm({
   return (
     <div className="space-y-4">
       <TextField variant="primary" isDisabled={isLoading}>
-        <Label>{STRINGS.anthropicKeyLabel}</Label>
+        <Label>{t('anthropicKey')}</Label>
         <div className="relative">
           <Input
             type={showKey ? 'text' : 'password'}
@@ -119,9 +109,9 @@ export function AnthropicKeyForm({
               setTestSuccess(false);
               setTestError(null);
             }}
-            placeholder={STRINGS.anthropicKeyPlaceholder}
+            placeholder="sk-ant-..."
             autoComplete="off"
-            aria-label={STRINGS.anthropicKeyLabel}
+            aria-label={t('anthropicKey')}
           />
           <button
             type="button"
@@ -138,7 +128,7 @@ export function AnthropicKeyForm({
         <p className="text-sm text-red-600 dark:text-red-400">{testError}</p>
       )}
       {testSuccess && (
-        <p className="text-sm text-green-600 dark:text-green-400">{STRINGS.testSuccess}</p>
+        <p className="text-sm text-green-600 dark:text-green-400">{t('keyTested')}</p>
       )}
 
       <div className="flex gap-2">
@@ -146,26 +136,26 @@ export function AnthropicKeyForm({
           variant="outline"
           onPress={handleTest}
           isDisabled={isLoading || !apiKey.trim()}
-          aria-label="Test Anthropic key"
+          aria-label={t('testKey')}
         >
-          {testing ? <Spinner size="sm" /> : STRINGS.testButton}
+          {testing ? <Spinner size="sm" /> : t('testKey')}
         </Button>
         <Button
           variant="primary"
           onPress={handleSave}
           isDisabled={isLoading || !testPassed}
-          aria-label="Save Anthropic key"
+          aria-label={t('saveKey')}
         >
-          {saving ? <Spinner size="sm" /> : STRINGS.saveButton}
+          {saving ? <Spinner size="sm" /> : t('saveKey')}
         </Button>
         {onCancel && (
           <Button
             variant="outline"
             onPress={onCancel}
             isDisabled={isLoading}
-            aria-label="Cancel"
+            aria-label={t('cancel')}
           >
-            {STRINGS.cancelButton}
+            {t('cancel')}
           </Button>
         )}
       </div>

@@ -73,6 +73,7 @@
   "Nav": {
     "overview": "概览",
     "bots": "机器人",
+    "aiPm": "AI 投资组合管理器",
     "accounts": "账户",
     "settings": "设置",
     "signOut": "退出"
@@ -87,6 +88,41 @@
     "secretKey": "密钥",
     "connected": "已连接",
     "confirmDelete": "确定吗？使用此账户的机器人将停止工作。"
+  },
+  "AiPm": {
+    "Settings": {
+      "title": "AI 投资组合管理器",
+      "subtitle": "按子账户配置 AI：模拟交易模式、护栏、紧急停止。",
+      "enableAi": "启用 AI",
+      "anthropicKey": "Anthropic API 密钥",
+      "testKey": "测试密钥",
+      "saveKey": "保存",
+      "keyTested": "密钥有效",
+      "keyTestFailed": "测试失败",
+      "guardrails": "护栏",
+      "modeConservative": "保守",
+      "modeBalanced": "平衡",
+      "modeAggressive": "激进",
+      "modeCustom": "自定义",
+      "maxCapital": "最大资金 (USDT)",
+      "maxBots": "最大并发机器人数",
+      "allowedSymbols": "允许的交易对（逗号分隔）",
+      "allowedStrategies": "允许的策略",
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "paperMode": "模拟交易模式",
+      "paperModeHelp": "模拟交易，不产生真实订单。",
+      "killSwitch": "紧急停止",
+      "killSwitchActivate": "激活紧急停止",
+      "killSwitchRelease": "解除紧急停止",
+      "killSwitchConfirm": "这将立即停止该子账户上的所有 AI 活动。是否继续？",
+      "editProfile": "编辑配置",
+      "replaceKey": "替换 Anthropic 密钥",
+      "disableAi": "禁用 AI",
+      "disableAiConfirm": "禁用该子账户的 AI？运行中的机器人不会停止，但不会做出新的决策。",
+      "cancel": "取消",
+      "save": "保存"
+    }
   },
   "Dashboard": {
     "balance": "余额",
