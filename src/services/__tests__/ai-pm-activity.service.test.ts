@@ -87,6 +87,14 @@ describe('ai-pm-activity service', () => {
     expect(got[0].status).toBe('RUNNING');
   });
 
+  it('getTodaySpendSummary returns zeros when no decisions today', async () => {
+    const got = await getTodaySpendSummary(TEST_USER_ID);
+    expect(got.decisionsToday).toBe(0);
+    expect(got.tokensInputToday).toBe(0);
+    expect(got.tokensOutputToday).toBe(0);
+    expect(got.costUsdToday).toBe('0.000000');
+  });
+
   it('getTodaySpendSummary sums only rows from today', async () => {
     const today = new Date();
     const todayMidnight = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));

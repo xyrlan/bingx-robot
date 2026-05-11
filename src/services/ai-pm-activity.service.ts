@@ -86,7 +86,7 @@ export async function getTodaySpendSummary(userId: string): Promise<SpendSummary
       count: sql<number>`count(*)::int`,
       tokensIn: sql<number>`coalesce(sum(${aiDecisions.tokensInput}), 0)::int`,
       tokensOut: sql<number>`coalesce(sum(${aiDecisions.tokensOutput}), 0)::int`,
-      costSum: sql<string>`coalesce(sum(${aiDecisions.costUsd}), 0)::text`,
+      costSum: sql<string>`coalesce(sum(${aiDecisions.costUsd})::text, '0.000000')`,
     })
     .from(aiDecisions)
     .where(and(eq(aiDecisions.userId, userId), gte(aiDecisions.createdAt, todayMidnightUtc())));
