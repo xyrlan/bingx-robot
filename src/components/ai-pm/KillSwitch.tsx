@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, Spinner, Modal, toast, useOverlayState } from '@heroui/react';
+import { Button, Spinner, Card, toast } from '@heroui/react';
 import { ShieldCheck, AlertTriangle } from 'lucide-react';
 
 interface KillSwitchProps {
@@ -14,7 +14,7 @@ interface KillSwitchProps {
 export function KillSwitch({ configId, killSwitchOn, onChange }: KillSwitchProps) {
   const t = useTranslations('AiPm.Settings');
   const [loading, setLoading] = useState(false);
-  const confirmState = useOverlayState();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function doPatch(value: boolean) {
     setLoading(true);
@@ -39,16 +39,14 @@ export function KillSwitch({ configId, killSwitchOn, onChange }: KillSwitchProps
 
   async function handlePress() {
     if (killSwitchOn) {
-      // Release: no confirmation needed
       await doPatch(false);
     } else {
-      // Activate: show confirm modal
-      confirmState.open();
+      setConfirmOpen(true);
     }
   }
 
   async function handleConfirm() {
-    confirmState.close();
+    setConfirmOpen(false);
     await doPatch(true);
   }
 
@@ -80,42 +78,55 @@ export function KillSwitch({ configId, killSwitchOn, onChange }: KillSwitchProps
         )}
       </Button>
 
-      {/* Confirm modal for activating kill switch */}
-      <Modal state={confirmState}>
-        <Modal.Backdrop isDismissable={!loading} />
-        <Modal.Container size="sm">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Icon className="text-red-500">
-                <AlertTriangle className="w-6 h-6" aria-hidden="true" />
-              </Modal.Icon>
-              <Modal.Heading>{t('killSwitchActivate')}?</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              <p className="text-sm text-slate-600 dark:text-slate-400">{t('killSwitchConfirm')}</p>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button
-                variant="outline"
-                onPress={() => confirmState.close()}
-                isDisabled={loading}
-                aria-label={t('cancel')}
-              >
-                {t('cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                className="bg-red-600 hover:bg-red-700 border-red-600 text-white"
-                onPress={handleConfirm}
-                isDisabled={loading}
-                aria-label={t('confirm')}
-              >
-                {loading ? <Spinner size="sm" /> : t('confirm')}
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal>
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget && !loading) setConfirmOpen(false); }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('killSwitchActivate')}
+        >
+          <Card
+            variant="default"
+            className="w-full rounded-t-2xl md:rounded-xl md:max-w-md md:mx-4 max-h-[90vh] overflow-y-auto overscroll-contain"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Card.Content className="p-6 safe-area-pb">
+              <div className="md:hidden w-10 h-1 rounded-full bg-default-300 mx-auto mb-4" />
+              <div className="flex items-start gap-3 mb-3">
+                <div className="text-red-500 shrink-0 mt-0.5">
+                  <AlertTriangle className="w-6 h-6" aria-hidden="true" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {t('killSwitchActivate')}?
+                </h3>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                {t('killSwitchConfirm')}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onPress={() => setConfirmOpen(false)}
+                  isDisabled={loading}
+                  aria-label={t('cancel')}
+                >
+                  {t('cancel')}
+                </Button>
+                <Button
+                  variant="primary"
+                  className="bg-red-600 hover:bg-red-700 border-red-600 text-white"
+                  onPress={handleConfirm}
+                  isDisabled={loading}
+                  aria-label={t('confirm')}
+                >
+                  {loading ? <Spinner size="sm" /> : t('confirm')}
+                </Button>
+              </div>
+            </Card.Content>
+          </Card>
+        </div>
+      )}
     </>
   );
 }

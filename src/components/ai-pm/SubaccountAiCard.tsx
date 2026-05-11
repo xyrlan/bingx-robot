@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { Card, Button, Spinner, Switch, Modal, toast, useOverlayState } from '@heroui/react';
+import { Card, Button, Spinner, Switch, toast } from '@heroui/react';
 import { KeyRound, Settings, Trash2, AlertTriangle } from 'lucide-react';
 import type { AiPmConfigPublic } from './types';
 import { AnthropicKeyForm } from './AnthropicKeyForm';
@@ -26,7 +26,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
   const [optimisticEnabled, setOptimisticEnabled] = useState(config?.enabled ?? false);
   const [patchingEnabled, setPatchingEnabled] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const disableModalState = useOverlayState();
+  const [disableModalOpen, setDisableModalOpen] = useState(false);
 
   // Keep optimistic state in sync when parent refreshes config
   useEffect(() => {
@@ -62,7 +62,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
   // ---- Delete (disable AI) ----
   async function handleDelete() {
     if (!config) return;
-    disableModalState.close();
+    setDisableModalOpen(false);
     setDeleting(true);
     try {
       const res = await fetch(`/api/ai-pm/config/${config.id}`, { method: 'DELETE' });
@@ -250,7 +250,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 variant="outline"
                 size="sm"
                 className="text-red-600 border-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                onPress={() => disableModalState.open()}
+                onPress={() => setDisableModalOpen(true)}
                 isDisabled={deleting}
                 aria-label={t('disableAi')}
               >
@@ -301,42 +301,55 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
         )}
       </Card.Content>
 
-      {/* Confirm disable modal */}
-      <Modal state={disableModalState}>
-        <Modal.Backdrop isDismissable={!deleting} />
-        <Modal.Container size="sm">
-          <Modal.Dialog>
-            <Modal.Header>
-              <Modal.Icon className="text-red-500">
-                <AlertTriangle className="w-6 h-6" aria-hidden="true" />
-              </Modal.Icon>
-              <Modal.Heading>{t('disableAi')}?</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              <p className="text-sm text-slate-600 dark:text-slate-400">{t('disableAiConfirm')}</p>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button
-                variant="outline"
-                onPress={() => disableModalState.close()}
-                isDisabled={deleting}
-                aria-label={t('cancel')}
-              >
-                {t('cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                className="bg-red-600 hover:bg-red-700 border-red-600 text-white"
-                onPress={handleDelete}
-                isDisabled={deleting}
-                aria-label={t('disableAi')}
-              >
-                {deleting ? <Spinner size="sm" /> : t('disableAi')}
-              </Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal>
+      {disableModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget && !deleting) setDisableModalOpen(false); }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('disableAi')}
+        >
+          <Card
+            variant="default"
+            className="w-full rounded-t-2xl md:rounded-xl md:max-w-md md:mx-4 max-h-[90vh] overflow-y-auto overscroll-contain"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Card.Content className="p-6 safe-area-pb">
+              <div className="md:hidden w-10 h-1 rounded-full bg-default-300 mx-auto mb-4" />
+              <div className="flex items-start gap-3 mb-3">
+                <div className="text-red-500 shrink-0 mt-0.5">
+                  <AlertTriangle className="w-6 h-6" aria-hidden="true" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {t('disableAi')}?
+                </h3>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                {t('disableAiConfirm')}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onPress={() => setDisableModalOpen(false)}
+                  isDisabled={deleting}
+                  aria-label={t('cancel')}
+                >
+                  {t('cancel')}
+                </Button>
+                <Button
+                  variant="primary"
+                  className="bg-red-600 hover:bg-red-700 border-red-600 text-white"
+                  onPress={handleDelete}
+                  isDisabled={deleting}
+                  aria-label={t('disableAi')}
+                >
+                  {deleting ? <Spinner size="sm" /> : t('disableAi')}
+                </Button>
+              </div>
+            </Card.Content>
+          </Card>
+        </div>
+      )}
     </Card>
   );
 }
