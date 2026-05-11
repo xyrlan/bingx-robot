@@ -107,6 +107,40 @@ describe('callHaiku', () => {
     expect((result.error as LlmError).kind).toBe('INVALID_JSON');
   });
 
+  it('strips ```json code fence before parsing', async () => {
+    const schema = z.object({ x: z.number() });
+    const factory = fakeFactory({ responseText: '```json\n{"x":7}\n```' });
+
+    const result = await callHaiku({
+      apiKey: 'sk-ant',
+      systemPrompt: 'sys',
+      userPrompt: 'usr',
+      schema,
+      factory,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data).toEqual({ x: 7 });
+  });
+
+  it('strips bare ``` code fence before parsing', async () => {
+    const schema = z.object({ x: z.number() });
+    const factory = fakeFactory({ responseText: '```\n{"x":9}\n```' });
+
+    const result = await callHaiku({
+      apiKey: 'sk-ant',
+      systemPrompt: 'sys',
+      userPrompt: 'usr',
+      schema,
+      factory,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data).toEqual({ x: 9 });
+  });
+
   it('returns API_ERROR when SDK throws', async () => {
     const factory = fakeFactory({ shouldThrow: new Error('401 unauthorized') });
 

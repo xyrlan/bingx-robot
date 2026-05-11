@@ -36,6 +36,14 @@ export type AnthropicFactory = (apiKey: string) => AnthropicLike;
 const defaultFactory: AnthropicFactory = (apiKey) =>
   new Anthropic({ apiKey }) as unknown as AnthropicLike;
 
+// Haiku occasionally wraps JSON output in a ```json fenced block despite
+// prompt instructions. Strip the fence before JSON.parse so the schema layer
+// doesn't reject otherwise-valid responses.
+function stripCodeFence(text: string): string {
+  const m = text.match(/^\s*```(?:json|JSON)?\s*\n?([\s\S]*?)\n?\s*```\s*$/);
+  return m ? m[1] : text;
+}
+
 export type LlmError =
   | { kind: 'API_ERROR'; message: string }
   | { kind: 'INVALID_JSON'; message: string; raw: string }
@@ -123,7 +131,7 @@ async function callJsonModel<T>(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(textBlock.text);
+    parsed = JSON.parse(stripCodeFence(textBlock.text));
   } catch (err) {
     return {
       ok: false,
