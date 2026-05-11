@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { inngest } from '@/inngest/client';
 import { aiDecisions } from '@/db/schema';
 import { db } from '@/db';
-import { listEnabledAiPmConfigs, getAiPmConfig } from '@/services/ai-pm-config.service';
+import { listEnabledAiPmConfigs, getAiPmConfigById } from '@/services/ai-pm-config.service';
 import { getBingxClientByApiKeyId } from '@/services/bingx.service';
 import { runSignal, type SignalOutcome } from '@/lib/ai-pm/signal';
 import { runDecision, type DecisionOutcome } from '@/lib/ai-pm/decision';
@@ -233,7 +233,7 @@ export const aiPmTick = inngest.createFunction(
           allowedStrategies: (cfg.allowedStrategies ?? DEFAULT_STRATEGIES) as Array<'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER'>,
           reviewerThresholdPct: DEFAULT_REVIEWER_THRESHOLD_PCT,
           isKillSwitchActive: async () => {
-            const fresh = await getAiPmConfig(cfg.userId);
+            const fresh = await getAiPmConfigById(cfg.id);
             return Boolean(fresh?.killSwitch);
           },
           loadBingxClient: async () => getBingxClientByApiKeyId(cfg.bingxApiKeyId),

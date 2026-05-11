@@ -241,7 +241,7 @@ export const aiPmConfigs = pgTable('ai_pm_configs', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
-  uniqueIndex('ai_pm_configs_user_idx').on(table.userId),
+  index('ai_pm_configs_user_idx').on(table.userId),
   uniqueIndex('ai_pm_configs_apikey_idx').on(table.bingxApiKeyId),
 ]);
 
