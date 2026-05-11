@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Card, Spinner } from '@heroui/react';
+import { Card, Spinner, Button } from '@heroui/react';
 import { SubaccountAiCard } from './SubaccountAiCard';
 import type { AiPmConfigPublic } from './types';
 
@@ -48,7 +48,14 @@ export function AiPmSettingsClient({ subaccounts }: { subaccounts: Subaccount[] 
   }
 
   if (error) {
-    return <Card className="p-4"><p className="text-sm text-red-600 dark:text-red-400">{error}</p></Card>;
+    return (
+      <Card className="p-4 flex items-center justify-between gap-3">
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <Button size="sm" variant="outline" onPress={() => void refresh()}>
+          {t('retry')}
+        </Button>
+      </Card>
+    );
   }
 
   const configsByApiKey = new Map((configs ?? []).map(c => [c.bingxApiKeyId, c]));
