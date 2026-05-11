@@ -3,7 +3,26 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { RefreshCw } from 'lucide-react';
-import { ALL_STATUSES, ALL_ACTION_TYPES } from '@/services/ai-pm-activity.service';
+import type { AiDecisionStatus, AiActionType } from '@/services/ai-pm-activity.service';
+
+// Inlined client-safe enum lists to avoid pulling the service (and its db deps)
+// into the client bundle. Kept in sync with ai-pm-activity.service.ts.
+const ALL_STATUSES: AiDecisionStatus[] = [
+  'PROPOSED',
+  'REJECTED_GUARDRAIL',
+  'REJECTED_BACKTEST',
+  'REJECTED_REVIEWER',
+  'EXECUTED',
+  'EXECUTION_FAILED',
+];
+
+const ALL_ACTION_TYPES: AiActionType[] = [
+  'CREATE_BOT',
+  'STOP_BOT',
+  'ADJUST_PARAMS',
+  'REALLOCATE_CAPITAL',
+  'NO_ACTION',
+];
 
 interface Props {
   loading: boolean;
