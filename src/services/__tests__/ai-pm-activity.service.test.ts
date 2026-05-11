@@ -269,4 +269,46 @@ describe('ai-pm-activity service', () => {
     expect(found?.paperBot?.symbol).toBe('BTC-USDT');
     expect(found?.paperBot?.tradesCount).toBe(2);
   });
+
+  it('listDecisions does not duplicate rows when multiple paper_bots link to one decision', async () => {
+    const [d] = await db.insert(aiDecisions).values({
+      userId: TEST_USER_ID,
+      triggeredBy: 'CRON_TICK',
+      actionType: 'CREATE_BOT',
+      status: 'EXECUTED',
+      symbol: 'BTC-USDT',
+    }).returning();
+
+    // Insert TWO paper bots linked to the same decision
+    await db.insert(paperBots).values([
+      {
+        userId: TEST_USER_ID,
+        decisionId: d.id,
+        symbol: 'BTC-USDT',
+        strategy: 'GRID_LONG',
+        params: {},
+        capitalUsdt: '100',
+        status: 'RUNNING',
+        pnlUsdt: '1',
+        trades: [],
+      },
+      {
+        userId: TEST_USER_ID,
+        decisionId: d.id,
+        symbol: 'BTC-USDT',
+        strategy: 'GRID_LONG',
+        params: {},
+        capitalUsdt: '100',
+        status: 'STOPPED',
+        pnlUsdt: '2',
+        trades: [],
+      },
+    ]);
+
+    const got = await listDecisions({ userId: TEST_USER_ID });
+
+    expect(got.decisions).toHaveLength(1);
+    expect(got.decisions[0].id).toBe(d.id);
+    expect(got.decisions[0].paperBot).not.toBeNull();
+  });
 });
