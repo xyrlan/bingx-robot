@@ -59,5 +59,12 @@ describe('simulateSmaCrossover', () => {
     const last = r.trades[r.trades.length - 1];
     expect(last.exitPrice).toBeGreaterThan(0);
     expect(r.equityCurve).toHaveLength(c.length);
+    // The 3-phase fixture is a strong uptrend (phase 3 ramps 120→178); a LONG trade
+    // must terminate with positive P&L for the simulator's sign handling to be correct.
+    expect(last.side).toBe('LONG');
+    expect(last.pnlPct).toBeGreaterThan(0);
+    expect(last.pnlUsdt).toBeGreaterThan(0);
+    expect(last.entryPrice).toBeGreaterThan(100);
+    expect(last.exitPrice).toBeGreaterThan(last.entryPrice);
   });
 });
