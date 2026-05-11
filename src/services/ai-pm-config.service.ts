@@ -21,6 +21,11 @@ export interface CreateAiPmConfigInput {
   mode?: 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE' | 'CUSTOM';
 }
 
+function decrypt(row: AiPmConfigRow): AiPmConfigDecrypted {
+  const { anthropicApiKeyEncrypted, ...rest } = row;
+  return { ...rest, anthropicApiKey: decryptSecret(anthropicApiKeyEncrypted) };
+}
+
 export async function createAiPmConfig(
   userId: string,
   input: CreateAiPmConfigInput,
@@ -38,61 +43,62 @@ export async function createAiPmConfig(
   return row;
 }
 
-export async function getAiPmConfig(userId: string): Promise<AiPmConfigDecrypted | null> {
+export async function getAiPmConfigById(configId: string): Promise<AiPmConfigDecrypted | null> {
   const row = await db.query.aiPmConfigs.findFirst({
+    where: eq(aiPmConfigs.id, configId),
+  });
+  return row ? decrypt(row) : null;
+}
+
+export async function getAiPmConfigByBingxApiKeyId(
+  bingxApiKeyId: string,
+): Promise<AiPmConfigDecrypted | null> {
+  const row = await db.query.aiPmConfigs.findFirst({
+    where: eq(aiPmConfigs.bingxApiKeyId, bingxApiKeyId),
+  });
+  return row ? decrypt(row) : null;
+}
+
+export async function listAiPmConfigsForUser(userId: string): Promise<AiPmConfigDecrypted[]> {
+  const rows = await db.query.aiPmConfigs.findMany({
     where: eq(aiPmConfigs.userId, userId),
   });
-  if (!row) return null;
-  const { anthropicApiKeyEncrypted, ...rest } = row;
-  return {
-    ...rest,
-    anthropicApiKey: decryptSecret(anthropicApiKeyEncrypted),
-  };
+  return rows.map(decrypt);
 }
 
 export async function listEnabledAiPmConfigs(): Promise<AiPmConfigDecrypted[]> {
   const rows = await db.query.aiPmConfigs.findMany({
     where: and(eq(aiPmConfigs.enabled, true), eq(aiPmConfigs.killSwitch, false)),
   });
-  return rows.map((row) => {
-    const { anthropicApiKeyEncrypted, ...rest } = row;
-    return { ...rest, anthropicApiKey: decryptSecret(anthropicApiKeyEncrypted) };
-  });
+  return rows.map(decrypt);
 }
 
-export async function setAnthropicApiKey(userId: string, plaintext: string): Promise<void> {
+export async function setAnthropicApiKey(configId: string, plaintext: string): Promise<void> {
   const existing = await db.query.aiPmConfigs.findFirst({
-    where: eq(aiPmConfigs.userId, userId),
+    where: eq(aiPmConfigs.id, configId),
   });
   if (!existing) {
-    throw new Error('No AI PM config found for user. Call createAiPmConfig first.');
+    throw new Error('No AI PM config found for id. Call createAiPmConfig first.');
   }
   const encrypted = encryptSecret(plaintext);
   await db
     .update(aiPmConfigs)
     .set({ anthropicApiKeyEncrypted: encrypted, updatedAt: new Date() })
-    .where(eq(aiPmConfigs.userId, userId));
+    .where(eq(aiPmConfigs.id, configId));
 }
 
-export async function setBingxApiKeyForAi(userId: string, bingxApiKeyId: string): Promise<void> {
-  await db
-    .update(aiPmConfigs)
-    .set({ bingxApiKeyId, updatedAt: new Date() })
-    .where(eq(aiPmConfigs.userId, userId));
-}
-
-export async function setKillSwitch(userId: string, value: boolean): Promise<void> {
+export async function setKillSwitch(configId: string, value: boolean): Promise<void> {
   await db
     .update(aiPmConfigs)
     .set({ killSwitch: value, updatedAt: new Date() })
-    .where(eq(aiPmConfigs.userId, userId));
+    .where(eq(aiPmConfigs.id, configId));
 }
 
-export async function setEnabled(userId: string, value: boolean): Promise<void> {
+export async function setEnabled(configId: string, value: boolean): Promise<void> {
   await db
     .update(aiPmConfigs)
     .set({ enabled: value, updatedAt: new Date() })
-    .where(eq(aiPmConfigs.userId, userId));
+    .where(eq(aiPmConfigs.id, configId));
 }
 
 interface AnthropicLike {
