@@ -92,7 +92,7 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
         toast.danger(data.error ?? 'Failed to save guardrails');
         return;
       }
-      toast.success(t('guardrails') + ' saved');
+      toast.success(t('guardrailsSavedToast'));
       onSaved(data.config!);
     } catch {
       toast.danger('Network error — please try again');
@@ -125,9 +125,9 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
               aria-label={`Select ${presetLabel} profile`}
             >
               <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
-                {preset === 'CONSERVATIVE' && 'Low risk'}
-                {preset === 'BALANCED' && 'Moderate risk'}
-                {preset === 'AGGRESSIVE' && 'High risk'}
+                {preset === 'CONSERVATIVE' && t('lowRisk')}
+                {preset === 'BALANCED' && t('moderateRisk')}
+                {preset === 'AGGRESSIVE' && t('highRisk')}
               </span>
               <span>{presetLabel}</span>
             </button>
@@ -142,7 +142,7 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
         onClick={() => setShowCustom((v) => !v)}
         aria-expanded={showCustom}
       >
-        {showCustom ? 'Hide' : 'Show'} {t('modeCustom')}
+        {showCustom ? t('hideCustom') : t('showCustom')}
       </button>
 
       {showCustom && (

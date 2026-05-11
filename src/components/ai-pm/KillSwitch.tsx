@@ -108,9 +108,9 @@ export function KillSwitch({ configId, killSwitchOn, onChange }: KillSwitchProps
                 className="bg-red-600 hover:bg-red-700 border-red-600 text-white"
                 onPress={handleConfirm}
                 isDisabled={loading}
-                aria-label="Confirm"
+                aria-label={t('confirm')}
               >
-                {loading ? <Spinner size="sm" /> : 'Confirm'}
+                {loading ? <Spinner size="sm" /> : t('confirm')}
               </Button>
             </Modal.Footer>
           </Modal.Dialog>

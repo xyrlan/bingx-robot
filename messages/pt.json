@@ -122,7 +122,24 @@
       "disableAi": "Desativar IA",
       "disableAiConfirm": "Desativar IA para esta subconta? Os bots em execução não serão parados, mas nenhuma nova decisão será tomada.",
       "cancel": "Cancelar",
-      "save": "Salvar"
+      "save": "Salvar",
+      "confirm": "Confirmar",
+      "lowRisk": "Risco baixo",
+      "moderateRisk": "Risco moderado",
+      "highRisk": "Risco alto",
+      "showCustom": "Mostrar personalizado",
+      "hideCustom": "Ocultar personalizado",
+      "aiActive": "Gestor de portfólio IA está ativo.",
+      "aiPaused": "Gestor de portfólio IA está pausado.",
+      "aiDisabledToast": "IA desativada para esta subconta",
+      "anthropicKeySavedToast": "Chave Anthropic salva",
+      "guardrailsSavedToast": "Guardrails salvos",
+      "setupAnthropicKey": "Configurar chave Anthropic",
+      "configureGuardrails": "Configurar guardrails",
+      "hideKey": "Ocultar chave",
+      "showKey": "Mostrar chave",
+      "emptyNoSubaccounts": "Nenhuma subconta BingX ainda.",
+      "addSubaccountLink": "Adicionar uma subconta →"
     }
   },
   "Dashboard": {

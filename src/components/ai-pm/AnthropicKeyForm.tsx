@@ -83,7 +83,7 @@ export function AnthropicKeyForm({
         toast.danger(data.error ?? 'Failed to save key');
         return;
       }
-      toast.success('Anthropic key saved');
+      toast.success(t('anthropicKeySavedToast'));
       onSaved(data.config!);
     } catch {
       toast.danger('Network error — please try again');
@@ -117,7 +117,7 @@ export function AnthropicKeyForm({
             type="button"
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
             onClick={() => setShowKey((v) => !v)}
-            aria-label={showKey ? 'Hide key' : 'Show key'}
+            aria-label={showKey ? t('hideKey') : t('showKey')}
           >
             {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>

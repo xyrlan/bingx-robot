@@ -121,7 +121,24 @@
       "disableAi": "禁用 AI",
       "disableAiConfirm": "禁用该子账户的 AI？运行中的机器人不会停止，但不会做出新的决策。",
       "cancel": "取消",
-      "save": "保存"
+      "save": "保存",
+      "confirm": "确认",
+      "lowRisk": "低风险",
+      "moderateRisk": "中等风险",
+      "highRisk": "高风险",
+      "showCustom": "显示自定义",
+      "hideCustom": "隐藏自定义",
+      "aiActive": "AI 投资组合管理器已激活。",
+      "aiPaused": "AI 投资组合管理器已暂停。",
+      "aiDisabledToast": "已为此子账户禁用 AI",
+      "anthropicKeySavedToast": "Anthropic 密钥已保存",
+      "guardrailsSavedToast": "护栏已保存",
+      "setupAnthropicKey": "设置 Anthropic 密钥",
+      "configureGuardrails": "配置护栏",
+      "hideKey": "隐藏密钥",
+      "showKey": "显示密钥",
+      "emptyNoSubaccounts": "尚无 BingX 子账户。",
+      "addSubaccountLink": "添加子账户 →"
     }
   },
   "Dashboard": {

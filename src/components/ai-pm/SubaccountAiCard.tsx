@@ -71,7 +71,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
         toast.danger(data.error ?? 'Failed to disable AI');
         return;
       }
-      toast.success('AI disabled for this subaccount');
+      toast.success(t('aiDisabledToast'));
       await onChange();
     } catch {
       toast.danger('Network error — please try again');
@@ -159,7 +159,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 {pendingConfig === null && (
                   <div className="space-y-3">
                     <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                      Set up Anthropic key
+                      {t('setupAnthropicKey')}
                     </p>
                     <AnthropicKeyForm
                       existingConfigId={null}
@@ -175,7 +175,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 {pendingConfig !== null && (
                   <div className="border-t border-default-200 pt-4">
                     <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-3">
-                      Configure guardrails
+                      {t('configureGuardrails')}
                     </p>
                     <GuardrailForm
                       config={pendingConfig}
@@ -210,7 +210,7 @@ export function SubaccountAiCard({ subaccount, config, onChange }: SubaccountAiC
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{t('enabled')}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {optimisticEnabled ? 'AI portfolio manager is active.' : 'AI portfolio manager is paused.'}
+                    {optimisticEnabled ? t('aiActive') : t('aiPaused')}
                   </p>
                 </div>
                 {patchingEnabled && <Spinner size="sm" />}

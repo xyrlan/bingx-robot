@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Card, Spinner } from '@heroui/react';
 import { SubaccountAiCard } from './SubaccountAiCard';
 import type { AiPmConfigPublic } from './types';
@@ -12,6 +13,7 @@ interface Subaccount {
 }
 
 export function AiPmSettingsClient({ subaccounts }: { subaccounts: Subaccount[] }) {
+  const t = useTranslations('AiPm.Settings');
   const [configs, setConfigs] = useState<AiPmConfigPublic[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,8 +37,8 @@ export function AiPmSettingsClient({ subaccounts }: { subaccounts: Subaccount[] 
   if (subaccounts.length === 0) {
     return (
       <Card className="p-6">
-        <p className="text-sm">No BingX subaccounts yet.</p>
-        <Link href="/dashboard/accounts" className="text-sm text-accent hover:underline">Add a subaccount →</Link>
+        <p className="text-sm">{t('emptyNoSubaccounts')}</p>
+        <Link href="/dashboard/accounts" className="text-sm text-accent hover:underline">{t('addSubaccountLink')}</Link>
       </Card>
     );
   }

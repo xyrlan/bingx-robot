@@ -122,7 +122,24 @@
       "disableAi": "Disable AI",
       "disableAiConfirm": "Disable AI for this subaccount? Running bots are not stopped, but no new decisions will be made.",
       "cancel": "Cancel",
-      "save": "Save"
+      "save": "Save",
+      "confirm": "Confirm",
+      "lowRisk": "Low risk",
+      "moderateRisk": "Moderate risk",
+      "highRisk": "High risk",
+      "showCustom": "Show Custom",
+      "hideCustom": "Hide Custom",
+      "aiActive": "AI portfolio manager is active.",
+      "aiPaused": "AI portfolio manager is paused.",
+      "aiDisabledToast": "AI disabled for this subaccount",
+      "anthropicKeySavedToast": "Anthropic key saved",
+      "guardrailsSavedToast": "Guardrails saved",
+      "setupAnthropicKey": "Set up Anthropic key",
+      "configureGuardrails": "Configure guardrails",
+      "hideKey": "Hide key",
+      "showKey": "Show key",
+      "emptyNoSubaccounts": "No BingX subaccounts yet.",
+      "addSubaccountLink": "Add a subaccount →"
     }
   },
   "Dashboard": {
