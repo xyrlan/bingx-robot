@@ -115,6 +115,48 @@ type AnthropicFactory = (apiKey: string) => AnthropicLike;
 
 const defaultFactory: AnthropicFactory = (apiKey) => new Anthropic({ apiKey }) as unknown as AnthropicLike;
 
+export interface UpdateAiPmConfigInput {
+  anthropicApiKeyPlaintext?: string;
+  mode?: 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE' | 'CUSTOM';
+  enabled?: boolean;
+  killSwitch?: boolean;
+  paperMode?: boolean;
+  maxCapitalUsdt?: number | null;
+  maxConcurrentBots?: number | null;
+  allowedSymbols?: string[] | null;
+  allowedStrategies?: string[] | null;
+  maxDrawdownPct?: number | null;
+  maxLeverage?: number | null;
+}
+
+export async function updateAiPmConfig(configId: string, input: UpdateAiPmConfigInput): Promise<void> {
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+
+  if (input.anthropicApiKeyPlaintext !== undefined) {
+    patch.anthropicApiKeyEncrypted = encryptSecret(input.anthropicApiKeyPlaintext);
+  }
+  if (input.mode !== undefined) patch.mode = input.mode;
+  if (input.enabled !== undefined) patch.enabled = input.enabled;
+  if (input.killSwitch !== undefined) patch.killSwitch = input.killSwitch;
+  if (input.paperMode !== undefined) patch.paperMode = input.paperMode;
+  if (input.maxCapitalUsdt !== undefined) {
+    patch.maxCapitalUsdt = input.maxCapitalUsdt !== null ? String(input.maxCapitalUsdt) : null;
+  }
+  if (input.maxDrawdownPct !== undefined) {
+    patch.maxDrawdownPct = input.maxDrawdownPct !== null ? String(input.maxDrawdownPct) : null;
+  }
+  if (input.maxLeverage !== undefined) patch.maxLeverage = input.maxLeverage;
+  if (input.maxConcurrentBots !== undefined) patch.maxConcurrentBots = input.maxConcurrentBots;
+  if (input.allowedSymbols !== undefined) patch.allowedSymbols = input.allowedSymbols;
+  if (input.allowedStrategies !== undefined) patch.allowedStrategies = input.allowedStrategies;
+
+  await db.update(aiPmConfigs).set(patch).where(eq(aiPmConfigs.id, configId));
+}
+
+export async function deleteAiPmConfig(configId: string): Promise<void> {
+  await db.delete(aiPmConfigs).where(eq(aiPmConfigs.id, configId));
+}
+
 /**
  * Validates an Anthropic API key by calling messages.create with the cheapest
  * possible request (1 input token, max_tokens=1). Does NOT persist the key.

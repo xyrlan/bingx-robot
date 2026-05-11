@@ -8,12 +8,14 @@ import {
   Bot,
   KeyRound,
   Settings,
+  Sparkles,
 } from 'lucide-react';
 import { AccountSwitcher } from './account-switcher';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, labelKey: 'overview' },
   { href: '/dashboard/bots', icon: Bot, labelKey: 'bots' },
+  { href: '/dashboard/ai-pm', icon: Sparkles, labelKey: 'aiPm' },
   { href: '/dashboard/accounts', icon: KeyRound, labelKey: 'accounts' },
   { href: '/dashboard/settings', icon: Settings, labelKey: 'settings' },
 ] as const;
