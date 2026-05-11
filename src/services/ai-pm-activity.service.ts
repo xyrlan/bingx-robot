@@ -244,12 +244,8 @@ export async function listDecisions(
 
   // Fetch limit+1 to detect "has more"
   const rows = await db
-    .select({
-      d: aiDecisions,
-      pb: paperBots,
-    })
+    .select()
     .from(aiDecisions)
-    .leftJoin(paperBots, eq(paperBots.decisionId, aiDecisions.id))
     .where(and(...conditions))
     .orderBy(desc(aiDecisions.createdAt), desc(aiDecisions.id))
     .limit(limit + 1);
@@ -258,7 +254,39 @@ export async function listDecisions(
   const kept = hasMore ? rows.slice(0, limit) : rows;
   const last = kept[kept.length - 1];
 
-  const decisions: AiDecisionPublic[] = kept.map(({ d, pb }) => ({
+  // Batch-fetch paper bots linked to these decisions to avoid LEFT JOIN duplication
+  const decisionIds = kept.map((r) => r.id);
+  const linkedPaperBots = decisionIds.length
+    ? await db
+        .select({
+          id: paperBots.id,
+          decisionId: paperBots.decisionId,
+          symbol: paperBots.symbol,
+          strategy: paperBots.strategy,
+          status: paperBots.status,
+          pnlUsdt: paperBots.pnlUsdt,
+          trades: paperBots.trades,
+        })
+        .from(paperBots)
+        .where(inArray(paperBots.decisionId, decisionIds))
+    : [];
+
+  const paperBotByDecisionId = new Map<string, PaperBotInline>();
+  for (const pb of linkedPaperBots) {
+    // first match wins for deterministic display when >1 paper_bots share a decision
+    if (pb.decisionId && !paperBotByDecisionId.has(pb.decisionId)) {
+      paperBotByDecisionId.set(pb.decisionId, {
+        id: pb.id,
+        symbol: pb.symbol,
+        strategy: pb.strategy,
+        status: pb.status,
+        pnlUsdt: pb.pnlUsdt ?? '0',
+        tradesCount: Array.isArray(pb.trades) ? pb.trades.length : 0,
+      });
+    }
+  }
+
+  const decisions: AiDecisionPublic[] = kept.map((d) => ({
     id: d.id,
     triggeredBy: d.triggeredBy,
     triggerDetail: d.triggerDetail,
@@ -275,23 +303,14 @@ export async function listDecisions(
     tokensOutput: d.tokensOutput,
     costUsd: d.costUsd,
     resultBotId: d.resultBotId,
-    paperBot: pb
-      ? {
-          id: pb.id,
-          symbol: pb.symbol,
-          strategy: pb.strategy,
-          status: pb.status,
-          pnlUsdt: pb.pnlUsdt ?? '0',
-          tradesCount: Array.isArray(pb.trades) ? pb.trades.length : 0,
-        }
-      : null,
+    paperBot: paperBotByDecisionId.get(d.id) ?? null,
     executedAt: d.executedAt ? d.executedAt.toISOString() : null,
     createdAt: d.createdAt.toISOString(),
   }));
 
   const nextCursor =
     hasMore && last
-      ? encodeCursor({ createdAt: last.d.createdAt, id: last.d.id })
+      ? encodeCursor({ createdAt: last.createdAt, id: last.id })
       : null;
   return { decisions, nextCursor };
 }
