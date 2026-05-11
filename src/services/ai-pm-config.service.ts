@@ -1,6 +1,6 @@
 import { db } from '@/db';
 import { aiPmConfigs } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import Anthropic from '@anthropic-ai/sdk';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
@@ -48,6 +48,16 @@ export async function getAiPmConfig(userId: string): Promise<AiPmConfigDecrypted
     ...rest,
     anthropicApiKey: decryptSecret(anthropicApiKeyEncrypted),
   };
+}
+
+export async function listEnabledAiPmConfigs(): Promise<AiPmConfigDecrypted[]> {
+  const rows = await db.query.aiPmConfigs.findMany({
+    where: and(eq(aiPmConfigs.enabled, true), eq(aiPmConfigs.killSwitch, false)),
+  });
+  return rows.map((row) => {
+    const { anthropicApiKeyEncrypted, ...rest } = row;
+    return { ...rest, anthropicApiKey: decryptSecret(anthropicApiKeyEncrypted) };
+  });
 }
 
 export async function setAnthropicApiKey(userId: string, plaintext: string): Promise<void> {
