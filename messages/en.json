@@ -75,6 +75,7 @@
     "overview": "Overview",
     "bots": "Bots",
     "aiPm": "AI Portfolio Manager",
+    "aiActivity": "AI Activity",
     "accounts": "Accounts",
     "settings": "Settings",
     "signOut": "Sign out"
@@ -141,6 +142,61 @@
       "showKey": "Show key",
       "emptyNoSubaccounts": "No BingX subaccounts yet.",
       "addSubaccountLink": "Add a subaccount →"
+    },
+    "Activity": {
+      "title": "AI Activity",
+      "subtitle": "Decisions, signals, paper bots, and spend.",
+      "refresh": "Refresh",
+      "reset": "Reset",
+      "loadMore": "Load more",
+      "loading": "Loading…",
+      "errorBanner": "Failed to load activity",
+      "retry": "Retry",
+      "emptyAll": "No AI decisions yet. Enable AI on a subaccount in Settings.",
+      "emptyFiltered": "No decisions match filters.",
+      "filterStatus": "Status",
+      "filterAction": "Action",
+      "filterSymbol": "Symbol",
+      "filterFrom": "From",
+      "filterTo": "To",
+      "status": {
+        "PROPOSED": "Proposed",
+        "REJECTED_GUARDRAIL": "Rejected (guardrail)",
+        "REJECTED_BACKTEST": "Rejected (backtest)",
+        "REJECTED_REVIEWER": "Rejected (reviewer)",
+        "EXECUTED": "Executed",
+        "EXECUTION_FAILED": "Execution failed"
+      },
+      "action": {
+        "CREATE_BOT": "Create bot",
+        "STOP_BOT": "Stop bot",
+        "ADJUST_PARAMS": "Adjust params",
+        "REALLOCATE_CAPITAL": "Reallocate capital",
+        "NO_ACTION": "No action"
+      },
+      "detail": {
+        "reasoning": "Reasoning",
+        "rejection": "Rejection reason",
+        "signal": "Signal snapshot",
+        "params": "Params",
+        "linkedBot": "Linked bot",
+        "linkedPaperBot": "Linked paper bot",
+        "noLink": "—",
+        "model": "Model",
+        "tokensIn": "Tokens in",
+        "tokensOut": "Tokens out",
+        "cost": "Cost (USD)"
+      },
+      "rails": {
+        "signalsTitle": "Latest signals",
+        "signalsEmpty": "No signals yet.",
+        "paperBotsTitle": "Active paper bots",
+        "paperBotsEmpty": "No paper bots active.",
+        "spendTitle": "Today",
+        "decisions": "Decisions",
+        "cronTitle": "Last AI tick",
+        "cronNever": "Never"
+      }
     }
   },
   "Dashboard": {
