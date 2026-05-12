@@ -75,6 +75,37 @@ describe('GET /api/ai-pm/chat/history', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns single row by id regardless of since filter', async () => {
+    const old = new Date(Date.now() - 60_000);
+    const [row] = await db.insert(aiChatMessages).values([
+      { userId: TEST_USER_ID, role: 'assistant', content: 'placeholder filled', createdAt: old },
+    ]).returning();
+    const res = await GET(req(`?id=${row.id}`));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].id).toBe(row.id);
+    expect(body.messages[0].content).toBe('placeholder filled');
+  });
+
+  it('returns empty messages when id belongs to another user', async () => {
+    const OTHER = '00000000-0000-0000-0000-000000000071';
+    await db.insert(users).values({ id: OTHER, email: 'chat-route-other@example.com' }).onConflictDoNothing();
+    const [row] = await db.insert(aiChatMessages).values([
+      { userId: OTHER, role: 'assistant', content: 'not mine' },
+    ]).returning();
+    const res = await GET(req(`?id=${row.id}`));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.messages).toEqual([]);
+    await db.delete(aiChatMessages).where(eq(aiChatMessages.userId, OTHER));
+  });
+
+  it('returns 400 when id is not a UUID', async () => {
+    const res = await GET(req('?id=garbage'));
+    expect(res.status).toBe(400);
+  });
+
   it('since wins over cursor if both passed', async () => {
     const old = new Date(Date.now() - 10_000);
     const recent = new Date(Date.now() - 1_000);

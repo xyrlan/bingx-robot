@@ -10,12 +10,22 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Vercel: explicit max duration so SSE survives long tool loops. Defaults to
+// 10s (hobby) / 60s (pro) otherwise, which silently cuts streams short.
+export const maxDuration = 300;
 
 const MAX_DURATION_MS = 270_000;
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 function sseLine(event: StreamEvent, id?: number | string): string {
   const idLine = id !== undefined ? `id: ${id}\n` : '';
   return `${idLine}data: ${JSON.stringify(event)}\n\n`;
+}
+
+// SSE comment-line keep-alive. Client uses it to detect a stale connection
+// (no events for >30s → drop + fallback to poll).
+function heartbeatLine(): string {
+  return `: heartbeat ${Date.now()}\n\n`;
 }
 
 interface RouteCtx { params: { messageId: string } | Promise<{ messageId: string }> }
@@ -115,14 +125,27 @@ export async function GET(req: Request, ctx: RouteCtx) {
         return;
       }
 
-      // 4. Safety timeout
+      // 4. Heartbeat to keep the connection visibly alive and let the client
+      // detect silent drops (Vercel buffer / idle proxy).
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(heartbeatLine()));
+        } catch {
+          closed = true;
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+
+      // 5. Safety timeout
       const timeout = setTimeout(() => {
+        clearInterval(heartbeat);
         void subscription?.unlisten().catch(() => {});
         close();
       }, MAX_DURATION_MS);
 
-      // 5. Cleanup on client disconnect
+      // 6. Cleanup on client disconnect
       req.signal.addEventListener('abort', () => {
+        clearInterval(heartbeat);
         clearTimeout(timeout);
         void subscription?.unlisten().catch(() => {});
         close();

@@ -45,6 +45,21 @@ export function decodeChatCursor(s: string): { createdAt: Date; id: string } {
   return { createdAt, id: parsed.id };
 }
 
+/**
+ * Direct-by-id lookup with userId ownership check. Used by the chat client's
+ * polling fallback to fetch the assistant placeholder regardless of when it
+ * was created (the `since` filter would otherwise exclude it).
+ */
+export async function getChatMessageById(
+  userId: string,
+  messageId: string,
+): Promise<ChatMessagePublic | null> {
+  const row = await db.query.aiChatMessages.findFirst({
+    where: and(eq(aiChatMessages.id, messageId), eq(aiChatMessages.userId, userId)),
+  });
+  return row ? toPublic(row) : null;
+}
+
 export async function listChatMessages(
   userId: string,
   opts: ListChatMessagesOpts,
