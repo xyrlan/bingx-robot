@@ -63,6 +63,14 @@ export const aiTriggerSourceEnum = pgEnum('ai_trigger_source', [
   'CHAT',
 ]);
 
+export const aiEventStatusEnum = pgEnum('ai_event_status', [
+  'PENDING',
+  'THROTTLED',
+  'PROCESSING',
+  'PROCESSED',
+  'FAILED',
+]);
+
 // ==========================================
 // 2. USERS & PROFILES
 // ==========================================
@@ -361,6 +369,49 @@ export const aiChatMessages = pgTable('ai_chat_messages', {
   index('ai_chat_user_created_idx').on(table.userId, table.createdAt),
 ]);
 
+/**
+ * Event log for the AI Portfolio Monitor.
+ * Each detected market event (fill, drawdown, funding flip, error) is stored here
+ * before being processed by the decision pipeline.
+ */
+export const aiEvents = pgTable('ai_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  configId: uuid('config_id')
+    .notNull()
+    .references(() => aiPmConfigs.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  eventType: aiTriggerSourceEnum('event_type').notNull(),
+  symbol: text('symbol'),
+  payload: jsonb('payload').notNull(),
+  status: aiEventStatusEnum('status').notNull().default('PENDING'),
+  decisionId: uuid('decision_id').references(() => aiDecisions.id, { onDelete: 'set null' }),
+  emittedAt: timestamp('emitted_at').notNull(),
+  processedAt: timestamp('processed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('ai_events_cfg_type_sym_idx').on(table.configId, table.eventType, table.symbol, table.createdAt),
+  index('ai_events_status_idx').on(table.status),
+  index('ai_events_user_created_idx').on(table.userId, table.createdAt),
+]);
+
+/**
+ * Per-config funding rate cache. One row per (configId, symbol), upserted on each tick.
+ * Used by the monitor to detect funding rate flips without hitting the BingX API on every check.
+ */
+export const aiPmFundingCache = pgTable('ai_pm_funding_cache', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  configId: uuid('config_id')
+    .notNull()
+    .references(() => aiPmConfigs.id, { onDelete: 'cascade' }),
+  symbol: text('symbol').notNull(),
+  fundingRate: decimal('funding_rate', { precision: 10, scale: 8 }).notNull(),
+  observedAt: timestamp('observed_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ai_pm_funding_cache_cfg_sym').on(table.configId, table.symbol),
+]);
+
 // ==========================================
 // 6. RELATIONS (BingX)
 // ==========================================
@@ -459,4 +510,14 @@ export const aiChatMessagesRelations = relations(aiChatMessages, ({ one }) => ({
     fields: [aiChatMessages.decisionId],
     references: [aiDecisions.id],
   }),
+}));
+
+export const aiEventsRelations = relations(aiEvents, ({ one }) => ({
+  user: one(users, { fields: [aiEvents.userId], references: [users.id] }),
+  config: one(aiPmConfigs, { fields: [aiEvents.configId], references: [aiPmConfigs.id] }),
+  decision: one(aiDecisions, { fields: [aiEvents.decisionId], references: [aiDecisions.id] }),
+}));
+
+export const aiPmFundingCacheRelations = relations(aiPmFundingCache, ({ one }) => ({
+  config: one(aiPmConfigs, { fields: [aiPmFundingCache.configId], references: [aiPmConfigs.id] }),
 }));
