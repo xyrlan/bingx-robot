@@ -38,11 +38,11 @@ export const CreateBotArgs = z.object({
   symbol: z.string().min(1),
   strategy: z.enum(['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER']),
   capitalUsdt: z.number().positive(),
-  leverage: z.number().int().min(1).max(125),
+  leverage: z.number().int().min(1).max(20),
   reasoning: z.string().min(1).max(500),
 });
 export const StopBotArgs = z.object({
-  botId: z.string().min(1),
+  botId: z.string().uuid(),
   reasoning: z.string().min(1).max(500),
 });
 export const PauseKillSwitchArgs = z.object({
@@ -280,6 +280,8 @@ async function stopBotTool(args: z.infer<typeof StopBotArgs>, ctx: ToolExecConte
 
 async function pauseKillSwitchTool(args: z.infer<typeof PauseKillSwitchArgs>, ctx: ToolExecContext): Promise<ToolExecResult> {
   const setSwitch = ctx.setKillSwitchFn ?? defaultSetKillSwitch;
+  // Fail-closed: if setSwitch succeeds but the audit insert throws, the switch
+  // remains ON without an audit row. Acceptable v1: safer to be paused than not.
   try {
     await setSwitch(ctx.configId, true);
     const [row] = await ctx.db

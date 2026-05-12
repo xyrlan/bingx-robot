@@ -121,7 +121,7 @@ describe('chat-tools', () => {
     const executeFn = vi.fn();
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('create_bot', {
-      symbol: 'BTC-USDT', strategy: 'DCA', capitalUsdt: 100, leverage: 30, reasoning: 'test',
+      symbol: 'BTC-USDT', strategy: 'DCA', capitalUsdt: 100, leverage: 6, reasoning: 'test',
     }, ctx);
     expect(executeFn).not.toHaveBeenCalled();
     expect(got.status).toBe('REJECTED_GUARDRAIL');
@@ -133,7 +133,7 @@ describe('chat-tools', () => {
     const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'dec-3' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('stop_bot', {
-      botId: '00000000-0000-0000-0000-000000000099',
+      botId: '11111111-2222-4333-8444-555555555555',
       reasoning: 'risk off',
     }, ctx);
     expect(got.status).toBe('EXECUTED');
