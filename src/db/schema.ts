@@ -278,11 +278,13 @@ export const aiDecisions = pgTable('ai_decisions', {
   tokensOutput: integer('tokens_output'),
   costUsd: decimal('cost_usd', { precision: 10, scale: 6 }),
   resultBotId: uuid('result_bot_id').references(() => tradingBots.id, { onDelete: 'set null' }),
+  chatMessageId: uuid('chat_message_id'),
   executedAt: timestamp('executed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('ai_decisions_user_created_idx').on(table.userId, table.createdAt),
   index('ai_decisions_status_idx').on(table.status),
+  index('ai_decisions_chat_message_idx').on(table.chatMessageId),
 ]);
 
 /**
@@ -364,6 +366,10 @@ export const aiChatMessages = pgTable('ai_chat_messages', {
   content: text('content'),
   toolCalls: jsonb('tool_calls'),
   decisionId: uuid('decision_id').references(() => aiDecisions.id, { onDelete: 'set null' }),
+  tokensInput: integer('tokens_input'),
+  tokensOutput: integer('tokens_output'),
+  cachedInputTokens: integer('cached_input_tokens'),
+  costUsd: decimal('cost_usd', { precision: 10, scale: 6 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('ai_chat_user_created_idx').on(table.userId, table.createdAt),
@@ -475,6 +481,10 @@ export const aiDecisionsRelations = relations(aiDecisions, ({ one, many }) => ({
     fields: [aiDecisions.backtestRunId],
     references: [backtestRuns.id],
   }),
+  chatMessage: one(aiChatMessages, {
+    fields: [aiDecisions.chatMessageId],
+    references: [aiChatMessages.id],
+  }),
   chatMessages: many(aiChatMessages),
   paperBots: many(paperBots),
 }));
@@ -501,7 +511,7 @@ export const backtestRunsRelations = relations(backtestRuns, ({ many }) => ({
   decisions: many(aiDecisions),
 }));
 
-export const aiChatMessagesRelations = relations(aiChatMessages, ({ one }) => ({
+export const aiChatMessagesRelations = relations(aiChatMessages, ({ one, many }) => ({
   user: one(users, {
     fields: [aiChatMessages.userId],
     references: [users.id],
@@ -510,6 +520,7 @@ export const aiChatMessagesRelations = relations(aiChatMessages, ({ one }) => ({
     fields: [aiChatMessages.decisionId],
     references: [aiDecisions.id],
   }),
+  decisions: many(aiDecisions),
 }));
 
 export const aiEventsRelations = relations(aiEvents, ({ one }) => ({
