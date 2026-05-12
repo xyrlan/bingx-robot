@@ -40,6 +40,7 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttemptsRef = useRef(0);
   const pollSinceRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -49,7 +50,13 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
     pollAttemptsRef.current = 0;
   }, []);
 
-  useEffect(() => () => stopPolling(), [stopPolling]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      stopPolling();
+    };
+  }, [stopPolling]);
 
   const startPolling = useCallback(() => {
     stopPolling();
@@ -59,8 +66,10 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
       try {
         const sinceParam = pollSinceRef.current ? `?since=${encodeURIComponent(pollSinceRef.current)}` : '';
         const res = await fetch(`/api/ai-pm/chat/history${sinceParam}`);
+        if (!mountedRef.current) return;
         if (res.ok) {
           const body = (await res.json()) as { messages: ChatMessagePublic[] };
+          if (!mountedRef.current) return;
           const assistantMsg = body.messages.find((m) => m.role === 'assistant');
           if (assistantMsg) {
             setMessages((prev) => [...prev, assistantMsg]);
@@ -70,8 +79,9 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
           }
         }
       } catch {
-        // silent, counted toward attempts
+        if (!mountedRef.current) return;
       }
+      if (!mountedRef.current) return;
       if (pollAttemptsRef.current >= POLL_MAX_ATTEMPTS) {
         setPending(false);
         setToast(t('noResponse'));
@@ -111,6 +121,7 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
       }
       startPolling();
     } catch {
+      if (!mountedRef.current) return;
       setMessages((prev) =>
         prev.map((m) => (m.tempId === tempId ? { ...m, failed: true } : m)),
       );
@@ -123,15 +134,17 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
     setLoadingOlder(true);
     try {
       const res = await fetch(`/api/ai-pm/chat/history?cursor=${encodeURIComponent(oldestCursor)}`);
+      if (!mountedRef.current) return;
       if (res.ok) {
         const body = (await res.json()) as { messages: ChatMessagePublic[]; nextCursor: string | null };
+        if (!mountedRef.current) return;
         // returned DESC, prepend in ASC
         const asc = body.messages.slice().reverse();
         setMessages((prev) => [...asc, ...prev]);
         setOldestCursor(body.nextCursor);
       }
     } finally {
-      setLoadingOlder(false);
+      if (mountedRef.current) setLoadingOlder(false);
     }
   }, [oldestCursor, loadingOlder]);
 

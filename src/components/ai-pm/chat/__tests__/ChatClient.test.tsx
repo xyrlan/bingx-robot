@@ -95,6 +95,11 @@ describe('ChatClient', () => {
     await waitFor(() => {
       expect(screen.getByText('reply')).toBeInTheDocument();
     });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3); // 1 POST + 2 history GETs
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/ai-pm/chat');
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/ai-pm\/chat\/history/);
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/api\/ai-pm\/chat\/history/);
   });
 
   it('marks user message failed when POST errors', async () => {
