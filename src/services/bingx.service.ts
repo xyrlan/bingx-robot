@@ -1036,7 +1036,9 @@ export async function recordTrade(params: {
       });
       if (bot?.apiKeyId) {
         await maybeEmitFillEvent({
-          sendEventFn: (event) => inngest.send(event),
+          sendEventFn: async (event) => {
+            await inngest.send(event);
+          },
           apiKeyId: bot.apiKeyId,
           botId: params.botId,
           botKind: 'real',

@@ -1,7 +1,6 @@
 import { inngest } from '@/inngest/client';
 import { db } from '@/db';
 import {
-  AI_PM_EVENT_NAMES,
   mapNameToEnum,
   type AiPmEventName,
   type AiPmEventPayload,
