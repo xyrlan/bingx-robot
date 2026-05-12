@@ -45,12 +45,12 @@ export function ComposeBar({ onSend, disabled }: ComposeBarProps) {
           className="flex-1 resize-none rounded-lg border border-default-200 bg-default-50 px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 max-h-32"
         />
         <Button
-          color="primary"
+          variant="primary"
           size="md"
           isDisabled={disabled || !text.trim()}
           onPress={submit}
-          startContent={<Send className="w-4 h-4" />}
         >
+          <Send className="w-4 h-4" />
           {t('send')}
         </Button>
       </div>
