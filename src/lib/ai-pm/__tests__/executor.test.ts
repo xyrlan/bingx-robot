@@ -139,20 +139,6 @@ describe('execute', () => {
     expect(createPaperBotMock).not.toHaveBeenCalled();
   });
 
-  it('adjust_params returns EXECUTION_FAILED (not implemented)', async () => {
-    const result = await execute({
-      userId, decisionId,
-      action: { type: 'adjust_params', botId, params: { x: 1 }, reasoning: 'r' },
-      config: realConfig, db: fakeDb(state) as never,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      createBotFn: createBotMock as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      createPaperBotFn: createPaperBotMock as any,
-    });
-    expect(result.status).toBe('EXECUTION_FAILED');
-    expect(result.reason).toMatch(/NOT_IMPLEMENTED/);
-  });
-
   it('reallocate_capital returns EXECUTION_FAILED (not implemented)', async () => {
     const result = await execute({
       userId, decisionId,
@@ -171,5 +157,167 @@ describe('execute', () => {
     });
     expect(result.status).toBe('EXECUTION_FAILED');
     expect(result.reason).toMatch(/NOT_IMPLEMENTED/);
+  });
+});
+
+describe('execute — adjust_params', () => {
+  it('paper mode: updates capitalUsdt + params jsonb', async () => {
+    const updateMock = vi.fn().mockReturnValue({
+      set: (vals: Record<string, unknown>) => ({
+        where: () => ({
+          returning: async () => [{ id: 'paper-1', capitalUsdt: vals.capitalUsdt ?? '0' }],
+        }),
+      }),
+    });
+    const findMock = vi.fn().mockResolvedValue({
+      id: 'paper-1', userId, capitalUsdt: '100', params: { leverage: 2 }, strategy: 'DCA',
+    });
+    const fakePaperDb = {
+      query: { paperBots: { findFirst: findMock } },
+      update: updateMock,
+    };
+
+    const action: ProposedAction = {
+      type: 'adjust_params',
+      botId: 'paper-1',
+      params: { capitalUsdt: 150, leverage: 3 },
+      reasoning: 'rebalance',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: fakePaperDb as any,
+    });
+
+    expect(got.status).toBe('EXECUTED');
+    expect(got.paperBotId).toBe('paper-1');
+    expect(updateMock).toHaveBeenCalled();
+  });
+
+  it('real mode: direct-field update + optional setLeverage', async () => {
+    const updateRes = { id: botId, positionSizeUsdt: '150', leverage: 3, status: 'RUNNING' as const };
+    const updateMock = vi.fn().mockReturnValue({
+      set: () => ({ where: () => ({ returning: async () => [updateRes] }) }),
+    });
+    const findMock = vi.fn().mockResolvedValue({
+      id: botId, userId, apiKeyId, botType: 'DCA', symbol: 'BTC-USDT', positionSizeUsdt: '100', leverage: 2, status: 'RUNNING',
+    });
+    const setLeverageMock = vi.fn().mockResolvedValue(undefined);
+
+    const action: ProposedAction = {
+      type: 'adjust_params',
+      botId,
+      params: { capitalUsdt: 150, leverage: 3 },
+      reasoning: 'r',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { query: { tradingBots: { findFirst: findMock } }, update: updateMock } as any,
+      setLeverageFn: setLeverageMock,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: { fake: true } as any,
+    });
+
+    expect(got.status).toBe('EXECUTED');
+    expect(got.realBotId).toBe(botId);
+    expect(setLeverageMock).toHaveBeenCalledWith(expect.anything(), 'BTC-USDT', 3);
+  });
+
+  it('real mode: setLeverage throws → still EXECUTED (warned)', async () => {
+    const updateMock = vi.fn().mockReturnValue({
+      set: () => ({ where: () => ({ returning: async () => [{ id: botId, leverage: 3 }] }) }),
+    });
+    const findMock = vi.fn().mockResolvedValue({
+      id: botId, userId, apiKeyId, botType: 'DCA', symbol: 'BTC-USDT', positionSizeUsdt: '100', leverage: 2, status: 'RUNNING',
+    });
+    const setLeverageMock = vi.fn().mockRejectedValue(new Error('exchange rejected'));
+
+    const action: ProposedAction = {
+      type: 'adjust_params', botId, params: { leverage: 3 }, reasoning: 'r',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { query: { tradingBots: { findFirst: findMock } }, update: updateMock } as any,
+      setLeverageFn: setLeverageMock,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+    });
+
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('real mode: strategy change → stops + recreates, returns newBotId', async () => {
+    const updateMock = vi.fn().mockReturnValue({
+      set: () => ({ where: () => ({ returning: async () => [{ id: botId, status: 'STOPPED' }] }) }),
+    });
+    const findMock = vi.fn().mockResolvedValue({
+      id: botId, userId, apiKeyId, botType: 'DCA', symbol: 'BTC-USDT', positionSizeUsdt: '100', leverage: 2, takeProfitPercentage: '1', gridCount: 1, priceMin: '0', priceMax: '0', status: 'RUNNING',
+    });
+    const createBotMock = vi.fn().mockResolvedValue({ id: 'new-bot-1' });
+
+    const action: ProposedAction = {
+      type: 'adjust_params', botId, params: { strategy: 'SMA_CROSSOVER' }, reasoning: 'r',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { query: { tradingBots: { findFirst: findMock } }, update: updateMock } as any,
+      createBotFn: createBotMock,
+    });
+
+    expect(got.status).toBe('EXECUTED');
+    expect(got.realBotId).toBe(botId);
+    expect(got.newBotId).toBe('new-bot-1');
+    expect(createBotMock).toHaveBeenCalled();
+    expect(createBotMock.mock.calls[0][1].botType).toBe('SMA_CROSSOVER');
+  });
+
+  it('real mode: recreate fails → EXECUTION_FAILED, old bot stays STOPPED', async () => {
+    const updateMock = vi.fn().mockReturnValue({
+      set: () => ({ where: () => ({ returning: async () => [{ id: botId, status: 'STOPPED' }] }) }),
+    });
+    const findMock = vi.fn().mockResolvedValue({
+      id: botId, userId, apiKeyId, botType: 'DCA', symbol: 'BTC-USDT', positionSizeUsdt: '100', leverage: 2, takeProfitPercentage: '1', gridCount: 1, priceMin: '0', priceMax: '0', status: 'RUNNING',
+    });
+    const createBotMock = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const action: ProposedAction = {
+      type: 'adjust_params', botId, params: { strategy: 'SMA_CROSSOVER' }, reasoning: 'r',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { query: { tradingBots: { findFirst: findMock } }, update: updateMock } as any,
+      createBotFn: createBotMock,
+    });
+
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/recreate_failed/);
+  });
+
+  it('bot not found → EXECUTION_FAILED', async () => {
+    const action: ProposedAction = {
+      type: 'adjust_params', botId, params: { capitalUsdt: 200 }, reasoning: 'r',
+    };
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { query: { tradingBots: { findFirst: async () => null } } } as any,
+    });
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/not found/i);
   });
 });
