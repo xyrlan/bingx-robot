@@ -245,6 +245,41 @@ export async function callSonnet<T>(
   };
 }
 
+export interface SonnetTextResult {
+  text: string;
+}
+
+export async function callSonnetText(
+  params: BaseCallParams,
+): Promise<LlmResult<SonnetTextResult>> {
+  const factory = params.factory ?? defaultFactory;
+  const cacheSystem = params.cacheSystem ?? false;
+  const client = factory(params.apiKey);
+
+  let response: AnthropicMessageResponse;
+  try {
+    response = await client.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: params.maxTokens ?? 1024,
+      system: buildSystem(params.systemPrompt, cacheSystem),
+      messages: [{ role: 'user', content: params.userPrompt }],
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: { kind: 'API_ERROR', message: err instanceof Error ? err.message : String(err) },
+    };
+  }
+
+  const usage = extractUsage(MODEL_SONNET, response.usage);
+  const textBlock = response.content.find((c) => c.type === 'text');
+  const text = textBlock?.text ?? '';
+  if (!text) {
+    return { ok: false, error: { kind: 'EMPTY_RESPONSE', message: 'Sonnet returned no text content' }, usage };
+  }
+  return { ok: true, data: { text }, usage };
+}
+
 /**
  * Minimal Zod-to-JSON-Schema converter for Anthropic tool input schemas.
  * Only supports the subset of Zod we use: z.object, z.string, z.number,

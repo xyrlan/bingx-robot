@@ -4,6 +4,7 @@ import {
   callHaiku,
   callSonnet,
   callOpus,
+  callSonnetText,
   type AnthropicFactory,
   type LlmError,
 } from '@/lib/ai-pm/llm';
@@ -240,6 +241,23 @@ describe('callSonnet', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected err');
     expect((result.error as LlmError).kind).toBe('NO_TOOL_USE');
+  });
+});
+
+describe('callSonnetText', () => {
+  it('returns plain text when Sonnet responds with a text block', async () => {
+    const factory = fakeFactory({ responseText: 'Markets look stable.' });
+
+    const result = await callSonnetText({
+      apiKey: 'sk-ant',
+      systemPrompt: 'You are a trading assistant.',
+      userPrompt: 'How are markets?',
+      factory,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data.text).toBe('Markets look stable.');
   });
 });
 

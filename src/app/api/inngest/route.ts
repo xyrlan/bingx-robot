@@ -7,6 +7,8 @@ import { trailingStopWatch } from "@/inngest/functions/trailing-stop-watch";
 import { dcaSpotBotWatch } from "@/inngest/functions/dca-spot-bot-watch";
 import { smaCrossoverWatch } from "@/inngest/functions/sma-crossover-watch";
 import { aiPmTick } from "@/inngest/functions/ai-pm-tick";
+import { aiPmEventHandler } from "@/inngest/functions/ai-pm-event-handler";
+import { aiPmMonitor } from "@/inngest/functions/ai-pm-monitor";
 
 const functions = [
   masterTick,
@@ -16,6 +18,8 @@ const functions = [
   dcaSpotBotWatch,
   smaCrossoverWatch,
   aiPmTick,
+  aiPmEventHandler,
+  aiPmMonitor,
 ];
 
 export const { GET, POST, PUT } = serve({
