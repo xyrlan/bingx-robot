@@ -10,6 +10,7 @@ import {
   Settings,
   Sparkles,
   Activity,
+  MessageSquare,
 } from 'lucide-react';
 import { AccountSwitcher } from './account-switcher';
 
@@ -18,6 +19,7 @@ const navItems = [
   { href: '/dashboard/bots', icon: Bot, labelKey: 'bots' },
   { href: '/dashboard/ai-pm', icon: Sparkles, labelKey: 'aiPm' },
   { href: '/dashboard/ai-pm/activity', icon: Activity, labelKey: 'aiActivity' },
+  { href: '/dashboard/ai-pm/chat', icon: MessageSquare, labelKey: 'aiChat' },
   { href: '/dashboard/accounts', icon: KeyRound, labelKey: 'accounts' },
   { href: '/dashboard/settings', icon: Settings, labelKey: 'settings' },
 ] as const;
