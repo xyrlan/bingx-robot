@@ -190,7 +190,7 @@ async function createBotTool(args: z.infer<typeof CreateBotArgs>, ctx: ToolExecC
     db: ctx.db,
     triggeredBy: 'CHAT',
     chatMessageId: ctx.chatMessageId,
-  } as Parameters<typeof defaultValidate>[0]);
+  });
 
   if (validation.status !== 'PROPOSED') {
     return {
@@ -243,7 +243,7 @@ async function stopBotTool(args: z.infer<typeof StopBotArgs>, ctx: ToolExecConte
     db: ctx.db,
     triggeredBy: 'CHAT',
     chatMessageId: ctx.chatMessageId,
-  } as Parameters<typeof defaultValidate>[0]);
+  });
 
   if (validation.status !== 'PROPOSED') {
     return {
