@@ -5,9 +5,9 @@ import { validateEnv } from '@/lib/env';
 
 validateEnv();
 
-// O Supabase fornece a string de conexão no painel (Transaction Pooler recomendado)
 const connectionString = process.env.DATABASE_URL!;
 
-// Para queries em tempo real (Next.js Server Components)
-const client = postgres(connectionString, { prepare: false });
-export const db = drizzle(client, { schema });
+// Raw postgres client. Multiplexed for normal query traffic and also exposed
+// for streaming/NOTIFY-LISTEN usage in the chat streaming module.
+export const sql = postgres(connectionString, { prepare: false });
+export const db = drizzle(sql, { schema });
