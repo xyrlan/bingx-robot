@@ -4,6 +4,9 @@ import { bingxApiKeys, tradingBots, gridLevels, botTrades } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
 import { createBingxClient, type BingxClient } from '@/lib/bingx/client';
 import type { InferSelectModel } from 'drizzle-orm';
+import { maybeEmitFillEvent } from '@/lib/ai-pm/emit-events';
+import { inngest } from '@/inngest/client';
+import type { FillPayload } from '@/lib/ai-pm/events';
 
 export type TradingBot = InferSelectModel<typeof tradingBots>;
 export type GridLevel = InferSelectModel<typeof gridLevels>;
@@ -983,6 +986,12 @@ export async function getIncome(
 
 export type TradeType = 'ENTRY' | 'EXIT_TP' | 'EXIT_TRAILING' | 'EXIT_SIGNAL' | 'EXIT_MANUAL';
 
+function tradeTypeToOrderType(t: TradeType): FillPayload['orderType'] {
+  if (t === 'ENTRY') return 'ENTRY';
+  if (t === 'EXIT_TP') return 'TAKE_PROFIT';
+  return 'STOP_LOSS';
+}
+
 export async function recordTrade(params: {
   botId: string;
   symbol: string;
@@ -1020,6 +1029,29 @@ export async function recordTrade(params: {
       realizedPnl: String(params.realizedPnl ?? 0),
       orderId: params.orderId ?? null,
     });
+
+    try {
+      const bot = await db.query.tradingBots.findFirst({
+        where: eq(tradingBots.id, params.botId),
+      });
+      if (bot?.apiKeyId) {
+        await maybeEmitFillEvent({
+          sendEventFn: (event) => inngest.send(event),
+          apiKeyId: bot.apiKeyId,
+          botId: params.botId,
+          botKind: 'real',
+          symbol: params.symbol,
+          side: params.side,
+          fillPrice: String(params.price),
+          quantity: String(params.quantity),
+          orderType: tradeTypeToOrderType(params.type),
+        });
+      }
+    } catch (emitErr) {
+      // Emission must never break recordTrade. Swallow.
+      // eslint-disable-next-line no-console
+      console.warn('[recordTrade] AI PM fill emission failed:', emitErr);
+    }
   } catch (err) {
     console.error('[recordTrade] Failed:', err);
   }
