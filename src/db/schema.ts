@@ -376,6 +376,24 @@ export const aiChatMessages = pgTable('ai_chat_messages', {
 ]);
 
 /**
+ * Streamed text deltas for an assistant chat message. Rows are appended as the
+ * Anthropic SDK produces them and deleted by the pipeline once the assistant
+ * row is finalized. SSE endpoints read these to replay on reconnect.
+ */
+export const chatMessageChunks = pgTable('chat_message_chunks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  messageId: uuid('message_id')
+    .notNull()
+    .references(() => aiChatMessages.id, { onDelete: 'cascade' }),
+  seq: integer('seq').notNull(),
+  text: text('text').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('chat_message_chunks_msg_seq_unique').on(table.messageId, table.seq),
+  index('chat_message_chunks_msg_seq_idx').on(table.messageId, table.seq),
+]);
+
+/**
  * Event log for the AI Portfolio Monitor.
  * Each detected market event (fill, drawdown, funding flip, error) is stored here
  * before being processed by the decision pipeline.
@@ -521,6 +539,7 @@ export const aiChatMessagesRelations = relations(aiChatMessages, ({ one, many })
     references: [aiDecisions.id],
   }),
   decisions: many(aiDecisions),
+  chunks: many(chatMessageChunks),
 }));
 
 export const aiEventsRelations = relations(aiEvents, ({ one }) => ({

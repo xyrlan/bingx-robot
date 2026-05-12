@@ -49,6 +49,7 @@ describe('events', () => {
       symbol: null,
       chatMessageId: 'msg',
       userMessage: 'hi',
+      assistantPlaceholderId: 'ph',
     };
     expect(p.symbol).toBeNull();
   });

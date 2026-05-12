@@ -28,6 +28,8 @@ interface AnthropicMessageResponse {
 interface AnthropicLike {
   messages: {
     create: (params: Record<string, unknown>) => Promise<AnthropicMessageResponse>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    stream?: (params: Record<string, unknown>) => any;
   };
 }
 
@@ -286,46 +288,14 @@ export type SonnetToolsResponse =
   | { kind: 'tool_use'; toolName: string; toolUseId: string; args: unknown }
   | { kind: 'text'; text: string };
 
-export async function callSonnetTools(params: {
-  apiKey: string;
-  systemPrompt: string;
-  messages: AnthropicChatMessage[];
-  tools: ToolDefinition<unknown>[];
-  factory?: AnthropicFactory;
-  maxTokens?: number;
-  cacheSystem?: boolean;
-}): Promise<LlmResult<SonnetToolsResponse>> {
-  const factory = params.factory ?? defaultFactory;
-  const cacheSystem = params.cacheSystem ?? true;
-  const client = factory(params.apiKey);
-
-  const tools = params.tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: zodToJsonSchema(t.schema),
-  }));
-
-  let response: AnthropicMessageResponse;
-  try {
-    response = await client.messages.create({
-      model: MODEL_SONNET,
-      max_tokens: params.maxTokens ?? 2048,
-      system: buildSystem(params.systemPrompt, cacheSystem),
-      tools,
-      messages: params.messages,
-    });
-  } catch (err) {
-    return {
-      ok: false,
-      error: { kind: 'API_ERROR', message: err instanceof Error ? err.message : String(err) },
-    };
-  }
-
-  const usage = extractUsage(MODEL_SONNET, response.usage);
-
+function parseSonnetToolsResponse(
+  response: AnthropicMessageResponse,
+  tools: ToolDefinition<unknown>[],
+  usage: LlmUsage,
+): LlmResult<SonnetToolsResponse> {
   const toolBlock = response.content.find((c) => c.type === 'tool_use');
   if (toolBlock && toolBlock.name) {
-    const matched = params.tools.find((t) => t.name === toolBlock.name);
+    const matched = tools.find((t) => t.name === toolBlock.name);
     if (!matched) {
       return {
         ok: false,
@@ -365,6 +335,114 @@ export async function callSonnetTools(params: {
     return { ok: false, error: { kind: 'EMPTY_RESPONSE', message: 'Sonnet returned no tool_use or text' }, usage };
   }
   return { ok: true, data: { kind: 'text', text }, usage };
+}
+
+export async function callSonnetTools(params: {
+  apiKey: string;
+  systemPrompt: string;
+  messages: AnthropicChatMessage[];
+  tools: ToolDefinition<unknown>[];
+  factory?: AnthropicFactory;
+  maxTokens?: number;
+  cacheSystem?: boolean;
+  onTextChunk?: (chunk: string) => void | Promise<void>;
+  onToolUseStart?: (info: { toolName: string; args: unknown }) => void | Promise<void>;
+}): Promise<LlmResult<SonnetToolsResponse>> {
+  const factory = params.factory ?? defaultFactory;
+  const cacheSystem = params.cacheSystem ?? true;
+  const client = factory(params.apiKey);
+
+  const tools = params.tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: zodToJsonSchema(t.schema),
+  }));
+
+  const useStream = typeof params.onTextChunk === 'function';
+
+  if (useStream) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let stream: any;
+    try {
+      if (typeof client.messages.stream !== 'function') {
+        throw new Error('Anthropic SDK client has no messages.stream method');
+      }
+      stream = client.messages.stream({
+        model: MODEL_SONNET,
+        max_tokens: params.maxTokens ?? 2048,
+        system: buildSystem(params.systemPrompt, cacheSystem),
+        tools,
+        messages: params.messages,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        error: { kind: 'API_ERROR', message: err instanceof Error ? err.message : String(err) },
+      };
+    }
+
+    try {
+      for await (const evt of stream as AsyncIterable<{
+        type: string;
+        delta?: { type: string; text?: string };
+        content_block?: { type: string; name?: string; input?: unknown; id?: string };
+      }>) {
+        if (
+          evt.type === 'content_block_delta' &&
+          evt.delta?.type === 'text_delta' &&
+          typeof evt.delta.text === 'string'
+        ) {
+          await params.onTextChunk!(evt.delta.text);
+        } else if (
+          evt.type === 'content_block_start' &&
+          evt.content_block?.type === 'tool_use' &&
+          params.onToolUseStart &&
+          evt.content_block.name
+        ) {
+          await params.onToolUseStart({
+            toolName: evt.content_block.name,
+            args: evt.content_block.input ?? {},
+          });
+        }
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        error: { kind: 'API_ERROR', message: err instanceof Error ? err.message : String(err) },
+      };
+    }
+
+    let response: AnthropicMessageResponse;
+    try {
+      response = await stream.finalMessage();
+    } catch (err) {
+      return {
+        ok: false,
+        error: { kind: 'API_ERROR', message: err instanceof Error ? err.message : String(err) },
+      };
+    }
+    const usage = extractUsage(MODEL_SONNET, response.usage);
+    return parseSonnetToolsResponse(response, params.tools, usage);
+  }
+
+  let response: AnthropicMessageResponse;
+  try {
+    response = await client.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: params.maxTokens ?? 2048,
+      system: buildSystem(params.systemPrompt, cacheSystem),
+      tools,
+      messages: params.messages,
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: { kind: 'API_ERROR', message: err instanceof Error ? err.message : String(err) },
+    };
+  }
+
+  const usage = extractUsage(MODEL_SONNET, response.usage);
+  return parseSonnetToolsResponse(response, params.tools, usage);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import {
   callHaiku,
@@ -386,6 +386,97 @@ describe('callSonnetTools', () => {
       messages: [{ role: 'user', content: 'x' }],
       tools: [CreateTool],
       factory: makeFactory({ throwError: new Error('boom') }),
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.error.kind).toBe('API_ERROR');
+  });
+});
+
+describe('callSonnetTools — streaming', () => {
+  it('invokes onTextChunk for each text delta and returns the assembled text', async () => {
+    const chunks: string[] = [];
+    function makeStreamFactory() {
+      return () => ({
+        messages: {
+          create: vi.fn(),
+          stream: () => ({
+            async *[Symbol.asyncIterator]() {
+              yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hel' } };
+              yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'lo!' } };
+            },
+            finalMessage: async () => ({
+              content: [{ type: 'text', text: 'Hello!' }],
+              usage: { input_tokens: 2, output_tokens: 2 },
+            }),
+          }),
+        },
+      });
+    }
+
+    const got = await callSonnetTools({
+      apiKey: 'k', systemPrompt: 'sys', messages: [{ role: 'user', content: 'hi' }],
+      tools: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      factory: makeStreamFactory() as any,
+      onTextChunk: (c) => { chunks.push(c); },
+    });
+    expect(got.ok).toBe(true);
+    if (got.ok && got.data.kind === 'text') {
+      expect(got.data.text).toBe('Hello!');
+    }
+    expect(chunks).toEqual(['Hel', 'lo!']);
+  });
+
+  it('streaming path forwards onToolUseStart when the model picks a tool', async () => {
+    const { z } = await import('zod');
+    const starts: Array<{ toolName: string; args: unknown }> = [];
+    function makeFactory() {
+      return () => ({
+        messages: {
+          create: vi.fn(),
+          stream: () => ({
+            async *[Symbol.asyncIterator]() {
+              yield { type: 'content_block_start', content_block: { type: 'tool_use', id: 'tu_5', name: 'read_portfolio', input: {} } };
+            },
+            finalMessage: async () => ({
+              content: [{ type: 'tool_use', id: 'tu_5', name: 'read_portfolio', input: {} }],
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+          }),
+        },
+      });
+    }
+
+    const got = await callSonnetTools({
+      apiKey: 'k', systemPrompt: 'sys', messages: [{ role: 'user', content: 'go' }],
+      tools: [{ name: 'read_portfolio', description: 'x', schema: z.object({}) }],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      factory: makeFactory() as any,
+      onTextChunk: () => {},
+      onToolUseStart: (info) => { starts.push(info); },
+    });
+    expect(got.ok).toBe(true);
+    if (got.ok && got.data.kind === 'tool_use') {
+      expect(got.data.toolName).toBe('read_portfolio');
+    }
+    expect(starts).toEqual([{ toolName: 'read_portfolio', args: {} }]);
+  });
+
+  it('streaming path returns API_ERROR when stream() throws', async () => {
+    function makeFactory() {
+      return () => ({
+        messages: {
+          create: vi.fn(),
+          stream: () => { throw new Error('boom'); },
+        },
+      });
+    }
+    const got = await callSonnetTools({
+      apiKey: 'k', systemPrompt: 'sys', messages: [{ role: 'user', content: 'x' }],
+      tools: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      factory: makeFactory() as any,
+      onTextChunk: () => {},
     });
     expect(got.ok).toBe(false);
     if (!got.ok) expect(got.error.kind).toBe('API_ERROR');

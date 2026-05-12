@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runToolLoop } from '@/lib/ai-pm/chat-loop';
 import type { ToolExecContext, ToolExecResult } from '@/lib/ai-pm/chat-tools';
+import type { StreamEvent } from '@/lib/ai-pm/streaming';
 
 function ctxStub(overrides: Partial<ToolExecContext> = {}): ToolExecContext {
   return {
@@ -106,5 +107,62 @@ describe('runToolLoop', () => {
     });
     expect(got.assistantText).toMatch(/AI service error/i);
     expect(got.toolCallEntries).toHaveLength(1);
+  });
+});
+
+describe('runToolLoop — onEvent', () => {
+  it('emits started, tool_start/tool_done per tool, and done at end', async () => {
+    const events: StreamEvent[] = [];
+    const llmFn = vi.fn()
+      .mockResolvedValueOnce(llmOk({ kind: 'tool_use', toolName: 'read_portfolio', toolUseId: 'tu1', args: {} }))
+      .mockResolvedValueOnce(llmOk({ kind: 'text', text: 'ok' }));
+    const executeToolFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: null, summary: 'snap', payload: {} });
+
+    await runToolLoop({
+      userMessage: 'x', history: [], ctx: ctxStub(),
+      llmFn, executeToolFn,
+      onEvent: (e) => { events.push(e); },
+    });
+
+    const types = events.map((e) => e.type);
+    expect(types[0]).toBe('started');
+    expect(types).toContain('tool_start');
+    expect(types).toContain('tool_done');
+    expect(types[types.length - 1]).toBe('done');
+  });
+
+  it('onEvent throwing does not abort the loop', async () => {
+    const llmFn = vi.fn().mockResolvedValueOnce(llmOk({ kind: 'text', text: 'fine' }));
+    const onEvent = vi.fn().mockRejectedValue(new Error('downstream dead'));
+    const got = await runToolLoop({
+      userMessage: 'x', history: [], ctx: ctxStub(),
+      llmFn, executeToolFn: vi.fn(),
+      onEvent,
+    });
+    expect(got.assistantText).toBe('fine');
+  });
+
+  it('emits an error event then done when llmFn returns API_ERROR', async () => {
+    const events: StreamEvent[] = [];
+    const llmFn = vi.fn().mockResolvedValueOnce({ ok: false as const, error: { kind: 'API_ERROR', message: 'boom' } });
+    await runToolLoop({
+      userMessage: 'x', history: [], ctx: ctxStub(),
+      llmFn, executeToolFn: vi.fn(),
+      onEvent: (e) => { events.push(e); },
+    });
+    expect(events.some((e) => e.type === 'error')).toBe(true);
+  });
+
+  it('emits done on MAX_TURNS termination', async () => {
+    const events: StreamEvent[] = [];
+    const llmFn = vi.fn().mockResolvedValue(llmOk({ kind: 'tool_use', toolName: 'read_portfolio', toolUseId: 'tu', args: {} }));
+    const executeToolFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: null, summary: 'ok', payload: {} });
+    await runToolLoop({
+      userMessage: 'x', history: [], ctx: ctxStub(),
+      llmFn, executeToolFn,
+      onEvent: (e) => { events.push(e); },
+      budgets: { maxTurns: 2 },
+    });
+    expect(events.filter((e) => e.type === 'done')).toHaveLength(1);
   });
 });

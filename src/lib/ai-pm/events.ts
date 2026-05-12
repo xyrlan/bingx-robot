@@ -56,6 +56,7 @@ export interface ChatPayload extends BaseEventPayload {
   symbol: null;
   chatMessageId: string;
   userMessage: string;
+  assistantPlaceholderId: string;
 }
 
 export type AiPmEventPayload =

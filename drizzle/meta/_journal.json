@@ -99,6 +99,13 @@
       "when": 1778589884828,
       "tag": "0013_parallel_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1778606723230,
+      "tag": "0014_thick_wolf_cub",
+      "breakpoints": true
     }
   ]
 }

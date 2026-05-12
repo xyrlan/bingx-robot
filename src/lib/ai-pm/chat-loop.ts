@@ -1,6 +1,7 @@
 import { callSonnetTools, type AnthropicChatMessage, type SonnetToolsResponse } from '@/lib/ai-pm/llm';
 import type { LlmResult, LlmUsage } from '@/lib/ai-pm/llm';
 import { ALL_TOOL_DEFINITIONS, executeTool as defaultExecuteTool, type ToolExecContext, type ToolName, type ToolStatus } from '@/lib/ai-pm/chat-tools';
+import type { StreamEvent } from '@/lib/ai-pm/streaming';
 
 export interface ToolCallEntry {
   toolName: ToolName;
@@ -19,6 +20,7 @@ export interface RunToolLoopParams {
   isKillSwitchOnFn?: (configId: string) => Promise<boolean>;
   budgets?: { maxTurns?: number; maxCostUsdPerTurn?: number };
   systemPrompt?: string;
+  onEvent?: (event: StreamEvent) => Promise<void> | void;
 }
 
 export interface RunToolLoopResult {
@@ -70,6 +72,21 @@ export async function runToolLoop(params: RunToolLoopParams): Promise<RunToolLoo
   const toolCallEntries: ToolCallEntry[] = [];
   let cumulativeUsage: LlmUsage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, costUsd: 0, model: DEFAULT_MODEL };
 
+  const emit = async (event: StreamEvent): Promise<void> => {
+    const cb = params.onEvent;
+    if (!cb) return;
+    try {
+      await cb(event);
+    } catch (err) {
+      console.warn('runToolLoop.onEvent threw', err);
+    }
+  };
+
+  const lastDecisionId = (): string | null =>
+    toolCallEntries.find((e) => e.decisionId)?.decisionId ?? null;
+
+  await emit({ type: 'started', placeholderId: params.ctx.chatMessageId ?? '' });
+
   for (let turn = 0; turn < maxTurns; turn += 1) {
     const llmRes = await llmFn({
       apiKey: params.ctx.config.anthropicApiKey,
@@ -79,6 +96,8 @@ export async function runToolLoop(params: RunToolLoopParams): Promise<RunToolLoo
     });
 
     if (!llmRes.ok) {
+      await emit({ type: 'error', kind: llmRes.error.kind, message: llmRes.error.message });
+      await emit({ type: 'done', decisionId: lastDecisionId(), usage: cumulativeUsage });
       return {
         assistantText: `AI service error: ${llmRes.error.kind}`,
         toolCallEntries,
@@ -89,10 +108,12 @@ export async function runToolLoop(params: RunToolLoopParams): Promise<RunToolLoo
     cumulativeUsage = mergeUsage(cumulativeUsage, llmRes.usage);
 
     if (llmRes.data.kind === 'text') {
+      await emit({ type: 'done', decisionId: lastDecisionId(), usage: cumulativeUsage });
       return { assistantText: llmRes.data.text, toolCallEntries, cumulativeUsage };
     }
 
     if (cumulativeUsage.costUsd > maxCost) {
+      await emit({ type: 'done', decisionId: lastDecisionId(), usage: cumulativeUsage });
       return {
         assistantText: `Budget exhausted after ${toolCallEntries.length} tool call${toolCallEntries.length === 1 ? '' : 's'}, stopping.`,
         toolCallEntries,
@@ -104,6 +125,7 @@ export async function runToolLoop(params: RunToolLoopParams): Promise<RunToolLoo
     const toolName = tu.toolName as ToolName;
 
     if (isMutating(toolName) && (await isKillSwitchOn(params.ctx.configId))) {
+      await emit({ type: 'done', decisionId: lastDecisionId(), usage: cumulativeUsage });
       return {
         assistantText: 'Kill switch flipped mid-conversation; stopped.',
         toolCallEntries,
@@ -111,17 +133,22 @@ export async function runToolLoop(params: RunToolLoopParams): Promise<RunToolLoo
       };
     }
 
+    await emit({ type: 'tool_start', toolName, args: tu.args });
+
     const exec = await executeToolFn(toolName, tu.args, params.ctx);
-    toolCallEntries.push({
+    const entry: ToolCallEntry = {
       toolName,
       args: tu.args,
       status: exec.status,
       decisionId: exec.decisionId,
       summary: exec.summary,
-    });
+    };
+    toolCallEntries.push(entry);
+    await emit({ type: 'tool_done', entry });
 
     // After executing a mutating tool, re-check the kill switch for the *next* turn.
     if (isMutating(toolName) && (await isKillSwitchOn(params.ctx.configId))) {
+      await emit({ type: 'done', decisionId: lastDecisionId(), usage: cumulativeUsage });
       return {
         assistantText: 'Kill switch flipped mid-conversation; stopped.',
         toolCallEntries,
@@ -144,6 +171,7 @@ export async function runToolLoop(params: RunToolLoopParams): Promise<RunToolLoo
     });
   }
 
+  await emit({ type: 'done', decisionId: lastDecisionId(), usage: cumulativeUsage });
   return {
     assistantText: `Hit ${maxTurns}-call limit; here is what I did.`,
     toolCallEntries,

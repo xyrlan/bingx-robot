@@ -33,6 +33,7 @@ const fillPayload: FillPayload = {
 const chatPayload: ChatPayload = {
   configId: 'cfg1', emittedAt: new Date().toISOString(),
   symbol: null, chatMessageId: 'msg-1', userMessage: 'how is BTC?',
+  assistantPlaceholderId: 'ph-1',
 };
 
 describe('handleAiPmEvent', () => {

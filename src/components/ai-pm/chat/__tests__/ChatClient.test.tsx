@@ -194,4 +194,68 @@ describe('ChatClient', () => {
       expect(screen.getByText(/No response after/i)).toBeInTheDocument();
     });
   });
+
+  it('opens EventSource after POST and assembles streamed chunks into a final bubble', async () => {
+    type EsMock = { onmessage: ((e: MessageEvent) => void) | null; onerror: (() => void) | null; close: () => void; readyState: number };
+    let esInstance: EsMock | null = null;
+    const EventSourceMock = vi.fn().mockImplementation(function () {
+      esInstance = { onmessage: null, onerror: null, close: vi.fn(), readyState: 1 };
+      return esInstance!;
+    });
+    vi.stubGlobal('EventSource', EventSourceMock);
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, chatMessageId: 'u1', placeholderId: 'ph1' }), { status: 200 }));
+
+    render(wrap(
+      <ChatClient configs={[CONFIG]} initialMessages={[]} initialOldestCursor={null} />,
+    ));
+
+    const ta = screen.getByPlaceholderText('Ask the portfolio manager...') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: 'hi' } });
+    fireEvent.keyDown(ta, { key: 'Enter', shiftKey: false });
+
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    await waitFor(() => expect(EventSourceMock).toHaveBeenCalled());
+
+    act(() => {
+      esInstance!.onmessage!(new MessageEvent('message', { data: JSON.stringify({ type: 'started', placeholderId: 'ph1' }) }));
+      esInstance!.onmessage!(new MessageEvent('message', { data: JSON.stringify({ type: 'text_chunk', seq: 1, text: 'Hel' }) }));
+      esInstance!.onmessage!(new MessageEvent('message', { data: JSON.stringify({ type: 'text_chunk', seq: 2, text: 'lo' }) }));
+      esInstance!.onmessage!(new MessageEvent('message', { data: JSON.stringify({ type: 'done', decisionId: null, usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, costUsd: 0, model: 'claude-sonnet-4-6' } }) }));
+    });
+
+    await waitFor(() => expect(screen.getByText('Hello')).toBeInTheDocument());
+  });
+
+  it('falls back to poll if EventSource errors', async () => {
+    type EsMock = { onmessage: ((e: MessageEvent) => void) | null; onerror: (() => void) | null; close: () => void; readyState: number };
+    let esInstance: EsMock | null = null;
+    const EventSourceMock = vi.fn().mockImplementation(function () {
+      esInstance = { onmessage: null, onerror: null, close: vi.fn(), readyState: 1 };
+      return esInstance!;
+    });
+    vi.stubGlobal('EventSource', EventSourceMock);
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, chatMessageId: 'u1', placeholderId: 'ph2' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ messages: [{ id: 'pl2', role: 'assistant', content: 'poll wins', decisionId: null, toolCalls: null, createdAt: new Date().toISOString() }], nextCursor: null }), { status: 200 }));
+
+    render(wrap(
+      <ChatClient configs={[CONFIG]} initialMessages={[]} initialOldestCursor={null} />,
+    ));
+
+    const ta = screen.getByPlaceholderText('Ask the portfolio manager...') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: 'x' } });
+    fireEvent.keyDown(ta, { key: 'Enter', shiftKey: false });
+
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    await waitFor(() => expect(EventSourceMock).toHaveBeenCalled());
+
+    act(() => { esInstance!.onerror!(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+
+    await waitFor(() => expect(screen.getByText('poll wins')).toBeInTheDocument());
+  });
 });
