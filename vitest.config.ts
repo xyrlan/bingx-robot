@@ -11,9 +11,7 @@ export default defineConfig({
     globals: true,
     fileParallelism: false,
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**', '**/.claude/worktrees/**'],
-    environmentMatchGlobs: [
-      ['**/*.test.tsx', 'jsdom'],
-    ],
+    environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
     env: {
       // Fallbacks used only when not already set by .env.local / .env above
