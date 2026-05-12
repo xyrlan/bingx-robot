@@ -32,6 +32,7 @@ function baseParams(overrides: Partial<RunUserTickParams> = {}): RunUserTickPara
     allowedSymbols: ['BTC-USDT'],
     maxCapitalUsdt: 1000,
     maxConcurrentBots: 5,
+    maxLeverage: 20,
     allowedStrategies: ['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER'],
     isKillSwitchActive: async () => false,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

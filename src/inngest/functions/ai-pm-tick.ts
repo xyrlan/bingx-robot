@@ -30,6 +30,7 @@ export interface RunUserTickParams {
   allowedSymbols: string[];
   maxCapitalUsdt: number;
   maxConcurrentBots: number;
+  maxLeverage: number;
   allowedStrategies: Array<'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER'>;
   reviewerThresholdPct?: number;
   isKillSwitchActive: () => Promise<boolean>;
@@ -149,6 +150,7 @@ export async function runUserTick(params: RunUserTickParams): Promise<UserTickRe
         config: {
           maxCapitalUsdt: params.maxCapitalUsdt,
           maxConcurrentBots: params.maxConcurrentBots,
+          maxLeverage: params.maxLeverage,
           allowedStrategies: params.allowedStrategies,
           killSwitch: false,
           reviewerThresholdPct: params.reviewerThresholdPct ?? DEFAULT_REVIEWER_THRESHOLD_PCT,
@@ -230,6 +232,7 @@ export const aiPmTick = inngest.createFunction(
           allowedSymbols: cfg.allowedSymbols ?? [],
           maxCapitalUsdt: Number(cfg.maxCapitalUsdt ?? DEFAULT_MAX_CAPITAL),
           maxConcurrentBots: cfg.maxConcurrentBots ?? DEFAULT_MAX_CONCURRENT,
+          maxLeverage: cfg.maxLeverage ?? 20,
           allowedStrategies: (cfg.allowedStrategies ?? DEFAULT_STRATEGIES) as Array<'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER'>,
           reviewerThresholdPct: DEFAULT_REVIEWER_THRESHOLD_PCT,
           isKillSwitchActive: async () => {

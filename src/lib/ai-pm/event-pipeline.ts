@@ -144,6 +144,7 @@ export async function runScopedPipeline(params: RunScopedPipelineParams): Promis
         config: {
           maxCapitalUsdt: Number(params.config.maxCapitalUsdt ?? 1000),
           maxConcurrentBots: params.config.maxConcurrentBots ?? 5,
+          maxLeverage: params.config.maxLeverage ?? 20,
           allowedStrategies: (params.config.allowedStrategies ?? ['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER']) as Array<'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER'>,
           killSwitch: false,
           reviewerThresholdPct: DEFAULT_REVIEWER_THRESHOLD_PCT,

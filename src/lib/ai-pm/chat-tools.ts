@@ -168,6 +168,7 @@ function guardrailConfig(cfg: ToolExecContext['config']) {
   return {
     maxCapitalUsdt: Number(cfg.maxCapitalUsdt ?? 0),
     maxConcurrentBots: cfg.maxConcurrentBots ?? 5,
+    maxLeverage: cfg.maxLeverage ?? 20,
     allowedStrategies: allowed,
     killSwitch: cfg.killSwitch,
     reviewerThresholdPct: 50,
