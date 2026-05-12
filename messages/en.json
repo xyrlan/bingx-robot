@@ -215,7 +215,14 @@
       "typing": "Thinking...",
       "viewDecision": "View decision",
       "you": "You",
-      "assistant": "AI"
+      "assistant": "AI",
+      "toolCallsHeader": "Actions",
+      "toolStatus.executed": "executed",
+      "toolStatus.rejected": "rejected",
+      "toolStatus.failed": "failed",
+      "budgetExhausted": "AI hit the per-turn budget; stopping.",
+      "maxTurnsHit": "AI hit the call limit.",
+      "killSwitchMidLoop": "Kill switch flipped mid-conversation; stopped."
     }
   },
   "Dashboard": {

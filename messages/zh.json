@@ -214,7 +214,14 @@
       "typing": "思考中...",
       "viewDecision": "查看决策",
       "you": "你",
-      "assistant": "AI"
+      "assistant": "AI",
+      "toolCallsHeader": "操作",
+      "toolStatus.executed": "已执行",
+      "toolStatus.rejected": "已拒绝",
+      "toolStatus.failed": "失败",
+      "budgetExhausted": "AI 达到本轮预算上限；停止。",
+      "maxTurnsHit": "AI 达到调用次数上限。",
+      "killSwitchMidLoop": "对话中 Kill switch 被触发；停止。"
     }
   },
   "Dashboard": {

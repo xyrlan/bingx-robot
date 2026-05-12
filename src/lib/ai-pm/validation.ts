@@ -37,6 +37,7 @@ export interface ValidateParams {
   reviewerFn?: typeof reviewWithOpus;
   factory?: AnthropicFactory;
   triggeredBy?: 'CRON_TICK' | 'EVENT_DRAWDOWN' | 'EVENT_FUNDING_FLIP' | 'EVENT_FILL' | 'EVENT_ERROR' | 'CHAT';
+  chatMessageId?: string | null;
 }
 
 const ACTION_TYPE_MAP: Record<ProposedAction['type'], 'CREATE_BOT' | 'STOP_BOT' | 'ADJUST_PARAMS' | 'REALLOCATE_CAPITAL' | 'NO_ACTION'> = {
@@ -75,6 +76,7 @@ async function persistDecision(
     .values([{
       userId: params.userId,
       triggeredBy: params.triggeredBy ?? 'CRON_TICK',
+      chatMessageId: params.chatMessageId ?? null,
       actionType: ACTION_TYPE_MAP[action.type],
       status,
       symbol: actionSymbol(action),

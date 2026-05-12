@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   callHaiku,
   callSonnet,
+  callSonnetTools,
   callOpus,
   callSonnetText,
   type AnthropicFactory,
@@ -279,5 +280,114 @@ describe('callOpus', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok');
     expect(result.data.verdict).toBe('approve');
+  });
+});
+
+const PortfolioTool = {
+  name: 'read_portfolio',
+  description: 'Returns portfolio',
+  schema: z.object({}),
+} as const;
+
+const CreateTool = {
+  name: 'create_bot',
+  description: 'Creates a bot',
+  schema: z.object({ symbol: z.string(), capitalUsdt: z.number() }),
+} as const;
+
+function makeFactory(opts: {
+  contentBlocks?: Array<{ type: string; text?: string; name?: string; input?: unknown; id?: string }>;
+  usage?: { input_tokens: number; output_tokens: number };
+  throwError?: Error;
+}) {
+  return () => ({
+    messages: {
+      create: async () => {
+        if (opts.throwError) throw opts.throwError;
+        return {
+          content: opts.contentBlocks ?? [],
+          usage: opts.usage ?? { input_tokens: 5, output_tokens: 7 },
+        };
+      },
+    },
+  });
+}
+
+describe('callSonnetTools', () => {
+  it('returns text when no tool_use block present', async () => {
+    const got = await callSonnetTools({
+      apiKey: 'k',
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [PortfolioTool, CreateTool],
+      factory: makeFactory({ contentBlocks: [{ type: 'text', text: 'all good' }] }),
+    });
+    expect(got.ok).toBe(true);
+    if (got.ok) {
+      expect(got.data.kind).toBe('text');
+      if (got.data.kind === 'text') expect(got.data.text).toBe('all good');
+    }
+  });
+
+  it('returns first tool_use block with validated args', async () => {
+    const got = await callSonnetTools({
+      apiKey: 'k',
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'help' }],
+      tools: [CreateTool],
+      factory: makeFactory({
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_42', name: 'create_bot', input: { symbol: 'BTC-USDT', capitalUsdt: 100 } },
+        ],
+      }),
+    });
+    expect(got.ok).toBe(true);
+    if (got.ok && got.data.kind === 'tool_use') {
+      expect(got.data.toolName).toBe('create_bot');
+      expect(got.data.toolUseId).toBe('tu_42');
+      expect(got.data.args).toEqual({ symbol: 'BTC-USDT', capitalUsdt: 100 });
+    }
+  });
+
+  it('SCHEMA_REJECTED on bad args', async () => {
+    const got = await callSonnetTools({
+      apiKey: 'k',
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'help' }],
+      tools: [CreateTool],
+      factory: makeFactory({
+        contentBlocks: [
+          { type: 'tool_use', id: 'tu_1', name: 'create_bot', input: { symbol: 'X' } },
+        ],
+      }),
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.error.kind).toBe('SCHEMA_REJECTED');
+  });
+
+  it('SCHEMA_REJECTED when tool name unknown', async () => {
+    const got = await callSonnetTools({
+      apiKey: 'k',
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'help' }],
+      tools: [CreateTool],
+      factory: makeFactory({
+        contentBlocks: [{ type: 'tool_use', id: 'tu_1', name: 'unknown_tool', input: {} }],
+      }),
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.error.kind).toBe('SCHEMA_REJECTED');
+  });
+
+  it('API_ERROR when factory throws', async () => {
+    const got = await callSonnetTools({
+      apiKey: 'k',
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [CreateTool],
+      factory: makeFactory({ throwError: new Error('boom') }),
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.error.kind).toBe('API_ERROR');
   });
 });
