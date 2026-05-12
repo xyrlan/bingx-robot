@@ -65,9 +65,9 @@ describe('chat-tools', () => {
   beforeAll(async () => { await ensureUser(); await cleanup(); });
   afterEach(async () => { await cleanup(); });
 
-  it('exports ALL_TOOL_DEFINITIONS with 6 tools', () => {
+  it('exports ALL_TOOL_DEFINITIONS with 8 tools', () => {
     expect(ALL_TOOL_DEFINITIONS.map(t => t.name).sort()).toEqual(
-      ['create_bot', 'pause_kill_switch', 'read_decisions', 'read_portfolio', 'read_signals', 'stop_bot'].sort(),
+      ['adjust_params', 'create_bot', 'pause_kill_switch', 'read_decisions', 'read_portfolio', 'read_signals', 'reallocate_capital', 'stop_bot'].sort(),
     );
   });
 
@@ -169,6 +169,52 @@ describe('chat-tools', () => {
     });
     const got = await executeTool('create_bot', {
       symbol: 'BTC-USDT', strategy: 'DCA', capitalUsdt: 100, leverage: 2, reasoning: 'r',
+    }, ctx);
+    expect(validateFn).not.toHaveBeenCalled();
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.summary).toMatch(/kill switch/i);
+  });
+
+  it('adjust_params dispatches through validate+execute', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'dec-adj' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'dec-adj', realBotId: 'bot-1' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('adjust_params', {
+      botId: '11111111-2222-4333-8444-555555555555',
+      params: { capitalUsdt: 200, leverage: 3 },
+      reasoning: 'tighten',
+    }, ctx);
+    expect(validateFn).toHaveBeenCalledOnce();
+    expect(executeFn).toHaveBeenCalledOnce();
+    expect(got.status).toBe('EXECUTED');
+    expect(got.decisionId).toBe('dec-adj');
+  });
+
+  it('reallocate_capital dispatches through validate+execute', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'dec-re' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'dec-re' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('reallocate_capital', {
+      fromBotId: '11111111-2222-4333-8444-555555555555',
+      toBotId: '22222222-2222-4333-8444-555555555555',
+      amountUsdt: 50,
+      reasoning: 'move',
+    }, ctx);
+    expect(validateFn).toHaveBeenCalledOnce();
+    expect(executeFn).toHaveBeenCalledOnce();
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('mutating adjust/reallocate also refuse on kill switch', async () => {
+    const validateFn = vi.fn();
+    const ctx = makeCtx({
+      validateFn,
+      config: { ...makeCtx().config, killSwitch: true },
+    });
+    const got = await executeTool('adjust_params', {
+      botId: '11111111-2222-4333-8444-555555555555',
+      params: { capitalUsdt: 200 },
+      reasoning: 'r',
     }, ctx);
     expect(validateFn).not.toHaveBeenCalled();
     expect(got.status).toBe('EXECUTION_FAILED');

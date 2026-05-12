@@ -17,6 +17,8 @@ export type ToolName =
   | 'read_decisions'
   | 'create_bot'
   | 'stop_bot'
+  | 'adjust_params'
+  | 'reallocate_capital'
   | 'pause_kill_switch';
 
 const DECISION_STATUSES = [
@@ -49,12 +51,35 @@ export const PauseKillSwitchArgs = z.object({
   reason: z.string().min(1).max(500),
 });
 
+export const AdjustParamsArgs = z.object({
+  botId: z.string().uuid(),
+  params: z.object({
+    capitalUsdt: z.number().positive().optional(),
+    leverage: z.number().int().min(1).max(20).optional(),
+    strategy: z.enum(['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER']).optional(),
+    config: z.record(z.string(), z.unknown()).optional(),
+  }).refine(
+    (p) => p.capitalUsdt !== undefined || p.leverage !== undefined || p.strategy !== undefined || p.config !== undefined,
+    { message: 'At least one of capitalUsdt / leverage / strategy / config must be set' },
+  ),
+  reasoning: z.string().min(1).max(500),
+});
+
+export const ReallocateCapitalArgs = z.object({
+  fromBotId: z.string().uuid(),
+  toBotId: z.string().uuid(),
+  amountUsdt: z.number().positive(),
+  reasoning: z.string().min(1).max(500),
+}).refine((v) => v.fromBotId !== v.toBotId, { message: 'fromBotId and toBotId must differ' });
+
 export const ALL_TOOL_DEFINITIONS: ToolDefinition<unknown>[] = [
   { name: 'read_portfolio', description: 'Returns the current portfolio snapshot.', schema: ReadPortfolioArgs },
   { name: 'read_signals', description: 'Returns the most recent AI signals.', schema: ReadSignalsArgs },
   { name: 'read_decisions', description: 'Returns recent AI decisions, optionally filtered by status.', schema: ReadDecisionsArgs },
   { name: 'create_bot', description: 'Creates a new trading bot via validate+execute.', schema: CreateBotArgs },
   { name: 'stop_bot', description: 'Stops a running trading bot via validate+execute.', schema: StopBotArgs },
+  { name: 'adjust_params', description: 'Adjusts a running bot config (capital, leverage, strategy, or strategy-specific config). Mutating; routes through validate+execute.', schema: AdjustParamsArgs },
+  { name: 'reallocate_capital', description: 'Moves capital between two running bots in the same subaccount.', schema: ReallocateCapitalArgs },
   { name: 'pause_kill_switch', description: 'Activates the kill switch immediately.', schema: PauseKillSwitchArgs },
 ];
 
@@ -96,6 +121,8 @@ export async function executeTool(
     case 'read_decisions': return readDecisions(ReadDecisionsArgs.parse(args), ctx);
     case 'create_bot': return createBotTool(CreateBotArgs.parse(args), ctx);
     case 'stop_bot': return stopBotTool(StopBotArgs.parse(args), ctx);
+    case 'adjust_params': return adjustParamsTool(AdjustParamsArgs.parse(args), ctx);
+    case 'reallocate_capital': return reallocateCapitalTool(ReallocateCapitalArgs.parse(args), ctx);
     case 'pause_kill_switch': return pauseKillSwitchTool(PauseKillSwitchArgs.parse(args), ctx);
   }
 }
@@ -274,6 +301,115 @@ async function stopBotTool(args: z.infer<typeof StopBotArgs>, ctx: ToolExecConte
       status: 'EXECUTION_FAILED',
       decisionId: validation.decisionId,
       summary: `stop_bot threw: ${err instanceof Error ? err.message : String(err)}`,
+      payload: null,
+    };
+  }
+}
+
+async function adjustParamsTool(args: z.infer<typeof AdjustParamsArgs>, ctx: ToolExecContext): Promise<ToolExecResult> {
+  if (ctx.config.killSwitch) return killSwitchRefusal(ctx);
+  const action: ProposedAction = { type: 'adjust_params', botId: args.botId, params: args.params as Record<string, unknown>, reasoning: args.reasoning };
+  const validateFn = ctx.validateFn ?? defaultValidate;
+  const executeFn = ctx.executeFn ?? defaultExecute;
+
+  const validation = await validateFn({
+    userId: ctx.userId,
+    action,
+    config: guardrailConfig(ctx.config),
+    portfolioState: ctx.portfolioState,
+    anthropicApiKey: ctx.config.anthropicApiKey,
+    bingxClient: ctx.bingxClient,
+    db: ctx.db,
+    triggeredBy: 'CHAT',
+    chatMessageId: ctx.chatMessageId,
+  });
+
+  if (validation.status !== 'PROPOSED') {
+    return {
+      status: validation.status,
+      decisionId: validation.decisionId,
+      summary: `adjust_params rejected: ${validation.reason ?? validation.status}`,
+      payload: { decisionId: validation.decisionId, reason: validation.reason },
+    };
+  }
+
+  try {
+    const exec = await executeFn({
+      userId: ctx.userId,
+      decisionId: validation.decisionId,
+      action,
+      config: { bingxApiKeyId: ctx.config.bingxApiKeyId, paperMode: ctx.config.paperMode },
+      db: ctx.db,
+      bingxClient: ctx.bingxClient,
+    });
+    return {
+      status: exec.status,
+      decisionId: exec.decisionId,
+      summary: exec.status === 'EXECUTED'
+        ? exec.newBotId
+          ? `adjust_params ${args.botId.slice(0, 8)} strategy change → new bot ${exec.newBotId.slice(0, 8)}`
+          : `adjust_params ${args.botId.slice(0, 8)} executed`
+        : `adjust_params failed: ${exec.reason ?? 'unknown'}`,
+      payload: exec,
+    };
+  } catch (err) {
+    return {
+      status: 'EXECUTION_FAILED',
+      decisionId: validation.decisionId,
+      summary: `adjust_params threw: ${err instanceof Error ? err.message : String(err)}`,
+      payload: null,
+    };
+  }
+}
+
+async function reallocateCapitalTool(args: z.infer<typeof ReallocateCapitalArgs>, ctx: ToolExecContext): Promise<ToolExecResult> {
+  if (ctx.config.killSwitch) return killSwitchRefusal(ctx);
+  const action: ProposedAction = { type: 'reallocate_capital', fromBotId: args.fromBotId, toBotId: args.toBotId, amountUsdt: args.amountUsdt, reasoning: args.reasoning };
+  const validateFn = ctx.validateFn ?? defaultValidate;
+  const executeFn = ctx.executeFn ?? defaultExecute;
+
+  const validation = await validateFn({
+    userId: ctx.userId,
+    action,
+    config: guardrailConfig(ctx.config),
+    portfolioState: ctx.portfolioState,
+    anthropicApiKey: ctx.config.anthropicApiKey,
+    bingxClient: ctx.bingxClient,
+    db: ctx.db,
+    triggeredBy: 'CHAT',
+    chatMessageId: ctx.chatMessageId,
+  });
+
+  if (validation.status !== 'PROPOSED') {
+    return {
+      status: validation.status,
+      decisionId: validation.decisionId,
+      summary: `reallocate_capital rejected: ${validation.reason ?? validation.status}`,
+      payload: { decisionId: validation.decisionId, reason: validation.reason },
+    };
+  }
+
+  try {
+    const exec = await executeFn({
+      userId: ctx.userId,
+      decisionId: validation.decisionId,
+      action,
+      config: { bingxApiKeyId: ctx.config.bingxApiKeyId, paperMode: ctx.config.paperMode },
+      db: ctx.db,
+    });
+    return {
+      status: exec.status,
+      decisionId: exec.decisionId,
+      summary: exec.status === 'EXECUTED'
+        ? `reallocate_capital $${args.amountUsdt} ${args.fromBotId.slice(0, 8)} → ${args.toBotId.slice(0, 8)}`
+        : `reallocate_capital failed: ${exec.reason ?? 'unknown'}`,
+      payload: exec,
+    };
+  } catch (err) {
+    return {
+      status: 'EXECUTION_FAILED',
+      decisionId: validation.decisionId,
+      summary: `reallocate_capital threw: ${err instanceof Error ? err.message : String(err)}`,
       payload: null,
     };
   }
