@@ -47,6 +47,26 @@ describe('runChatPipeline', () => {
     await cleanup();
   });
 
+  it('writes canned message and skips loop when config.enabled is false', async () => {
+    const runToolLoopFn = vi.fn();
+    const got = await runChatPipeline({
+      payload: { configId: CONFIG_ID, userMessage: 'hi', symbol: null, chatMessageId: 'src-dis', emittedAt: new Date().toISOString() },
+      aiEventId: 'evt',
+      config: { ...baseConfig, enabled: false },
+      portfolioState: { runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: API_KEY_ID },
+      db,
+      loadChatHistoryFn: async () => [],
+      isKillSwitchActive: async () => false,
+      runToolLoopFn,
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+    expect(runToolLoopFn).not.toHaveBeenCalled();
+    expect(got.assistantText).toMatch(/not enabled/i);
+    const rows = await db.select().from(aiChatMessages).where(eq(aiChatMessages.userId, TEST_USER_ID));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].content).toMatch(/not enabled/i);
+  });
+
   it('writes canned message and skips loop when kill switch is active', async () => {
     const runToolLoopFn = vi.fn();
     const got = await runChatPipeline({

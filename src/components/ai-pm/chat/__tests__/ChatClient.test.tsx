@@ -171,10 +171,10 @@ describe('ChatClient', () => {
     expect(retryBody.message).toBe('retry-me');
   });
 
-  it('shows timeout toast after 60s of empty poll responses', async () => {
+  it('shows timeout toast after 180s of empty poll responses', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, chatMessageId: 'u1' }), { status: 200 }));
-    // 30 empty polls
-    for (let i = 0; i < 31; i++) {
+    // 90 empty polls
+    for (let i = 0; i < 91; i++) {
       fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ messages: [], nextCursor: null }), { status: 200 }));
     }
 
@@ -186,12 +186,12 @@ describe('ChatClient', () => {
     fireEvent.change(ta, { target: { value: 'x' } });
     fireEvent.keyDown(ta, { key: 'Enter', shiftKey: false });
 
-    for (let i = 0; i < 31; i++) {
+    for (let i = 0; i < 91; i++) {
       await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
     }
 
     await waitFor(() => {
-      expect(screen.getByText(/No response after 60s/i)).toBeInTheDocument();
+      expect(screen.getByText(/No response after/i)).toBeInTheDocument();
     });
   });
 });

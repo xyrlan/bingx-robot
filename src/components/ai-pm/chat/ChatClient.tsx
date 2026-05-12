@@ -20,7 +20,9 @@ export interface ChatClientProps {
 type Msg = ChatMessagePublic & { failed?: boolean; tempId?: string };
 
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 30;
+// 90 polls × 2s = 180s. Real-mode tool loops (backtest + Opus reviewer for
+// create_bot, plus multi-turn) can legitimately exceed 60s; 180s covers ~p99.
+const POLL_MAX_ATTEMPTS = 90;
 
 export function ChatClient({ configs, initialMessages, initialOldestCursor }: ChatClientProps) {
   const t = useTranslations('AiPm.Chat');

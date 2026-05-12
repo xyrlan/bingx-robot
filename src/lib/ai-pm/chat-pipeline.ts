@@ -42,6 +42,14 @@ function zeroUsage(): LlmUsage {
 export async function runChatPipeline(params: RunChatPipelineParams): Promise<ChatPipelineResult> {
   const loop = params.runToolLoopFn ?? runToolLoop;
 
+  if (!params.config.enabled) {
+    const text = 'AI is not enabled for this subaccount. Enable it from the AI PM settings page.';
+    await params.db
+      .insert(aiChatMessages)
+      .values({ userId: params.config.userId, role: 'assistant', content: text, toolCalls: [], decisionId: null });
+    return { decisionId: null, assistantText: text, toolCallEntries: [], usage: zeroUsage() };
+  }
+
   if (await params.isKillSwitchActive()) {
     const text = 'AI is currently disabled (kill switch active).';
     await params.db

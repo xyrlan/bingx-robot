@@ -15,12 +15,17 @@ export default async function ChatPage() {
     listAiPmConfigsForUser(user.id),
   ]);
 
-  const configOptions = configs.map((c) => ({
-    id: c.id,
-    label: c.bingxApiKeyId.slice(0, 8),
-    enabled: c.enabled,
-    killSwitch: c.killSwitch,
-  }));
+  // Only show subaccounts where AI is enabled. Disabled ones can't chat
+  // (chat-pipeline rejects with a canned reply); hiding them from the picker
+  // avoids the user wondering why their messages get "AI is not enabled" replies.
+  const configOptions = configs
+    .filter((c) => c.enabled)
+    .map((c) => ({
+      id: c.id,
+      label: c.bingxApiKeyId.slice(0, 8),
+      enabled: c.enabled,
+      killSwitch: c.killSwitch,
+    }));
 
   // Service returns DESC (newest first); ChatClient expects ASC for display.
   const initialMessagesAsc = history.messages.slice().reverse();
