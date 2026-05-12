@@ -14,6 +14,8 @@ export interface MessageListProps {
   onLoadOlder: () => void;
   loadingOlder: boolean;
   onRetry?: (msg: ChatMessagePublic & { failed?: boolean }) => void;
+  streamingText?: string;
+  streamingToolCalls?: ToolCallEntry[];
 }
 
 const NEAR_BOTTOM_PX = 100;
@@ -25,6 +27,8 @@ export function MessageList({
   onLoadOlder,
   loadingOlder,
   onRetry,
+  streamingText,
+  streamingToolCalls,
 }: MessageListProps) {
   const t = useTranslations('AiPm.Chat');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,11 +95,11 @@ export function MessageList({
       {pending && (
         <MessageBubble
           role="assistant"
-          content=""
+          content={streamingText ?? ''}
           decisionId={null}
-          toolCalls={null}
+          toolCalls={streamingToolCalls && streamingToolCalls.length > 0 ? streamingToolCalls : null}
           createdAt={new Date().toISOString()}
-          pending
+          pending={!streamingText}
         />
       )}
     </div>

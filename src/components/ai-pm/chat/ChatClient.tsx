@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ChatMessagePublic } from '@/services/ai-pm-chat-history.service';
+import type { StreamEvent } from '@/lib/ai-pm/streaming';
 import { ChatHeader, type ChatHeaderConfigOption } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { ComposeBar } from './ComposeBar';
+import type { ToolCallEntry } from './MessageBubble';
 
 export interface ChatClientProps {
   configs: ChatHeaderConfigOption[];
@@ -38,11 +40,14 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pending, setPending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [streamingText, setStreamingText] = useState<string>('');
+  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCallEntry[]>([]);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttemptsRef = useRef(0);
   const pollSinceRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -57,6 +62,8 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
     return () => {
       mountedRef.current = false;
       stopPolling();
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
     };
   }, [stopPolling]);
 
@@ -97,6 +104,88 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
     }, POLL_INTERVAL_MS);
   }, [stopPolling, t]);
 
+  const finalizePending = useCallback((text: string, calls: ToolCallEntry[], decisionId: string | null) => {
+    if (!mountedRef.current) return;
+    const realId = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setMessages((prev) => [...prev, {
+      id: realId,
+      role: 'assistant',
+      content: text,
+      decisionId,
+      toolCalls: calls,
+      createdAt: new Date().toISOString(),
+    }]);
+    setStreamingText('');
+    setStreamingToolCalls([]);
+    setPending(false);
+  }, []);
+
+  const openStream = useCallback((placeholderId: string) => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      startPolling();
+      return;
+    }
+    let buffer = '';
+    const toolCalls: ToolCallEntry[] = [];
+    let es: EventSource;
+    try {
+      es = new EventSource(`/api/ai-pm/chat/stream/${placeholderId}`);
+    } catch {
+      startPolling();
+      return;
+    }
+    eventSourceRef.current = es;
+
+    es.onmessage = (e: MessageEvent) => {
+      if (!mountedRef.current) return;
+      let evt: StreamEvent;
+      try {
+        evt = JSON.parse(e.data) as StreamEvent;
+      } catch {
+        return;
+      }
+      switch (evt.type) {
+        case 'text_chunk':
+          buffer += evt.text;
+          setStreamingText(buffer);
+          break;
+        case 'tool_start':
+          toolCalls.push({
+            toolName: evt.toolName,
+            args: evt.args,
+            status: 'EXECUTED',
+            decisionId: null,
+            summary: '…',
+          });
+          setStreamingToolCalls([...toolCalls]);
+          break;
+        case 'tool_done': {
+          const idx = toolCalls.findIndex((t) => t.toolName === evt.entry.toolName && t.summary === '…');
+          if (idx >= 0) toolCalls[idx] = evt.entry;
+          else toolCalls.push(evt.entry);
+          setStreamingToolCalls([...toolCalls]);
+          break;
+        }
+        case 'done':
+          finalizePending(buffer, toolCalls, evt.decisionId);
+          es.close();
+          eventSourceRef.current = null;
+          break;
+        case 'error':
+          es.close();
+          eventSourceRef.current = null;
+          startPolling();
+          break;
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      eventSourceRef.current = null;
+      if (!mountedRef.current) return;
+      startPolling();
+    };
+  }, [startPolling, finalizePending]);
+
   const send = useCallback(async (text: string) => {
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimistic: Msg = {
@@ -111,6 +200,8 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
     setMessages((prev) => [...prev, optimistic]);
     setPending(true);
     setToast(null);
+    setStreamingText('');
+    setStreamingToolCalls([]);
     pollSinceRef.current = new Date().toISOString();
 
     try {
@@ -126,7 +217,13 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
         setPending(false);
         return;
       }
-      startPolling();
+      const body = (await res.json()) as { placeholderId?: string };
+      if (body.placeholderId) {
+        openStream(body.placeholderId);
+      } else {
+        // Older server build — fall back to poll
+        startPolling();
+      }
     } catch {
       if (!mountedRef.current) return;
       setMessages((prev) =>
@@ -134,7 +231,7 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
       );
       setPending(false);
     }
-  }, [selectedConfigId, startPolling]);
+  }, [selectedConfigId, openStream, startPolling]);
 
   const retryFailed = useCallback((msg: Msg) => {
     if (!msg.failed || !msg.content) return;
@@ -193,6 +290,8 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
         onLoadOlder={loadOlder}
         loadingOlder={loadingOlder}
         onRetry={retryFailed}
+        streamingText={streamingText}
+        streamingToolCalls={streamingToolCalls}
       />
 
       <ComposeBar onSend={send} disabled={pending} />
