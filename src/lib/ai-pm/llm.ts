@@ -280,6 +280,93 @@ export async function callSonnetText(
   return { ok: true, data: { text }, usage };
 }
 
+export type AnthropicChatMessage = { role: 'user' | 'assistant'; content: unknown };
+
+export type SonnetToolsResponse =
+  | { kind: 'tool_use'; toolName: string; toolUseId: string; args: unknown }
+  | { kind: 'text'; text: string };
+
+export async function callSonnetTools(params: {
+  apiKey: string;
+  systemPrompt: string;
+  messages: AnthropicChatMessage[];
+  tools: ToolDefinition<unknown>[];
+  factory?: AnthropicFactory;
+  maxTokens?: number;
+  cacheSystem?: boolean;
+}): Promise<LlmResult<SonnetToolsResponse>> {
+  const factory = params.factory ?? defaultFactory;
+  const cacheSystem = params.cacheSystem ?? true;
+  const client = factory(params.apiKey);
+
+  const tools = params.tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: zodToJsonSchema(t.schema),
+  }));
+
+  let response: AnthropicMessageResponse;
+  try {
+    response = await client.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: params.maxTokens ?? 2048,
+      system: buildSystem(params.systemPrompt, cacheSystem),
+      tools,
+      messages: params.messages,
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: { kind: 'API_ERROR', message: err instanceof Error ? err.message : String(err) },
+    };
+  }
+
+  const usage = extractUsage(MODEL_SONNET, response.usage);
+
+  const toolBlock = response.content.find((c) => c.type === 'tool_use');
+  if (toolBlock && toolBlock.name) {
+    const matched = params.tools.find((t) => t.name === toolBlock.name);
+    if (!matched) {
+      return {
+        ok: false,
+        error: { kind: 'SCHEMA_REJECTED', message: `Unknown tool name: ${toolBlock.name}`, issues: [] },
+        usage,
+      };
+    }
+    const validation = matched.schema.safeParse(toolBlock.input);
+    if (!validation.success) {
+      return {
+        ok: false,
+        error: {
+          kind: 'SCHEMA_REJECTED',
+          message: `Tool args failed validation for ${toolBlock.name}`,
+          issues: validation.error.issues,
+        },
+        usage,
+      };
+    }
+    return {
+      ok: true,
+      data: {
+        kind: 'tool_use',
+        toolName: toolBlock.name,
+        toolUseId: (toolBlock as { id?: string }).id ?? '',
+        args: validation.data,
+      },
+      usage,
+    };
+  }
+
+  const textParts = response.content
+    .filter((c) => c.type === 'text' && typeof c.text === 'string')
+    .map((c) => c.text as string);
+  const text = textParts.join('\n').trim();
+  if (!text) {
+    return { ok: false, error: { kind: 'EMPTY_RESPONSE', message: 'Sonnet returned no tool_use or text' }, usage };
+  }
+  return { ok: true, data: { kind: 'text', text }, usage };
+}
+
 /**
  * Minimal Zod-to-JSON-Schema converter for Anthropic tool input schemas.
  * Only supports the subset of Zod we use: z.object, z.string, z.number,
