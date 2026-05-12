@@ -50,7 +50,7 @@ describe('runChatPipeline', () => {
   it('writes canned message and skips loop when config.enabled is false', async () => {
     const runToolLoopFn = vi.fn();
     const got = await runChatPipeline({
-      payload: { configId: CONFIG_ID, userMessage: 'hi', symbol: null, chatMessageId: 'src-dis', emittedAt: new Date().toISOString() },
+      payload: { configId: CONFIG_ID, userMessage: 'hi', symbol: null, chatMessageId: 'src-dis', emittedAt: new Date().toISOString(), assistantPlaceholderId: 'ph-dis' },
       aiEventId: 'evt',
       config: { ...baseConfig, enabled: false },
       portfolioState: { runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: API_KEY_ID },
@@ -70,7 +70,7 @@ describe('runChatPipeline', () => {
   it('writes canned message and skips loop when kill switch is active', async () => {
     const runToolLoopFn = vi.fn();
     const got = await runChatPipeline({
-      payload: { configId: CONFIG_ID, userMessage: 'hi', symbol: null, chatMessageId: 'src1', emittedAt: new Date().toISOString() },
+      payload: { configId: CONFIG_ID, userMessage: 'hi', symbol: null, chatMessageId: 'src1', emittedAt: new Date().toISOString(), assistantPlaceholderId: 'ph1' },
       aiEventId: 'evt',
       config: baseConfig,
       portfolioState: { runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: API_KEY_ID },
@@ -114,7 +114,7 @@ describe('runChatPipeline', () => {
     });
 
     const got = await runChatPipeline({
-      payload: { configId: CONFIG_ID, userMessage: 'do it', symbol: null, chatMessageId: 'src2', emittedAt: new Date().toISOString() },
+      payload: { configId: CONFIG_ID, userMessage: 'do it', symbol: null, chatMessageId: 'src2', emittedAt: new Date().toISOString(), assistantPlaceholderId: 'ph2' },
       aiEventId: 'evt',
       config: baseConfig,
       portfolioState: { runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: API_KEY_ID },
@@ -141,7 +141,7 @@ describe('runChatPipeline', () => {
   it('survives loop throwing — placeholder row updated with error text', async () => {
     const runToolLoopFn = vi.fn().mockRejectedValue(new Error('boom'));
     const got = await runChatPipeline({
-      payload: { configId: CONFIG_ID, userMessage: 'x', symbol: null, chatMessageId: 'src3', emittedAt: new Date().toISOString() },
+      payload: { configId: CONFIG_ID, userMessage: 'x', symbol: null, chatMessageId: 'src3', emittedAt: new Date().toISOString(), assistantPlaceholderId: 'ph3' },
       aiEventId: 'evt',
       config: baseConfig,
       portfolioState: { runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: API_KEY_ID },
@@ -169,7 +169,7 @@ describe('runChatPipeline', () => {
     });
 
     await runChatPipeline({
-      payload: { configId: CONFIG_ID, userMessage: 'x', symbol: null, chatMessageId: 'src-bx', emittedAt: new Date().toISOString() },
+      payload: { configId: CONFIG_ID, userMessage: 'x', symbol: null, chatMessageId: 'src-bx', emittedAt: new Date().toISOString(), assistantPlaceholderId: 'ph-bx' },
       aiEventId: 'evt',
       config: baseConfig,
       portfolioState: { runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: API_KEY_ID },

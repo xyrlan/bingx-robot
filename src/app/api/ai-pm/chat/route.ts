@@ -38,6 +38,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     .values({ userId: user.id, role: 'user', content: truncated })
     .returning();
 
+  const [assistantPlaceholder] = await db
+    .insert(aiChatMessages)
+    .values({ userId: user.id, role: 'assistant', content: '', toolCalls: [], decisionId: null })
+    .returning();
+
   await inngest.send({
     name: 'ai-pm/event.chat',
     data: {
@@ -46,8 +51,9 @@ export async function POST(req: Request): Promise<NextResponse> {
       symbol: null,
       chatMessageId: row.id,
       userMessage: truncated,
+      assistantPlaceholderId: assistantPlaceholder.id,
     },
   });
 
-  return NextResponse.json({ ok: true, chatMessageId: row.id });
+  return NextResponse.json({ ok: true, chatMessageId: row.id, placeholderId: assistantPlaceholder.id });
 }
