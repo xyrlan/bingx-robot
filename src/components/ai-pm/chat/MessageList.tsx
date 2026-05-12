@@ -13,6 +13,7 @@ export interface MessageListProps {
   oldestCursor: string | null;
   onLoadOlder: () => void;
   loadingOlder: boolean;
+  onRetry?: (msg: ChatMessagePublic & { failed?: boolean }) => void;
 }
 
 const NEAR_BOTTOM_PX = 100;
@@ -23,6 +24,7 @@ export function MessageList({
   oldestCursor,
   onLoadOlder,
   loadingOlder,
+  onRetry,
 }: MessageListProps) {
   const t = useTranslations('AiPm.Chat');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,6 +85,7 @@ export function MessageList({
           toolCalls={Array.isArray(m.toolCalls) ? (m.toolCalls as ToolCallEntry[]) : null}
           createdAt={m.createdAt}
           failed={m.failed}
+          onRetry={m.failed && onRetry ? () => onRetry(m) : undefined}
         />
       ))}
       {pending && (

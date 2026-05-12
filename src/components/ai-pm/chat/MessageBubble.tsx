@@ -19,10 +19,34 @@ export interface MessageBubbleProps {
   createdAt: string;
   pending?: boolean;
   failed?: boolean;
+  onRetry?: () => void;
 }
 
 function statusIcon(status: ToolCallEntry['status']): string {
   return status === 'EXECUTED' ? '🔧' : '❌';
+}
+
+// Minimal inline markdown — handles **bold**, *italic*, `code`. Multi-line text
+// is preserved by `whitespace-pre-wrap` on the bubble container.
+function renderInlineMarkdown(text: string): React.ReactNode {
+  if (!text) return null;
+  const parts: React.ReactNode[] = [];
+  const re = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    const m = match[0];
+    if (m.startsWith('**')) parts.push(<strong key={key++}>{m.slice(2, -2)}</strong>);
+    else if (m.startsWith('`')) parts.push(
+      <code key={key++} className="bg-default-200/60 px-1 py-0.5 rounded text-xs font-mono">{m.slice(1, -1)}</code>,
+    );
+    else parts.push(<em key={key++}>{m.slice(1, -1)}</em>);
+    lastIndex = match.index + m.length;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts.length ? parts : text;
 }
 
 export function MessageBubble(props: MessageBubbleProps) {
@@ -43,17 +67,31 @@ export function MessageBubble(props: MessageBubbleProps) {
       <div className="flex flex-col gap-1 max-w-full">
         <div className={`${bubbleBase} ${isUser ? userTint : assistantTint}`}>
           {props.pending ? (
-            <span className="inline-flex items-center gap-1 text-muted" aria-label={t('typing')}>
-              <Dot delay={0} /><Dot delay={150} /><Dot delay={300} />
-              <span className="ml-2">{t('typing')}</span>
+            <span className="text-muted" aria-label={t('typing')}>
+              <span className="inline-flex items-center gap-1 align-middle mr-2">
+                <Dot delay={0} />
+                <Dot delay={150} />
+                <Dot delay={300} />
+              </span>
+              {t('typing')}
             </span>
           ) : (
-            props.content
+            renderInlineMarkdown(props.content)
           )}
         </div>
 
         {props.failed && (
-          <span className="text-xs text-danger pl-2">{t('sendFailed')}</span>
+          props.onRetry ? (
+            <button
+              type="button"
+              onClick={props.onRetry}
+              className="text-xs text-danger pl-2 text-left hover:underline"
+            >
+              {t('sendFailed')}
+            </button>
+          ) : (
+            <span className="text-xs text-danger pl-2">{t('sendFailed')}</span>
+          )
         )}
 
         {!props.pending && !isUser && hasToolCalls && (

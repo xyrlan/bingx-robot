@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { MessageBubble } from '../MessageBubble';
 
@@ -135,5 +135,60 @@ describe('MessageBubble', () => {
       />,
     ));
     expect(screen.queryByText('Actions')).not.toBeInTheDocument();
+  });
+
+  it('renders bold/italic/code inline markdown in assistant content', () => {
+    const { container } = render(wrap(
+      <MessageBubble
+        role="assistant"
+        content="Result is **important** and *fast* with `code`."
+        decisionId={null}
+        toolCalls={null}
+        createdAt="2026-05-12T00:00:00Z"
+      />,
+    ));
+    const strong = container.querySelector('strong');
+    const em = container.querySelector('em');
+    const code = container.querySelector('code');
+    expect(strong?.textContent).toBe('important');
+    expect(em?.textContent).toBe('fast');
+    expect(code?.textContent).toBe('code');
+    expect(container.textContent).not.toMatch(/\*\*important\*\*/);
+  });
+
+  it('failed user message renders a retry button when onRetry is provided', () => {
+    const onRetry = vi.fn();
+    render(wrap(
+      <MessageBubble
+        role="user"
+        content="ping"
+        decisionId={null}
+        toolCalls={null}
+        createdAt="2026-05-12T00:00:00Z"
+        failed
+        onRetry={onRetry}
+      />,
+    ));
+    const btn = screen.getByRole('button', { name: /Couldn't send/i });
+    fireEvent.click(btn);
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('pending typing indicator places dots and label inside the bubble container', () => {
+    const { container } = render(wrap(
+      <MessageBubble
+        role="assistant"
+        content=""
+        decisionId={null}
+        toolCalls={null}
+        createdAt="2026-05-12T00:00:00Z"
+        pending
+      />,
+    ));
+    // Bubble container is the inner div with rounded-2xl. Typing label must
+    // be a descendant of it (not a sibling that visually overflows).
+    const bubble = container.querySelector('.rounded-2xl');
+    expect(bubble).toBeTruthy();
+    expect(bubble?.textContent).toContain('Thinking...');
   });
 });
