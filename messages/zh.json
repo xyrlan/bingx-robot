@@ -75,6 +75,7 @@
     "bots": "机器人",
     "aiPm": "AI 投资组合管理器",
     "aiActivity": "AI 活动",
+    "aiChat": "AI 聊天",
     "accounts": "账户",
     "settings": "设置",
     "signOut": "退出"
@@ -196,6 +197,24 @@
         "cronTitle": "上次 AI 触发",
         "cronNever": "从未"
       }
+    },
+    "Chat": {
+      "title": "AI 聊天",
+      "subtitle": "与投资组合经理对话",
+      "placeholder": "向投资组合经理提问...",
+      "send": "发送",
+      "loadOlder": "加载更早的消息",
+      "noMessagesYet": "暂无消息。打个招呼吧。",
+      "configLabel": "子账户",
+      "killSwitchActive": "Kill switch 已开启。AI 已暂停。",
+      "sendFailed": "发送失败。点击重试。",
+      "noResponse": "60秒无响应。请重试。",
+      "sessionExpired": "会话已过期。重新加载...",
+      "noConfigsCta": "请先配置 AI Portfolio Manager。",
+      "typing": "思考中...",
+      "viewDecision": "查看决策",
+      "you": "你",
+      "assistant": "AI"
     }
   },
   "Dashboard": {
