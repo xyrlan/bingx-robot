@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@heroui/react';
 import { MessageBubble } from './MessageBubble';
+import type { ToolCallEntry } from './MessageBubble';
 import type { ChatMessagePublic } from '@/services/ai-pm-chat-history.service';
 
 export interface MessageListProps {
@@ -79,7 +80,7 @@ export function MessageList({
           role={m.role}
           content={m.content}
           decisionId={m.decisionId}
-          toolCalls={m.toolCalls}
+          toolCalls={Array.isArray(m.toolCalls) ? (m.toolCalls as ToolCallEntry[]) : null}
           createdAt={m.createdAt}
           failed={m.failed}
         />
