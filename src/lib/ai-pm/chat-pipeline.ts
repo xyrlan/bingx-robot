@@ -24,6 +24,8 @@ export interface RunChatPipelineParams {
   loadChatHistoryFn: (userId: string, limit: number) => Promise<Array<{ role: 'user' | 'assistant'; content: string }>>;
   isKillSwitchActive: () => Promise<boolean>;
   runToolLoopFn?: typeof runToolLoop;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bingxClient?: any;
   logger: {
     info: (msg: string, ctx?: unknown) => void;
     warn: (msg: string, ctx?: unknown) => void;
@@ -63,6 +65,7 @@ export async function runChatPipeline(params: RunChatPipelineParams): Promise<Ch
     portfolioState: params.portfolioState,
     config: params.config,
     db: params.db,
+    bingxClient: params.bingxClient ?? undefined,
   };
 
   let result: Awaited<ReturnType<typeof runToolLoop>>;

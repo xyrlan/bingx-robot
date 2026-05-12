@@ -48,6 +48,7 @@ const baseState: PortfolioState = {
 const baseConfig = {
   maxCapitalUsdt: 1000,
   maxConcurrentBots: 5,
+  maxLeverage: 20,
   allowedStrategies: ['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER'] as const,
   killSwitch: false,
   reviewerThresholdPct: 30,
