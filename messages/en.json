@@ -76,6 +76,7 @@
     "bots": "Bots",
     "aiPm": "AI Portfolio Manager",
     "aiActivity": "AI Activity",
+    "aiChat": "AI Chat",
     "accounts": "Accounts",
     "settings": "Settings",
     "signOut": "Sign out"
@@ -197,6 +198,24 @@
         "cronTitle": "Last AI tick",
         "cronNever": "Never"
       }
+    },
+    "Chat": {
+      "title": "AI Chat",
+      "subtitle": "Talk to your portfolio manager",
+      "placeholder": "Ask the portfolio manager...",
+      "send": "Send",
+      "loadOlder": "Load older messages",
+      "noMessagesYet": "No messages yet. Say hi.",
+      "configLabel": "Subaccount",
+      "killSwitchActive": "Kill switch is ON. AI is paused.",
+      "sendFailed": "Couldn't send. Tap to retry.",
+      "noResponse": "No response after 60s. Try again.",
+      "sessionExpired": "Session expired. Reloading...",
+      "noConfigsCta": "Set up AI Portfolio Manager first.",
+      "typing": "Thinking...",
+      "viewDecision": "View decision",
+      "you": "You",
+      "assistant": "AI"
     }
   },
   "Dashboard": {

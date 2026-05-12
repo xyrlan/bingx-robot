@@ -11,6 +11,8 @@ export default defineConfig({
     globals: true,
     fileParallelism: false,
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**', '**/.claude/worktrees/**'],
+    environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     env: {
       // Fallbacks used only when not already set by .env.local / .env above
       DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://test:test@localhost:5432/test',

@@ -76,6 +76,7 @@
     "bots": "Bots",
     "aiPm": "Gestor de Portfólio com IA",
     "aiActivity": "Atividade da IA",
+    "aiChat": "Chat IA",
     "accounts": "Contas",
     "settings": "Configurações",
     "signOut": "Sair"
@@ -197,6 +198,24 @@
         "cronTitle": "Último tick da IA",
         "cronNever": "Nunca"
       }
+    },
+    "Chat": {
+      "title": "Chat IA",
+      "subtitle": "Fale com seu gerente de portfólio",
+      "placeholder": "Pergunte ao gerente de portfólio...",
+      "send": "Enviar",
+      "loadOlder": "Carregar mensagens antigas",
+      "noMessagesYet": "Nenhuma mensagem ainda. Diga olá.",
+      "configLabel": "Subconta",
+      "killSwitchActive": "Kill switch está ON. IA pausada.",
+      "sendFailed": "Falha ao enviar. Toque para tentar novamente.",
+      "noResponse": "Sem resposta após 60s. Tente novamente.",
+      "sessionExpired": "Sessão expirou. Recarregando...",
+      "noConfigsCta": "Configure o AI Portfolio Manager primeiro.",
+      "typing": "Pensando...",
+      "viewDecision": "Ver decisão",
+      "you": "Você",
+      "assistant": "IA"
     }
   },
   "Dashboard": {

@@ -13,3 +13,5 @@ export interface AiPmConfigPublic {
   createdAt: string;
   updatedAt: string;
 }
+
+export type { ChatMessagePublic } from '@/services/ai-pm-chat-history.service';
