@@ -7,6 +7,7 @@ import {
   getAiPmConfigById,
   getAiPmConfigByBingxApiKeyId,
   listAiPmConfigsForUser,
+  listEnabledAiPmConfigs,
   setAnthropicApiKey,
   setKillSwitch,
   setEnabled,
@@ -158,6 +159,45 @@ describe('aiPmConfig service', () => {
 
     await setEnabled(cfg.id, true);
     expect((await getAiPmConfigById(cfg.id))!.enabled).toBe(true);
+  });
+
+  describe('decrypt resilience', () => {
+    it('listEnabledAiPmConfigs skips rows with a corrupted ciphertext and returns the rest', async () => {
+      const key1 = await makeKey('A');
+      const key2 = await makeKey('B');
+      await createAiPmConfig(TEST_USER_ID, { bingxApiKeyId: key1.id, anthropicApiKeyPlaintext: 'sk-ant-good' });
+      // Inject a deliberately corrupt row that bypasses encryptSecret.
+      await db.insert(aiPmConfigs).values({
+        userId: TEST_USER_ID,
+        bingxApiKeyId: key2.id,
+        anthropicApiKeyEncrypted: 'corrupt-payload-no-colons',
+        enabled: true,
+      });
+      // First config defaults to enabled=false; flip it on so both are eligible.
+      await db.update(aiPmConfigs).set({ enabled: true }).where(eq(aiPmConfigs.bingxApiKeyId, key1.id));
+
+      // The shared DB may contain enabled configs from other test users; just
+      // check our two known configs: the good one is returned, the corrupt
+      // one is filtered out.
+      const configs = await listEnabledAiPmConfigs();
+      const mine = configs.filter((c) => c.userId === TEST_USER_ID);
+      expect(mine.map((c) => c.bingxApiKeyId)).toEqual([key1.id]);
+    });
+
+    it('listAiPmConfigsForUser also skips corrupted rows', async () => {
+      const key1 = await makeKey('C');
+      const key2 = await makeKey('D');
+      await createAiPmConfig(TEST_USER_ID, { bingxApiKeyId: key1.id, anthropicApiKeyPlaintext: 'sk-ant-good' });
+      await db.insert(aiPmConfigs).values({
+        userId: TEST_USER_ID,
+        bingxApiKeyId: key2.id,
+        anthropicApiKeyEncrypted: 'still:bad:not-a-real-cipher',
+      });
+
+      const configs = await listAiPmConfigsForUser(TEST_USER_ID);
+      expect(configs).toHaveLength(1);
+      expect(configs[0].bingxApiKeyId).toBe(key1.id);
+    });
   });
 
   describe('testAnthropicApiKey', () => {

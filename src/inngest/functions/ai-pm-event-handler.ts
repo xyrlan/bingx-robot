@@ -18,6 +18,8 @@ import { runScopedPipeline } from '@/lib/ai-pm/event-pipeline';
 import { runChatPipeline } from '@/lib/ai-pm/chat-pipeline';
 import { aiChatMessages } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
+import { sql } from '@/db';
+import { notifyStream } from '@/lib/ai-pm/streaming';
 
 const THROTTLE_WINDOW_SECONDS = 300;
 
@@ -90,7 +92,36 @@ export async function handleAiPmEvent(params: HandleAiPmEventParams): Promise<Ha
     return { aiEventId, status: 'THROTTLED' };
   }
 
-  const config = await loadConfig(params.data.configId);
+  let config;
+  try {
+    config = await loadConfig(params.data.configId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    params.logger.error('loadConfig threw — likely corrupted encrypted key', { msg, configId: params.data.configId });
+    // Chat path: surface a clear canned reply via the placeholder so the user
+    // sees an actionable message instead of a 180s timeout.
+    if (params.eventName === 'ai-pm/event.chat') {
+      const placeholderId = (params.data as ChatPayload).assistantPlaceholderId;
+      if (placeholderId) {
+        const text = 'AI configuration is corrupted (could not decrypt the Anthropic key). Re-save the key from the AI PM settings page.';
+        try {
+          await params.db
+            .update(aiChatMessages)
+            .set({ content: text, toolCalls: [], decisionId: null })
+            .where(eq(aiChatMessages.id, placeholderId));
+          await notifyStream(sql, placeholderId, {
+            type: 'done',
+            decisionId: null,
+            usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, costUsd: 0, model: 'claude-sonnet-4-6' },
+          });
+        } catch (e) {
+          params.logger.warn('failed to write canned config-corrupt message', { e });
+        }
+      }
+    }
+    await markEvent({ db: params.db, aiEventId, status: 'FAILED' });
+    return { aiEventId, status: 'FAILED' };
+  }
   if (!config || (!config.enabled && params.eventName !== 'ai-pm/event.chat')) {
     await markEvent({ db: params.db, aiEventId, status: 'FAILED' });
     return { aiEventId, status: 'SKIPPED_CONFIG_DISABLED' };

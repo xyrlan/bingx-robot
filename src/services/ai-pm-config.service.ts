@@ -26,6 +26,24 @@ function decrypt(row: AiPmConfigRow): AiPmConfigDecrypted {
   return { ...rest, anthropicApiKey: decryptSecret(anthropicApiKeyEncrypted) };
 }
 
+/**
+ * Decrypt a single row, returning null when the stored ciphertext is corrupt
+ * or unreadable with the current `ENCRYPTION_KEY`. The id is logged so the
+ * operator can find the offending row, but the pipeline keeps moving for
+ * every other config. Used by batch loaders to avoid one bad row killing
+ * every user's cron/monitor/chat run.
+ */
+function safeDecrypt(row: AiPmConfigRow): AiPmConfigDecrypted | null {
+  try {
+    return decrypt(row);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.warn(`[ai-pm-config] skipping config ${row.id} (user ${row.userId}): ${msg}`);
+    return null;
+  }
+}
+
 export async function createAiPmConfig(
   userId: string,
   input: CreateAiPmConfigInput,
@@ -63,14 +81,14 @@ export async function listAiPmConfigsForUser(userId: string): Promise<AiPmConfig
   const rows = await db.query.aiPmConfigs.findMany({
     where: eq(aiPmConfigs.userId, userId),
   });
-  return rows.map(decrypt);
+  return rows.map(safeDecrypt).filter((c): c is AiPmConfigDecrypted => c !== null);
 }
 
 export async function listEnabledAiPmConfigs(): Promise<AiPmConfigDecrypted[]> {
   const rows = await db.query.aiPmConfigs.findMany({
     where: and(eq(aiPmConfigs.enabled, true), eq(aiPmConfigs.killSwitch, false)),
   });
-  return rows.map(decrypt);
+  return rows.map(safeDecrypt).filter((c): c is AiPmConfigDecrypted => c !== null);
 }
 
 export async function setAnthropicApiKey(configId: string, plaintext: string): Promise<void> {
