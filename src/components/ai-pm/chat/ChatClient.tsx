@@ -70,7 +70,12 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
         if (res.ok) {
           const body = (await res.json()) as { messages: ChatMessagePublic[] };
           if (!mountedRef.current) return;
-          const assistantMsg = body.messages.find((m) => m.role === 'assistant');
+          // Skip empty placeholder rows: chat-pipeline pre-inserts an assistant
+          // row with content='' before running the tool loop, then UPDATEs the
+          // content at the end. We must wait for the real content to land.
+          const assistantMsg = body.messages.find(
+            (m) => m.role === 'assistant' && m.content.trim().length > 0,
+          );
           if (assistantMsg) {
             setMessages((prev) => [...prev, assistantMsg]);
             setPending(false);
@@ -129,6 +134,12 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
     }
   }, [selectedConfigId, startPolling]);
 
+  const retryFailed = useCallback((msg: Msg) => {
+    if (!msg.failed || !msg.content) return;
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    void send(msg.content);
+  }, [send]);
+
   const loadOlder = useCallback(async () => {
     if (!oldestCursor || loadingOlder) return;
     setLoadingOlder(true);
@@ -179,6 +190,7 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
         oldestCursor={oldestCursor}
         onLoadOlder={loadOlder}
         loadingOlder={loadingOlder}
+        onRetry={retryFailed}
       />
 
       <ComposeBar onSend={send} disabled={pending} />

@@ -118,6 +118,59 @@ describe('ChatClient', () => {
     });
   });
 
+  it('ignores empty assistant placeholder rows during poll', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, chatMessageId: 'u1' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        messages: [{ id: 'pl1', role: 'assistant', content: '', decisionId: null, toolCalls: null, createdAt: new Date().toISOString() }],
+        nextCursor: null,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        messages: [{ id: 'pl1', role: 'assistant', content: 'final answer', decisionId: null, toolCalls: null, createdAt: new Date().toISOString() }],
+        nextCursor: null,
+      }), { status: 200 }));
+
+    render(wrap(
+      <ChatClient configs={[CONFIG]} initialMessages={[]} initialOldestCursor={null} />,
+    ));
+
+    const ta = screen.getByPlaceholderText('Ask the portfolio manager...') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: 'hello' } });
+    fireEvent.keyDown(ta, { key: 'Enter', shiftKey: false });
+
+    await waitFor(() => { expect(screen.getByText('hello')).toBeInTheDocument(); });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    expect(screen.queryByText('final answer')).not.toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    await waitFor(() => { expect(screen.getByText('final answer')).toBeInTheDocument(); });
+  });
+
+  it('failed user message retry button re-sends the same content', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'boom' }), { status: 500 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, chatMessageId: 'u2' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ messages: [], nextCursor: null }), { status: 200 }));
+
+    render(wrap(
+      <ChatClient configs={[CONFIG]} initialMessages={[]} initialOldestCursor={null} />,
+    ));
+
+    const ta = screen.getByPlaceholderText('Ask the portfolio manager...') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: 'retry-me' } });
+    fireEvent.keyDown(ta, { key: 'Enter', shiftKey: false });
+
+    const retryBtn = await screen.findByRole('button', { name: /Couldn't send/i });
+    fireEvent.click(retryBtn);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const retryBody = JSON.parse((fetchMock.mock.calls[1][1] as { body: string }).body);
+    expect(retryBody.message).toBe('retry-me');
+  });
+
   it('shows timeout toast after 60s of empty poll responses', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, chatMessageId: 'u1' }), { status: 200 }));
     // 30 empty polls
