@@ -181,7 +181,55 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
       return { status: 'EXECUTED', decisionId, realBotId: row.id };
     }
 
-    case 'reallocate_capital':
-      return { status: 'EXECUTION_FAILED', decisionId, reason: 'NOT_IMPLEMENTED: reallocate_capital' };
+    case 'reallocate_capital': {
+      if (action.fromBotId === action.toBotId) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'same bot for from and to' };
+      }
+
+      if (config.paperMode) {
+        const fromRow = await params.db.query.paperBots.findFirst({
+          where: and(eq(paperBots.id, action.fromBotId), eq(paperBots.userId, userId)),
+        });
+        const toRow = await params.db.query.paperBots.findFirst({
+          where: and(eq(paperBots.id, action.toBotId), eq(paperBots.userId, userId)),
+        });
+        if (!fromRow || !toRow) {
+          return { status: 'EXECUTION_FAILED', decisionId, reason: 'one or both paper bots not found' };
+        }
+        const fromCap = Number(fromRow.capitalUsdt);
+        if (fromCap < action.amountUsdt) {
+          return { status: 'EXECUTION_FAILED', decisionId, reason: `insufficient_capital: ${fromCap} < ${action.amountUsdt}` };
+        }
+        const toCap = Number(toRow.capitalUsdt);
+        await params.db.transaction(async (tx) => {
+          await tx.update(paperBots).set({ capitalUsdt: String(fromCap - action.amountUsdt) }).where(and(eq(paperBots.id, action.fromBotId), eq(paperBots.userId, userId))).returning();
+          await tx.update(paperBots).set({ capitalUsdt: String(toCap + action.amountUsdt) }).where(and(eq(paperBots.id, action.toBotId), eq(paperBots.userId, userId))).returning();
+        });
+        return { status: 'EXECUTED', decisionId, paperBotId: fromRow.id };
+      }
+
+      const fromRow = await params.db.query.tradingBots.findFirst({
+        where: and(eq(tradingBots.id, action.fromBotId), eq(tradingBots.userId, userId)),
+      });
+      const toRow = await params.db.query.tradingBots.findFirst({
+        where: and(eq(tradingBots.id, action.toBotId), eq(tradingBots.userId, userId)),
+      });
+      if (!fromRow || !toRow) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'one or both bots not found' };
+      }
+      if (fromRow.apiKeyId !== config.bingxApiKeyId || toRow.apiKeyId !== config.bingxApiKeyId) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: `Bot apiKeyId mismatch — not in AI subaccount scope` };
+      }
+      const fromCap = Number(fromRow.positionSizeUsdt);
+      if (fromCap < action.amountUsdt) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: `insufficient_capital: ${fromCap} < ${action.amountUsdt}` };
+      }
+      const toCap = Number(toRow.positionSizeUsdt);
+      await params.db.transaction(async (tx) => {
+        await tx.update(tradingBots).set({ positionSizeUsdt: String(fromCap - action.amountUsdt) }).where(and(eq(tradingBots.id, action.fromBotId), eq(tradingBots.userId, userId))).returning();
+        await tx.update(tradingBots).set({ positionSizeUsdt: String(toCap + action.amountUsdt) }).where(and(eq(tradingBots.id, action.toBotId), eq(tradingBots.userId, userId))).returning();
+      });
+      return { status: 'EXECUTED', decisionId, realBotId: fromRow.id };
+    }
   }
 }

@@ -139,25 +139,6 @@ describe('execute', () => {
     expect(createPaperBotMock).not.toHaveBeenCalled();
   });
 
-  it('reallocate_capital returns EXECUTION_FAILED (not implemented)', async () => {
-    const result = await execute({
-      userId, decisionId,
-      action: {
-        type: 'reallocate_capital',
-        fromBotId: botId,
-        toBotId: '00000000-0000-0000-0000-0000000000b1',
-        amountUsdt: 50,
-        reasoning: 'r',
-      },
-      config: realConfig, db: fakeDb(state) as never,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      createBotFn: createBotMock as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      createPaperBotFn: createPaperBotMock as any,
-    });
-    expect(result.status).toBe('EXECUTION_FAILED');
-    expect(result.reason).toMatch(/NOT_IMPLEMENTED/);
-  });
 });
 
 describe('execute — adjust_params', () => {
@@ -319,5 +300,153 @@ describe('execute — adjust_params', () => {
     });
     expect(got.status).toBe('EXECUTION_FAILED');
     expect(got.reason).toMatch(/not found/i);
+  });
+});
+
+describe('execute — reallocate_capital', () => {
+  it('paper mode: atomic update of both bots', async () => {
+    const updateMock = vi.fn().mockReturnValue({
+      set: () => ({ where: () => ({ returning: async () => [{}] }) }),
+    });
+    const transactionMock = vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = { update: updateMock };
+      return cb(tx);
+    });
+
+    const fromRow = { id: 'paper-from', userId, capitalUsdt: '200' };
+    const toRow = { id: 'paper-to', userId, capitalUsdt: '100' };
+
+    const fakePaperDb = {
+      query: {
+        paperBots: {
+          findFirst: vi.fn()
+            .mockResolvedValueOnce(fromRow)
+            .mockResolvedValueOnce(toRow),
+        },
+      },
+      transaction: transactionMock,
+    };
+
+    const action: ProposedAction = {
+      type: 'reallocate_capital',
+      fromBotId: 'paper-from',
+      toBotId: 'paper-to',
+      amountUsdt: 50,
+      reasoning: 'rebalance',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: fakePaperDb as any,
+    });
+
+    expect(got.status).toBe('EXECUTED');
+    expect(transactionMock).toHaveBeenCalledOnce();
+    expect(updateMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('insufficient capital → EXECUTION_FAILED', async () => {
+    const fromRow = { id: 'paper-from', userId, capitalUsdt: '40' };
+    const toRow = { id: 'paper-to', userId, capitalUsdt: '100' };
+    const fakePaperDb = {
+      query: {
+        paperBots: {
+          findFirst: vi.fn().mockResolvedValueOnce(fromRow).mockResolvedValueOnce(toRow),
+        },
+      },
+      transaction: vi.fn(),
+    };
+
+    const action: ProposedAction = {
+      type: 'reallocate_capital', fromBotId: 'paper-from', toBotId: 'paper-to', amountUsdt: 50, reasoning: 'r',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: fakePaperDb as any,
+    });
+
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/insufficient_capital/);
+    expect(fakePaperDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it('real mode: atomic update of trading_bots positionSizeUsdt', async () => {
+    const updateMock = vi.fn().mockReturnValue({
+      set: () => ({ where: () => ({ returning: async () => [{}] }) }),
+    });
+    const transactionMock = vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = { update: updateMock };
+      return cb(tx);
+    });
+
+    const fromRow = { id: 'real-from', userId, apiKeyId, positionSizeUsdt: '200', status: 'RUNNING' };
+    const toRow = { id: 'real-to', userId, apiKeyId, positionSizeUsdt: '100', status: 'RUNNING' };
+
+    const fakeRealDb = {
+      query: {
+        tradingBots: {
+          findFirst: vi.fn().mockResolvedValueOnce(fromRow).mockResolvedValueOnce(toRow),
+        },
+      },
+      transaction: transactionMock,
+    };
+
+    const action: ProposedAction = {
+      type: 'reallocate_capital', fromBotId: 'real-from', toBotId: 'real-to', amountUsdt: 50, reasoning: 'r',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: fakeRealDb as any,
+    });
+
+    expect(got.status).toBe('EXECUTED');
+    expect(transactionMock).toHaveBeenCalledOnce();
+    expect(updateMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('real mode: apiKeyId mismatch → EXECUTION_FAILED', async () => {
+    const fromRow = { id: 'real-from', userId, apiKeyId: otherApiKeyId, positionSizeUsdt: '200' };
+    const fakeRealDb = {
+      query: {
+        tradingBots: { findFirst: vi.fn().mockResolvedValue(fromRow) },
+      },
+      transaction: vi.fn(),
+    };
+
+    const action: ProposedAction = {
+      type: 'reallocate_capital', fromBotId: 'real-from', toBotId: 'real-to', amountUsdt: 50, reasoning: 'r',
+    };
+
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: fakeRealDb as any,
+    });
+
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/apiKeyId mismatch/i);
+  });
+
+  it('fromBotId === toBotId → EXECUTION_FAILED', async () => {
+    const action: ProposedAction = {
+      type: 'reallocate_capital', fromBotId: 'x', toBotId: 'x', amountUsdt: 50, reasoning: 'r',
+    };
+    const got = await execute({
+      userId, decisionId, action,
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: {} as any,
+    });
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/same bot/i);
   });
 });
