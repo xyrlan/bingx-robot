@@ -29,8 +29,10 @@ const POLL_MAX_ATTEMPTS = 90;
 // window, treat the stream as dead and fall back to polling.
 const STREAM_IDLE_TIMEOUT_MS = 30_000;
 
-export function ChatClient({ configs, initialMessages, initialOldestCursor }: ChatClientProps) {
+export function ChatClient({ configs: initialConfigs, initialMessages, initialOldestCursor }: ChatClientProps) {
   const t = useTranslations('AiPm.Chat');
+
+  const [configs, setConfigs] = useState<ChatHeaderConfigOption[]>(initialConfigs);
 
   const defaultConfigId = useMemo(() => {
     const enabled = configs.find((c) => c.enabled);
@@ -53,6 +55,33 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
   const mountedRef = useRef(true);
   const eventSourceRef = useRef<EventSource | null>(null);
   const streamIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Refresh configs (kill_switch / paper_mode / enabled) when the picker
+  // changes OR when the window regains focus — so the chip state reflects
+  // what's actually in the DB instead of a stale server-render from page load.
+  const refreshConfigs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ai-pm/configs');
+      if (!res.ok || !mountedRef.current) return;
+      const body = (await res.json()) as { configs?: ChatHeaderConfigOption[] };
+      if (!Array.isArray(body.configs)) return;
+      setConfigs(body.configs);
+    } catch {
+      // best-effort; UI keeps last-known state
+    }
+  }, []);
+
+  const handleSelectConfig = useCallback((configId: string) => {
+    setSelectedConfigId(configId);
+    void refreshConfigs();
+  }, [refreshConfigs]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onFocus = () => void refreshConfigs();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshConfigs]);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -311,7 +340,7 @@ export function ChatClient({ configs, initialMessages, initialOldestCursor }: Ch
       <ChatHeader
         configs={configs}
         selectedConfigId={selectedConfigId}
-        onSelectConfig={setSelectedConfigId}
+        onSelectConfig={handleSelectConfig}
       />
 
       {toast && (
