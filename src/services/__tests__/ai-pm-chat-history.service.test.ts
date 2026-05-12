@@ -77,11 +77,17 @@ describe('ai-pm-chat-history service', () => {
   });
 
   it('listChatMessages scopes by userId', async () => {
-    await seed(TEST_USER_ID, 2, Date.now() - 60_000);
-    await seed(OTHER_USER_ID, 2, Date.now() - 60_000);
+    await db.insert(aiChatMessages).values([
+      { userId: TEST_USER_ID, role: 'user', content: 'me-A', createdAt: new Date(Date.now() - 3000) },
+      { userId: TEST_USER_ID, role: 'assistant', content: 'me-B', createdAt: new Date(Date.now() - 2000) },
+      { userId: OTHER_USER_ID, role: 'user', content: 'other-A', createdAt: new Date(Date.now() - 3000) },
+      { userId: OTHER_USER_ID, role: 'assistant', content: 'other-B', createdAt: new Date(Date.now() - 2000) },
+    ]);
     const got = await listChatMessages(TEST_USER_ID, { limit: 30 });
     expect(got.messages).toHaveLength(2);
-    expect(got.messages.every(m => m.content.startsWith('msg-'))).toBe(true);
+    const contents = got.messages.map(m => m.content);
+    expect(contents.every(c => c.startsWith('me-'))).toBe(true);
+    expect(contents.some(c => c.startsWith('other-'))).toBe(false);
   });
 
   it('encodeChatCursor / decodeChatCursor round-trip', () => {

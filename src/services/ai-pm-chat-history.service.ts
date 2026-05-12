@@ -7,7 +7,7 @@ export interface ChatMessagePublic {
   role: 'user' | 'assistant';
   content: string;
   decisionId: string | null;
-  toolCalls: unknown;
+  toolCalls: unknown | null;
   createdAt: string;
 }
 
