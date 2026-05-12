@@ -209,7 +209,7 @@
       "configLabel": "Subaccount",
       "killSwitchActive": "Kill switch is ON. AI is paused.",
       "sendFailed": "Couldn't send. Tap to retry.",
-      "noResponse": "No response after 60s. Try again.",
+      "noResponse": "No response yet. The AI may still be working — try again or refresh.",
       "sessionExpired": "Session expired. Reloading...",
       "noConfigsCta": "Set up AI Portfolio Manager first.",
       "typing": "Thinking...",
@@ -217,9 +217,11 @@
       "you": "You",
       "assistant": "AI",
       "toolCallsHeader": "Actions",
-      "toolStatus.executed": "executed",
-      "toolStatus.rejected": "rejected",
-      "toolStatus.failed": "failed",
+      "toolStatus": {
+        "executed": "executed",
+        "rejected": "rejected",
+        "failed": "failed"
+      },
       "budgetExhausted": "AI hit the per-turn budget; stopping.",
       "maxTurnsHit": "AI hit the call limit.",
       "killSwitchMidLoop": "Kill switch flipped mid-conversation; stopped."

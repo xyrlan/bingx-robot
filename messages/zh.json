@@ -208,7 +208,7 @@
       "configLabel": "子账户",
       "killSwitchActive": "Kill switch 已开启。AI 已暂停。",
       "sendFailed": "发送失败。点击重试。",
-      "noResponse": "60秒无响应。请重试。",
+      "noResponse": "暂无响应。AI 可能仍在处理 — 请重试或刷新。",
       "sessionExpired": "会话已过期。重新加载...",
       "noConfigsCta": "请先配置 AI Portfolio Manager。",
       "typing": "思考中...",
@@ -216,9 +216,11 @@
       "you": "你",
       "assistant": "AI",
       "toolCallsHeader": "操作",
-      "toolStatus.executed": "已执行",
-      "toolStatus.rejected": "已拒绝",
-      "toolStatus.failed": "失败",
+      "toolStatus": {
+        "executed": "已执行",
+        "rejected": "已拒绝",
+        "failed": "失败"
+      },
       "budgetExhausted": "AI 达到本轮预算上限；停止。",
       "maxTurnsHit": "AI 达到调用次数上限。",
       "killSwitchMidLoop": "对话中 Kill switch 被触发；停止。"
