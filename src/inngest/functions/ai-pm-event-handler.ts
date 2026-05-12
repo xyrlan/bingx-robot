@@ -100,6 +100,7 @@ export async function handleAiPmEvent(params: HandleAiPmEventParams): Promise<Ha
 
   try {
     if (params.eventName === 'ai-pm/event.chat') {
+      const client = await loadBingx(config.bingxApiKeyId);
       const portfolioState = await loadPortfolio({
         userId: config.userId,
         bingxApiKeyId: config.bingxApiKeyId,
@@ -116,6 +117,7 @@ export async function handleAiPmEvent(params: HandleAiPmEventParams): Promise<Ha
           const fresh = await loadConfig(config.id);
           return Boolean(fresh?.killSwitch);
         },
+        bingxClient: client,
         logger: params.logger,
       });
       await markEvent({ db: params.db, aiEventId, status: 'PROCESSED', decisionId: result.decisionId });

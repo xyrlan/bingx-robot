@@ -136,4 +136,32 @@ describe('runChatPipeline', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].content).toMatch(/internal error/i);
   });
+
+  it('forwards bingxClient into ToolExecContext when provided', async () => {
+    const runToolLoopFn = vi.fn().mockImplementation(async ({ ctx }) => {
+      expect(ctx.bingxClient).toBeTruthy();
+      expect((ctx.bingxClient as { tag: string }).tag).toBe('fake-client');
+      return {
+        assistantText: 'ok',
+        toolCallEntries: [],
+        cumulativeUsage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, costUsd: 0, model: 'claude-sonnet-4-6' },
+      };
+    });
+
+    await runChatPipeline({
+      payload: { configId: CONFIG_ID, userMessage: 'x', symbol: null, chatMessageId: 'src-bx', emittedAt: new Date().toISOString() },
+      aiEventId: 'evt',
+      config: baseConfig,
+      portfolioState: { runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: API_KEY_ID },
+      db,
+      loadChatHistoryFn: async () => [],
+      isKillSwitchActive: async () => false,
+      runToolLoopFn,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: { tag: 'fake-client' } as any,
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+
+    expect(runToolLoopFn).toHaveBeenCalled();
+  });
 });
