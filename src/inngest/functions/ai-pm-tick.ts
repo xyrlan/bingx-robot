@@ -8,6 +8,7 @@ import { runSignal, type SignalOutcome } from '@/lib/ai-pm/signal';
 import { runDecision, type DecisionOutcome } from '@/lib/ai-pm/decision';
 import { validate, type ValidationResult } from '@/lib/ai-pm/validation';
 import { execute, type ExecutionResult } from '@/lib/ai-pm/executor';
+import { makeGetContractInfoFn } from '@/lib/ai-pm/contract-info';
 import { loadPortfolioState, type PortfolioState } from '@/lib/ai-pm/portfolio-state';
 import type { BingxClient } from '@/lib/bingx/client';
 import type { ProposedAction } from '@/lib/ai-pm/decision.prompt';
@@ -179,6 +180,8 @@ export async function runUserTick(params: RunUserTickParams): Promise<UserTickRe
         action,
         config: { bingxApiKeyId: params.bingxApiKeyId, paperMode: params.paperMode },
         db: params.db,
+        bingxClient: client,
+        getContractInfoFn: makeGetContractInfoFn(client),
       });
     } catch (err) {
       params.logger.error('execute_threw', { userId: params.userId, err: err instanceof Error ? err.message : String(err) });
