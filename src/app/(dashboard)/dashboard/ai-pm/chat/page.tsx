@@ -25,6 +25,7 @@ export default async function ChatPage() {
       label: c.bingxApiKeyId.slice(0, 8),
       enabled: c.enabled,
       killSwitch: c.killSwitch,
+      paperMode: c.paperMode,
     }));
 
   // Service returns DESC (newest first); ChatClient expects ASC for display.

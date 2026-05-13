@@ -8,6 +8,7 @@ export interface ChatHeaderConfigOption {
   label: string;
   enabled: boolean;
   killSwitch: boolean;
+  paperMode?: boolean;
 }
 
 export interface ChatHeaderProps {
@@ -29,6 +30,11 @@ export function ChatHeader({ configs, selectedConfigId, onSelectConfig }: ChatHe
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        {selected?.paperMode && (
+          <Chip color="warning" variant="soft" size="sm">
+            paper
+          </Chip>
+        )}
         {killOn && (
           <Chip color="danger" variant="soft" size="sm">
             {t('killSwitchActive')}
