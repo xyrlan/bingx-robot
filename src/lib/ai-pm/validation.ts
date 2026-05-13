@@ -41,12 +41,20 @@ export interface ValidateParams {
   resultOrderId?: string | null;
 }
 
-const ACTION_TYPE_MAP: Record<ProposedAction['type'], 'CREATE_BOT' | 'STOP_BOT' | 'ADJUST_PARAMS' | 'REALLOCATE_CAPITAL' | 'NO_ACTION'> = {
+const ACTION_TYPE_MAP: Record<ProposedAction['type'], 'CREATE_BOT' | 'STOP_BOT' | 'ADJUST_PARAMS' | 'REALLOCATE_CAPITAL' | 'NO_ACTION' | 'PLACE_MARKET_ORDER' | 'PLACE_LIMIT_ORDER' | 'PLACE_STOP_ORDER' | 'PLACE_TAKE_PROFIT' | 'PLACE_TRAILING_STOP' | 'CLOSE_POSITION' | 'CANCEL_ORDER' | 'CANCEL_ALL_ORDERS'> = {
   create_bot: 'CREATE_BOT',
   stop_bot: 'STOP_BOT',
   adjust_params: 'ADJUST_PARAMS',
   reallocate_capital: 'REALLOCATE_CAPITAL',
   no_action: 'NO_ACTION',
+  place_market_order: 'PLACE_MARKET_ORDER',
+  place_limit_order: 'PLACE_LIMIT_ORDER',
+  place_stop_order: 'PLACE_STOP_ORDER',
+  place_take_profit: 'PLACE_TAKE_PROFIT',
+  place_trailing_stop: 'PLACE_TRAILING_STOP',
+  close_position: 'CLOSE_POSITION',
+  cancel_order: 'CANCEL_ORDER',
+  cancel_all_orders: 'CANCEL_ALL_ORDERS',
 };
 
 function actionSymbol(action: ProposedAction): string | null {

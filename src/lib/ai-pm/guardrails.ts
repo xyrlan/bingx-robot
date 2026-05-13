@@ -6,6 +6,7 @@ export interface GuardrailConfig {
   maxConcurrentBots: number;
   maxLeverage: number;
   allowedStrategies: Array<'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER'>;
+  allowedSymbols?: string[];
   killSwitch: boolean;
 }
 
@@ -123,6 +124,28 @@ export function runGuardrails(input: {
       if (!runningBotIds.has(action.fromBotId) || !runningBotIds.has(action.toBotId)) {
         return { ok: false, reason: 'UNKNOWN_BOT_ID', message: `Bot id(s) not running` };
       }
+      return { ok: true };
+
+    case 'place_market_order':
+    case 'place_limit_order':
+    case 'place_stop_order':
+    case 'place_take_profit':
+    case 'place_trailing_stop': {
+      if (action.leverage > config.maxLeverage) {
+        return { ok: false, reason: 'LEVERAGE_CAP', message: `Leverage ${action.leverage} exceeds cap ${config.maxLeverage}` };
+      }
+      if (portfolioState.capitalUsedUsdt + action.capitalUsdt > config.maxCapitalUsdt) {
+        return { ok: false, reason: 'CAPITAL_CAP', message: `Capital used + new ${action.capitalUsdt} exceeds cap ${config.maxCapitalUsdt}` };
+      }
+      if (config.allowedSymbols && config.allowedSymbols.length > 0 && !config.allowedSymbols.includes(action.symbol)) {
+        return { ok: false, reason: 'STRATEGY_NOT_ALLOWED', message: `Symbol ${action.symbol} not in allowedSymbols` };
+      }
+      return { ok: true };
+    }
+
+    case 'close_position':
+    case 'cancel_order':
+    case 'cancel_all_orders':
       return { ok: true };
   }
 }
