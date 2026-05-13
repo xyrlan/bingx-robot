@@ -52,6 +52,14 @@ export const aiActionTypeEnum = pgEnum('ai_action_type', [
   'ADJUST_PARAMS',
   'REALLOCATE_CAPITAL',
   'NO_ACTION',
+  'PLACE_MARKET_ORDER',
+  'PLACE_LIMIT_ORDER',
+  'PLACE_STOP_ORDER',
+  'PLACE_TAKE_PROFIT',
+  'PLACE_TRAILING_STOP',
+  'CLOSE_POSITION',
+  'CANCEL_ORDER',
+  'CANCEL_ALL_ORDERS',
 ]);
 
 export const aiTriggerSourceEnum = pgEnum('ai_trigger_source', [
@@ -277,6 +285,7 @@ export const aiDecisions = pgTable('ai_decisions', {
   tokensInput: integer('tokens_input'),
   tokensOutput: integer('tokens_output'),
   costUsd: decimal('cost_usd', { precision: 10, scale: 6 }),
+  resultOrderId: text('result_order_id'),
   resultBotId: uuid('result_bot_id').references(() => tradingBots.id, { onDelete: 'set null' }),
   chatMessageId: uuid('chat_message_id'),
   executedAt: timestamp('executed_at'),

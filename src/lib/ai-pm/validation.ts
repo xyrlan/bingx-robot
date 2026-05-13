@@ -38,6 +38,7 @@ export interface ValidateParams {
   factory?: AnthropicFactory;
   triggeredBy?: 'CRON_TICK' | 'EVENT_DRAWDOWN' | 'EVENT_FUNDING_FLIP' | 'EVENT_FILL' | 'EVENT_ERROR' | 'CHAT';
   chatMessageId?: string | null;
+  resultOrderId?: string | null;
 }
 
 const ACTION_TYPE_MAP: Record<ProposedAction['type'], 'CREATE_BOT' | 'STOP_BOT' | 'ADJUST_PARAMS' | 'REALLOCATE_CAPITAL' | 'NO_ACTION'> = {
@@ -90,6 +91,7 @@ async function persistDecision(
       tokensInput: reviewerUsage ? reviewerUsage.inputTokens : null,
       tokensOutput: reviewerUsage ? reviewerUsage.outputTokens : null,
       costUsd: reviewerUsage ? String(reviewerUsage.costUsd) : null,
+      resultOrderId: params.resultOrderId ?? null,
     }])
     .returning();
   return inserted[0].id;

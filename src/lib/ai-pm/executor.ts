@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { tradingBots, paperBots } from '@/db/schema';
+import { tradingBots, paperBots, aiDecisions } from '@/db/schema';
 import type { db as Db } from '@/db';
 import { createBot as defaultCreateBot } from '@/services/bingx.service';
 import { createPaperBot as defaultCreatePaperBot } from '@/services/paper-bots.service';
@@ -232,4 +232,15 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
       return { status: 'EXECUTED', decisionId, realBotId: fromRow.id };
     }
   }
+}
+
+export async function setResultOrderId(
+  database: typeof Db,
+  decisionId: string,
+  orderId: string,
+): Promise<void> {
+  await database
+    .update(aiDecisions)
+    .set({ resultOrderId: orderId })
+    .where(eq(aiDecisions.id, decisionId));
 }
