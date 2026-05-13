@@ -5,17 +5,15 @@ import type {
   ErrorPayload,
   DrawdownPayload,
   FundingFlipPayload,
-  ChatPayload,
 } from '@/lib/ai-pm/events';
 
 describe('events', () => {
-  it('AI_PM_EVENT_NAMES contains all five event names', () => {
+  it('AI_PM_EVENT_NAMES contains the autonomous event names', () => {
     expect(AI_PM_EVENT_NAMES).toEqual([
       'ai-pm/event.fill',
       'ai-pm/event.error',
       'ai-pm/event.drawdown',
       'ai-pm/event.funding-flip',
-      'ai-pm/event.chat',
     ]);
   });
 
@@ -24,7 +22,6 @@ describe('events', () => {
     expect(mapNameToEnum('ai-pm/event.error')).toBe('EVENT_ERROR');
     expect(mapNameToEnum('ai-pm/event.drawdown')).toBe('EVENT_DRAWDOWN');
     expect(mapNameToEnum('ai-pm/event.funding-flip')).toBe('EVENT_FUNDING_FLIP');
-    expect(mapNameToEnum('ai-pm/event.chat')).toBe('CHAT');
   });
 
   it('FillPayload type accepts a real-bot fill', () => {
@@ -40,18 +37,6 @@ describe('events', () => {
       orderType: 'ENTRY',
     };
     expect(p.botKind).toBe('real');
-  });
-
-  it('ChatPayload type forces symbol=null', () => {
-    const p: ChatPayload = {
-      configId: 'cfg',
-      emittedAt: new Date().toISOString(),
-      symbol: null,
-      chatMessageId: 'msg',
-      userMessage: 'hi',
-      assistantPlaceholderId: 'ph',
-    };
-    expect(p.symbol).toBeNull();
   });
 
   it('ErrorPayload accepts an unknown errorKind only via UNKNOWN literal', () => {

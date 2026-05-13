@@ -1,102 +1,152 @@
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
-import { db } from '@/db';
-import { users, aiChatMessages, aiPmConfigs, bingxApiKeys } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const TEST_USER_ID = '00000000-0000-0000-0000-000000000120';
-const CONFIG_ID = '00000000-0000-0000-0000-000000000121';
-const API_KEY_ID = '00000000-0000-0000-0000-000000000122';
+// --- Mocks --------------------------------------------------------------
 
-let currentUserId: string | null = TEST_USER_ID;
+const getAuthMock = vi.fn();
+const getConfigMock = vi.fn();
+const getBingxMock = vi.fn();
+const loadPortfolioMock = vi.fn();
+const persistUserMock = vi.fn().mockResolvedValue(undefined);
+const persistAssistantMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/services/auth.service', () => ({
-  getAuthenticatedUser: vi.fn(async () => currentUserId ? { id: currentUserId } : null),
+  getAuthenticatedUser: () => getAuthMock(),
+}));
+vi.mock('@/services/ai-pm-config.service', () => ({
+  getAiPmConfigById: (id: string) => getConfigMock(id),
+}));
+vi.mock('@/services/bingx.service', () => ({
+  getBingxClientByApiKeyId: (id: string) => getBingxMock(id),
+}));
+vi.mock('@/lib/ai-pm/portfolio-state', () => ({
+  loadPortfolioState: (params: unknown) => loadPortfolioMock(params),
+}));
+vi.mock('@/services/ai-pm-chat-history.service', () => ({
+  persistUserMessage: (...args: unknown[]) => persistUserMock(...args),
+  persistAssistantTurn: (...args: unknown[]) => persistAssistantMock(...args),
 }));
 
-const sentEvents: Array<{ name: string; data: unknown }> = [];
-vi.mock('@/inngest/client', () => ({
-  inngest: { send: vi.fn(async (e: { name: string; data: unknown }) => { sentEvents.push(e); }) },
+// streamText is the heavy hitter. Stub it to return a tiny object whose
+// `consumeStream` is a no-op and `toUIMessageStreamResponse` returns a Response
+// we can inspect.
+const streamTextMock = vi.fn();
+const toUIMessageStreamResponseMock = vi.fn().mockReturnValue(new Response('ok', { status: 200 }));
+const consumeStreamMock = vi.fn();
+vi.mock('ai', () => ({
+  streamText: (...args: unknown[]) => {
+    streamTextMock(...args);
+    return {
+      consumeStream: consumeStreamMock,
+      toUIMessageStreamResponse: (opts: unknown) => toUIMessageStreamResponseMock(opts),
+    };
+  },
+  stepCountIs: (n: number) => ({ kind: 'stepCount', n }),
+  convertToModelMessages: (m: unknown) => m,
+  // not used by the route but referenced in the import; keep type compat.
+  tool: (def: unknown) => def,
 }));
 
-import { POST } from '../route';
+vi.mock('@/lib/ai-pm/ai-sdk-tools', () => ({
+  buildAiSdkTools: vi.fn(() => ({ read_portfolio: { description: 'fake' } })),
+}));
 
-async function ensureUserAndConfig() {
-  await db.insert(users).values({ id: TEST_USER_ID, email: 'chat-route-120@example.com' }).onConflictDoNothing();
-  await db.insert(bingxApiKeys).values({ id: API_KEY_ID, userId: TEST_USER_ID, label: 'k', apiKey: 'a', secretKeyEncrypted: 'b' }).onConflictDoNothing();
-  await db.insert(aiPmConfigs).values({
-    id: CONFIG_ID, userId: TEST_USER_ID, bingxApiKeyId: API_KEY_ID,
-    anthropicApiKeyEncrypted: 'enc', enabled: true,
-  }).onConflictDoNothing();
-}
+vi.mock('@/db', () => ({ db: {} }));
 
-async function cleanup() {
-  await db.delete(aiChatMessages).where(eq(aiChatMessages.userId, TEST_USER_ID));
-  await db.delete(aiPmConfigs).where(eq(aiPmConfigs.userId, TEST_USER_ID));
-}
+import { POST } from '@/app/api/ai-pm/chat/route';
 
-function req(body: unknown): Request {
+// --- Tests --------------------------------------------------------------
+
+const VALID_USER = { id: '00000000-0000-0000-0000-000000000001' };
+const VALID_CFG = '00000000-0000-0000-0000-000000000010';
+const goodConfig = {
+  id: VALID_CFG,
+  userId: VALID_USER.id,
+  bingxApiKeyId: '00000000-0000-0000-0000-0000000000a0',
+  enabled: true,
+  killSwitch: false,
+  paperMode: true,
+  anthropicApiKey: 'sk',
+};
+
+function makeReq(body: unknown): Request {
   return new Request('http://localhost/api/ai-pm/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
 
+beforeEach(() => {
+  getAuthMock.mockReset();
+  getConfigMock.mockReset();
+  getBingxMock.mockReset().mockResolvedValue({});
+  loadPortfolioMock.mockReset().mockResolvedValue({ runningBots: [], capitalUsedUsdt: 0, bingxApiKeyId: 'k1' });
+  persistUserMock.mockClear();
+  persistAssistantMock.mockClear();
+  streamTextMock.mockClear();
+  toUIMessageStreamResponseMock.mockClear();
+  consumeStreamMock.mockClear();
+});
+
 describe('POST /api/ai-pm/chat', () => {
-  beforeAll(async () => {
-    await cleanup();
-    await ensureUserAndConfig();
-    currentUserId = TEST_USER_ID;
-    sentEvents.length = 0;
-  });
-  afterEach(async () => {
-    await cleanup();
-    await ensureUserAndConfig();
-    currentUserId = TEST_USER_ID;
-    sentEvents.length = 0;
-  });
-
-  it('inserts user row + placeholder assistant row and returns both ids', async () => {
-    const res = await POST(req({ configId: CONFIG_ID, message: 'hello' }));
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(body.chatMessageId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(body.placeholderId).toMatch(/^[0-9a-f-]{36}$/);
-
-    const rows = await db.select().from(aiChatMessages).where(eq(aiChatMessages.userId, TEST_USER_ID));
-    expect(rows).toHaveLength(2);
-    const user = rows.find((r) => r.id === body.chatMessageId);
-    const assistant = rows.find((r) => r.id === body.placeholderId);
-    expect(user?.role).toBe('user');
-    expect(user?.content).toBe('hello');
-    expect(assistant?.role).toBe('assistant');
-    expect(assistant?.content).toBe('');
-  });
-
-  it('emits ai-pm/event.chat with chatMessageId + assistantPlaceholderId', async () => {
-    const res = await POST(req({ configId: CONFIG_ID, message: 'go' }));
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(sentEvents).toHaveLength(1);
-    expect(sentEvents[0].name).toBe('ai-pm/event.chat');
-    expect((sentEvents[0].data as { chatMessageId: string }).chatMessageId).toBe(body.chatMessageId);
-    expect((sentEvents[0].data as { assistantPlaceholderId: string }).assistantPlaceholderId).toBe(body.placeholderId);
-  });
-
-  it('returns 401 unauthenticated', async () => {
-    currentUserId = null;
-    const res = await POST(req({ configId: CONFIG_ID, message: 'x' }));
+  it('returns 401 when no authenticated user', async () => {
+    getAuthMock.mockResolvedValue(null);
+    const res = await POST(
+      makeReq({ configId: VALID_CFG, messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
     expect(res.status).toBe(401);
+    expect(streamTextMock).not.toHaveBeenCalled();
   });
 
-  it('returns 400 invalid body', async () => {
-    const res = await POST(req({ message: 'no configId' }));
+  it('returns 400 on invalid body shape', async () => {
+    getAuthMock.mockResolvedValue(VALID_USER);
+    const res = await POST(makeReq({ configId: 'not-a-uuid', messages: [] }));
     expect(res.status).toBe(400);
   });
 
-  it('returns 404 unknown config', async () => {
-    const res = await POST(req({ configId: '00000000-0000-0000-0000-0000000000ff', message: 'x' }));
+  it('returns 404 when config not found or owned by another user', async () => {
+    getAuthMock.mockResolvedValue(VALID_USER);
+    getConfigMock.mockResolvedValue(null);
+    const res = await POST(
+      makeReq({ configId: VALID_CFG, messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
     expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when AI is not enabled', async () => {
+    getAuthMock.mockResolvedValue(VALID_USER);
+    getConfigMock.mockResolvedValue({ ...goodConfig, enabled: false });
+    const res = await POST(
+      makeReq({ configId: VALID_CFG, messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when kill switch is active', async () => {
+    getAuthMock.mockResolvedValue(VALID_USER);
+    getConfigMock.mockResolvedValue({ ...goodConfig, killSwitch: true });
+    const res = await POST(
+      makeReq({ configId: VALID_CFG, messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('happy path: persists user message, calls streamText, consumes stream, returns SSE', async () => {
+    getAuthMock.mockResolvedValue(VALID_USER);
+    getConfigMock.mockResolvedValue(goodConfig);
+    const res = await POST(
+      makeReq({
+        configId: VALID_CFG,
+        messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hello' }] }],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(persistUserMock).toHaveBeenCalledOnce();
+    expect(streamTextMock).toHaveBeenCalledOnce();
+    expect(consumeStreamMock).toHaveBeenCalledOnce();
+    expect(toUIMessageStreamResponseMock).toHaveBeenCalledOnce();
+    const opts = streamTextMock.mock.calls[0][0] as { model: string; tools: unknown };
+    expect(opts.model).toBe('anthropic/claude-sonnet-4.6');
+    expect(opts.tools).toBeTruthy();
   });
 });

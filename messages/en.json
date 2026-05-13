@@ -220,7 +220,8 @@
       "toolStatus": {
         "executed": "executed",
         "rejected": "rejected",
-        "failed": "failed"
+        "failed": "failed",
+        "executing": "executing..."
       },
       "budgetExhausted": "AI hit the per-turn budget; stopping.",
       "maxTurnsHit": "AI hit the call limit.",

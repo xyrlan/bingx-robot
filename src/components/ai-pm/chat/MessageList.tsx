@@ -3,19 +3,15 @@
 import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@heroui/react';
+import type { UIMessage } from 'ai';
 import { MessageBubble } from './MessageBubble';
-import type { ToolCallEntry } from './MessageBubble';
-import type { ChatMessagePublic } from '@/services/ai-pm-chat-history.service';
 
 export interface MessageListProps {
-  messages: Array<ChatMessagePublic & { failed?: boolean }>;
+  messages: UIMessage[];
   pending: boolean;
   oldestCursor: string | null;
   onLoadOlder: () => void;
   loadingOlder: boolean;
-  onRetry?: (msg: ChatMessagePublic & { failed?: boolean }) => void;
-  streamingText?: string;
-  streamingToolCalls?: ToolCallEntry[];
 }
 
 const NEAR_BOTTOM_PX = 100;
@@ -26,15 +22,11 @@ export function MessageList({
   oldestCursor,
   onLoadOlder,
   loadingOlder,
-  onRetry,
-  streamingText,
-  streamingToolCalls,
 }: MessageListProps) {
   const t = useTranslations('AiPm.Chat');
   const containerRef = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
 
-  // Track whether we're near the bottom right before render commits
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -46,7 +38,6 @@ export function MessageList({
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Auto-scroll on mount and when messages/pending grow if user was near bottom
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -64,10 +55,7 @@ export function MessageList({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 overflow-y-auto px-3 py-4"
-    >
+    <div ref={containerRef} className="flex-1 overflow-y-auto px-3 py-4">
       {oldestCursor && (
         <div className="flex justify-center mb-3">
           <Button
@@ -81,25 +69,12 @@ export function MessageList({
         </div>
       )}
       {messages.map((m) => (
-        <MessageBubble
-          key={m.id}
-          role={m.role}
-          content={m.content}
-          decisionId={m.decisionId}
-          toolCalls={Array.isArray(m.toolCalls) ? (m.toolCalls as ToolCallEntry[]) : null}
-          createdAt={m.createdAt}
-          failed={m.failed}
-          onRetry={m.failed && onRetry ? () => onRetry(m) : undefined}
-        />
+        <MessageBubble key={m.id} message={m} />
       ))}
       {pending && (
         <MessageBubble
-          role="assistant"
-          content={streamingText ?? ''}
-          decisionId={null}
-          toolCalls={streamingToolCalls && streamingToolCalls.length > 0 ? streamingToolCalls : null}
-          createdAt={new Date().toISOString()}
-          pending={!streamingText}
+          message={{ id: 'pending', role: 'assistant', parts: [] } as UIMessage}
+          pending
         />
       )}
     </div>
