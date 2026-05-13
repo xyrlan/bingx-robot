@@ -10,11 +10,19 @@ import { execute as defaultExecute } from '@/lib/ai-pm/executor';
 import type { BingxClient } from '@/lib/bingx/client';
 import type { ProposedAction } from '@/lib/ai-pm/decision.prompt';
 import type { ToolDefinition } from '@/lib/ai-pm/llm';
+import {
+  getFuturesBalance,
+  listFuturesPositions,
+  listFuturesOpenOrders,
+} from '@/services/bingx-orders.service';
 
 export type ToolName =
   | 'read_portfolio'
   | 'read_signals'
   | 'read_decisions'
+  | 'read_balance'
+  | 'read_positions'
+  | 'read_open_orders'
   | 'create_bot'
   | 'stop_bot'
   | 'adjust_params'
@@ -32,6 +40,9 @@ export const ReadDecisionsArgs = z.object({
   limit: z.number().int().min(1).max(20).optional(),
   status: z.enum(DECISION_STATUSES).optional(),
 });
+export const ReadBalanceArgs = z.object({});
+export const ReadPositionsArgs = z.object({ symbol: z.string().min(1).optional() });
+export const ReadOpenOrdersArgs = z.object({ symbol: z.string().min(1).optional() });
 // Note: schemas are intentionally permissive at the tool layer. Tighter
 // constraints (e.g. leverage <= maxLeverage from config, valid UUID, allowed
 // strategy) are enforced by validate() guardrails so they surface as
@@ -81,6 +92,9 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition<unknown>[] = [
   { name: 'adjust_params', description: 'Adjusts a running bot config (capital, leverage, strategy, or strategy-specific config). Mutating; routes through validate+execute.', schema: AdjustParamsArgs },
   { name: 'reallocate_capital', description: 'Moves capital between two running bots in the same subaccount.', schema: ReallocateCapitalArgs },
   { name: 'pause_kill_switch', description: 'Activates the kill switch immediately.', schema: PauseKillSwitchArgs },
+  { name: 'read_balance', description: 'Read futures account balance, equity, margin, and unrealized P&L.', schema: ReadBalanceArgs },
+  { name: 'read_positions', description: 'List current open futures positions.', schema: ReadPositionsArgs },
+  { name: 'read_open_orders', description: 'List pending (not yet filled) futures orders.', schema: ReadOpenOrdersArgs },
 ];
 
 export interface ToolExecContext {
@@ -94,6 +108,9 @@ export interface ToolExecContext {
   validateFn?: typeof defaultValidate;
   executeFn?: typeof defaultExecute;
   setKillSwitchFn?: typeof defaultSetKillSwitch;
+  getFuturesBalanceFn?: typeof getFuturesBalance;
+  listFuturesPositionsFn?: typeof listFuturesPositions;
+  listFuturesOpenOrdersFn?: typeof listFuturesOpenOrders;
 }
 
 export type ToolStatus =
@@ -119,6 +136,9 @@ export async function executeTool(
     case 'read_portfolio': return readPortfolio(ctx);
     case 'read_signals': return readSignals(ReadSignalsArgs.parse(args), ctx);
     case 'read_decisions': return readDecisions(ReadDecisionsArgs.parse(args), ctx);
+    case 'read_balance': return readBalanceTool(ReadBalanceArgs.parse(args), ctx);
+    case 'read_positions': return readPositionsTool(ReadPositionsArgs.parse(args), ctx);
+    case 'read_open_orders': return readOpenOrdersTool(ReadOpenOrdersArgs.parse(args), ctx);
     case 'create_bot': return createBotTool(CreateBotArgs.parse(args), ctx);
     case 'stop_bot': return stopBotTool(StopBotArgs.parse(args), ctx);
     case 'adjust_params': return adjustParamsTool(AdjustParamsArgs.parse(args), ctx);
@@ -412,6 +432,60 @@ async function reallocateCapitalTool(args: z.infer<typeof ReallocateCapitalArgs>
       summary: `reallocate_capital threw: ${err instanceof Error ? err.message : String(err)}`,
       payload: null,
     };
+  }
+}
+
+async function readBalanceTool(_args: z.infer<typeof ReadBalanceArgs>, ctx: ToolExecContext): Promise<ToolExecResult> {
+  if (!ctx.bingxClient) {
+    return { status: 'EXECUTION_FAILED', decisionId: null, summary: 'bingxClient unavailable', payload: null };
+  }
+  const fn = ctx.getFuturesBalanceFn ?? getFuturesBalance;
+  try {
+    const bal = await fn(ctx.bingxClient);
+    return {
+      status: 'EXECUTED',
+      decisionId: null,
+      summary: `$${Number(bal.availableUsdt).toFixed(2)} available, $${Number(bal.equityUsdt).toFixed(2)} equity, $${Number(bal.marginUsedUsdt).toFixed(2)} margin used`,
+      payload: bal,
+    };
+  } catch (err) {
+    return { status: 'EXECUTION_FAILED', decisionId: null, summary: `read_balance failed: ${err instanceof Error ? err.message : String(err)}`, payload: null };
+  }
+}
+
+async function readPositionsTool(args: z.infer<typeof ReadPositionsArgs>, ctx: ToolExecContext): Promise<ToolExecResult> {
+  if (!ctx.bingxClient) {
+    return { status: 'EXECUTION_FAILED', decisionId: null, summary: 'bingxClient unavailable', payload: null };
+  }
+  const fn = ctx.listFuturesPositionsFn ?? listFuturesPositions;
+  try {
+    const positions = await fn(ctx.bingxClient, args.symbol);
+    return {
+      status: 'EXECUTED',
+      decisionId: null,
+      summary: `${positions.length} position${positions.length === 1 ? '' : 's'} open`,
+      payload: positions,
+    };
+  } catch (err) {
+    return { status: 'EXECUTION_FAILED', decisionId: null, summary: `read_positions failed: ${err instanceof Error ? err.message : String(err)}`, payload: null };
+  }
+}
+
+async function readOpenOrdersTool(args: z.infer<typeof ReadOpenOrdersArgs>, ctx: ToolExecContext): Promise<ToolExecResult> {
+  if (!ctx.bingxClient) {
+    return { status: 'EXECUTION_FAILED', decisionId: null, summary: 'bingxClient unavailable', payload: null };
+  }
+  const fn = ctx.listFuturesOpenOrdersFn ?? listFuturesOpenOrders;
+  try {
+    const orders = await fn(ctx.bingxClient, args.symbol);
+    return {
+      status: 'EXECUTED',
+      decisionId: null,
+      summary: `${orders.length} open order${orders.length === 1 ? '' : 's'}`,
+      payload: orders,
+    };
+  } catch (err) {
+    return { status: 'EXECUTION_FAILED', decisionId: null, summary: `read_open_orders failed: ${err instanceof Error ? err.message : String(err)}`, payload: null };
   }
 }
 

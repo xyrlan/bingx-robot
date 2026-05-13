@@ -65,9 +65,9 @@ describe('chat-tools', () => {
   beforeAll(async () => { await ensureUser(); await cleanup(); });
   afterEach(async () => { await cleanup(); });
 
-  it('exports ALL_TOOL_DEFINITIONS with 8 tools', () => {
+  it('exports ALL_TOOL_DEFINITIONS with 11 tools', () => {
     expect(ALL_TOOL_DEFINITIONS.map(t => t.name).sort()).toEqual(
-      ['adjust_params', 'create_bot', 'pause_kill_switch', 'read_decisions', 'read_portfolio', 'read_signals', 'reallocate_capital', 'stop_bot'].sort(),
+      ['adjust_params', 'create_bot', 'pause_kill_switch', 'read_balance', 'read_decisions', 'read_open_orders', 'read_portfolio', 'read_positions', 'read_signals', 'reallocate_capital', 'stop_bot'].sort(),
     );
   });
 
@@ -219,5 +219,43 @@ describe('chat-tools', () => {
     expect(validateFn).not.toHaveBeenCalled();
     expect(got.status).toBe('EXECUTION_FAILED');
     expect(got.summary).toMatch(/kill switch/i);
+  });
+
+  it('read_balance returns balance from getFuturesBalanceFn', async () => {
+    const getFuturesBalanceFn = vi.fn().mockResolvedValue({
+      availableUsdt: '900', equityUsdt: '1000', marginUsedUsdt: '100', unrealizedPnlUsdt: '0',
+    });
+    const ctx = makeCtx({ getFuturesBalanceFn, bingxClient: {} as ToolExecContext['bingxClient'] });
+    const got = await executeTool('read_balance', {}, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect(got.decisionId).toBeNull();
+    expect(got.summary).toMatch(/\$900/);
+  });
+
+  it('read_positions returns positions from listFuturesPositionsFn', async () => {
+    const listFuturesPositionsFn = vi.fn().mockResolvedValue([
+      { symbol: 'BTC-USDT', side: 'LONG', qty: '0.1', entryPrice: '50000', markPrice: '51000', unrealizedPnlUsdt: '100', leverage: 5, liquidationPrice: '45000' },
+    ]);
+    const ctx = makeCtx({ listFuturesPositionsFn, bingxClient: {} as ToolExecContext['bingxClient'] });
+    const got = await executeTool('read_positions', {}, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect((got.payload as unknown[]).length).toBe(1);
+  });
+
+  it('read_open_orders returns from listFuturesOpenOrdersFn', async () => {
+    const listFuturesOpenOrdersFn = vi.fn().mockResolvedValue([
+      { orderId: '1', symbol: 'BTC-USDT', side: 'BUY', type: 'LIMIT', quantity: '0.01', price: '49000', stopPrice: '0', status: 'NEW', createdAt: '2026-05-13T00:00:00Z' },
+    ]);
+    const ctx = makeCtx({ listFuturesOpenOrdersFn, bingxClient: {} as ToolExecContext['bingxClient'] });
+    const got = await executeTool('read_open_orders', {}, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect((got.payload as unknown[]).length).toBe(1);
+  });
+
+  it('read_balance refuses when bingxClient is missing', async () => {
+    const ctx = makeCtx({ bingxClient: undefined });
+    const got = await executeTool('read_balance', {}, ctx);
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.summary).toMatch(/bingx/i);
   });
 });
