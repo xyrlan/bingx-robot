@@ -220,7 +220,8 @@
       "toolStatus": {
         "executed": "executada",
         "rejected": "rejeitada",
-        "failed": "falhou"
+        "failed": "falhou",
+        "executing": "executando..."
       },
       "budgetExhausted": "IA atingiu o limite de custo da rodada; parando.",
       "maxTurnsHit": "IA atingiu o limite de chamadas.",

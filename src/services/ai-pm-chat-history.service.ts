@@ -1,6 +1,24 @@
 import { db } from '@/db';
 import { aiChatMessages } from '@/db/schema';
 import { and, desc, eq, gt, lt, or } from 'drizzle-orm';
+import type { UIMessage } from 'ai';
+import { randomUUID } from 'node:crypto';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Subset of ToolExecResult that we round-trip through the toolCalls JSONB column.
+ * Kept loose to tolerate legacy rows written by the pre-S19 chat pipeline.
+ */
+interface PersistedToolCall {
+  toolCallId?: string;
+  toolName: string;
+  args: unknown;
+  status?: string;
+  decisionId?: string | null;
+  summary?: string;
+  output?: unknown;
+}
 
 export interface ChatMessagePublic {
   id: string;
@@ -120,4 +138,133 @@ function toPublic(row: typeof aiChatMessages.$inferSelect): ChatMessagePublic {
     toolCalls: row.toolCalls ?? null,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// AI SDK v6 UIMessage round-tripping
+// ---------------------------------------------------------------------------
+
+function uuidOrRandom(maybeId: string | undefined): string {
+  return maybeId && UUID_RE.test(maybeId) ? maybeId : randomUUID();
+}
+
+function uiMessageToText(msg: UIMessage): string {
+  return msg.parts
+    .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+    .map((p) => p.text)
+    .join('');
+}
+
+function uiMessageToToolCalls(msg: UIMessage): PersistedToolCall[] {
+  const calls: PersistedToolCall[] = [];
+  for (const part of msg.parts) {
+    if (typeof part.type === 'string' && part.type.startsWith('tool-')) {
+      const toolName = part.type.slice('tool-'.length);
+      // The part shape varies by state; pull the union-safe fields.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = part as any;
+      const status =
+        p.state === 'output-error'
+          ? 'EXECUTION_FAILED'
+          : (p.output as { status?: string } | undefined)?.status ?? 'EXECUTED';
+      const summary =
+        (p.output as { summary?: string } | undefined)?.summary ??
+        p.errorText ??
+        '';
+      const decisionId =
+        (p.output as { decisionId?: string | null } | undefined)?.decisionId ?? null;
+      calls.push({
+        toolCallId: typeof p.toolCallId === 'string' ? p.toolCallId : undefined,
+        toolName,
+        args: p.input ?? p.args ?? null,
+        status,
+        decisionId,
+        summary,
+        output: p.output,
+      });
+    }
+  }
+  return calls;
+}
+
+/**
+ * Persist a single user UIMessage. Idempotent on the message id when the id is
+ * a valid UUID (re-sending the same message in a follow-up turn is a no-op).
+ */
+export async function persistUserMessage(userId: string, msg: UIMessage): Promise<void> {
+  const id = uuidOrRandom(msg.id);
+  const content = uiMessageToText(msg);
+  await db
+    .insert(aiChatMessages)
+    .values({ id, userId, role: 'user', content })
+    .onConflictDoNothing({ target: aiChatMessages.id });
+}
+
+/**
+ * Find the latest assistant UIMessage in `finalMessages` and persist it. Called
+ * from `result.toUIMessageStreamResponse({ onFinish })`. Idempotent on UUID id.
+ */
+export async function persistAssistantTurn(
+  userId: string,
+  finalMessages: UIMessage[],
+): Promise<void> {
+  const assistant = [...finalMessages].reverse().find((m) => m.role === 'assistant');
+  if (!assistant) return;
+  const id = uuidOrRandom(assistant.id);
+  const content = uiMessageToText(assistant);
+  const toolCalls = uiMessageToToolCalls(assistant);
+  const firstDecisionId = toolCalls.find((c) => c.decisionId)?.decisionId ?? null;
+  await db
+    .insert(aiChatMessages)
+    .values({
+      id,
+      userId,
+      role: 'assistant',
+      content,
+      toolCalls: toolCalls.length > 0 ? toolCalls : null,
+      decisionId: firstDecisionId,
+    })
+    .onConflictDoNothing({ target: aiChatMessages.id });
+}
+
+/**
+ * Load chat history shaped as AI SDK v6 UIMessage[] for `useChat` initialMessages.
+ * Returns oldest-first (ASC display order). Tool calls become typed `tool-{name}`
+ * parts in `output-available` state.
+ */
+export async function loadChatHistoryAsUIMessages(
+  userId: string,
+  limit: number = 30,
+): Promise<UIMessage[]> {
+  const rows = await db
+    .select()
+    .from(aiChatMessages)
+    .where(eq(aiChatMessages.userId, userId))
+    .orderBy(desc(aiChatMessages.createdAt), desc(aiChatMessages.id))
+    .limit(Math.min(Math.max(limit, 1), MAX_LIMIT));
+
+  const asc = rows.slice().reverse();
+  return asc.map((row): UIMessage => {
+    const role: 'user' | 'assistant' = row.role === 'assistant' ? 'assistant' : 'user';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parts: any[] = [];
+    if (row.content && row.content.length > 0) {
+      parts.push({ type: 'text', text: row.content });
+    }
+    const calls = Array.isArray(row.toolCalls) ? (row.toolCalls as PersistedToolCall[]) : [];
+    for (const c of calls) {
+      parts.push({
+        type: `tool-${c.toolName}`,
+        toolCallId: c.toolCallId ?? randomUUID(),
+        state: 'output-available',
+        input: c.args,
+        output: c.output ?? {
+          status: c.status ?? 'EXECUTED',
+          decisionId: c.decisionId ?? null,
+          summary: c.summary ?? '',
+        },
+      });
+    }
+    return { id: row.id, role, parts } as UIMessage;
+  });
 }

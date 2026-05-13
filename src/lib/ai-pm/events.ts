@@ -3,7 +3,6 @@ export const AI_PM_EVENT_NAMES = [
   'ai-pm/event.error',
   'ai-pm/event.drawdown',
   'ai-pm/event.funding-flip',
-  'ai-pm/event.chat',
 ] as const;
 
 export type AiPmEventName = (typeof AI_PM_EVENT_NAMES)[number];
@@ -52,19 +51,11 @@ export interface FundingFlipPayload extends BaseEventPayload {
   currentRate: number;
 }
 
-export interface ChatPayload extends BaseEventPayload {
-  symbol: null;
-  chatMessageId: string;
-  userMessage: string;
-  assistantPlaceholderId: string;
-}
-
 export type AiPmEventPayload =
   | FillPayload
   | ErrorPayload
   | DrawdownPayload
-  | FundingFlipPayload
-  | ChatPayload;
+  | FundingFlipPayload;
 
 export type AiTriggerEnum =
   | 'EVENT_FILL'
@@ -83,8 +74,6 @@ export function mapNameToEnum(name: AiPmEventName): AiTriggerEnum {
       return 'EVENT_DRAWDOWN';
     case 'ai-pm/event.funding-flip':
       return 'EVENT_FUNDING_FLIP';
-    case 'ai-pm/event.chat':
-      return 'CHAT';
   }
 }
 

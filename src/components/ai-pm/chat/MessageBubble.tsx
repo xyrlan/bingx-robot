@@ -2,32 +2,33 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-
-export interface ToolCallEntry {
-  toolName: string;
-  args: unknown;
-  status: 'EXECUTED' | 'REJECTED_GUARDRAIL' | 'REJECTED_BACKTEST' | 'REJECTED_REVIEWER' | 'EXECUTION_FAILED';
-  decisionId: string | null;
-  summary: string;
-}
+import type { UIMessage } from 'ai';
 
 export interface MessageBubbleProps {
-  role: 'user' | 'assistant';
-  content: string;
-  decisionId: string | null;
-  toolCalls: ToolCallEntry[] | null;
-  createdAt: string;
+  message: UIMessage;
   pending?: boolean;
   failed?: boolean;
   onRetry?: () => void;
 }
 
-function statusIcon(status: ToolCallEntry['status']): string {
-  return status === 'EXECUTED' ? '🔧' : '❌';
+type ToolStatus =
+  | 'EXECUTED'
+  | 'REJECTED_GUARDRAIL'
+  | 'REJECTED_BACKTEST'
+  | 'REJECTED_REVIEWER'
+  | 'EXECUTION_FAILED';
+
+interface ToolOutputShape {
+  status?: ToolStatus | string;
+  decisionId?: string | null;
+  summary?: string;
 }
 
-// Minimal inline markdown — handles **bold**, *italic*, `code`. Multi-line text
-// is preserved by `whitespace-pre-wrap` on the bubble container.
+function statusIcon(status: string | undefined): string {
+  if (!status || status === 'EXECUTED') return '🔧';
+  return '❌';
+}
+
 function renderInlineMarkdown(text: string): React.ReactNode {
   if (!text) return null;
   const parts: React.ReactNode[] = [];
@@ -51,8 +52,7 @@ function renderInlineMarkdown(text: string): React.ReactNode {
 
 export function MessageBubble(props: MessageBubbleProps) {
   const t = useTranslations('AiPm.Chat');
-  const isUser = props.role === 'user';
-
+  const isUser = props.message.role === 'user';
   const containerClass = isUser ? 'flex justify-end mb-3' : 'flex justify-start mb-3';
   const bubbleBase = 'max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words';
   const userTint = props.failed
@@ -60,25 +60,37 @@ export function MessageBubble(props: MessageBubbleProps) {
     : 'bg-accent/15 text-foreground';
   const assistantTint = 'bg-default-100 border border-default-200 text-foreground';
 
-  const hasToolCalls = Array.isArray(props.toolCalls) && props.toolCalls.length > 0;
+  const textContent = props.message.parts
+    .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+    .map((p) => p.text)
+    .join('');
+
+  const toolParts = props.message.parts.filter(
+    (p) => typeof p.type === 'string' && p.type.startsWith('tool-'),
+  );
+
+  const showTypingDots = props.pending && !textContent && toolParts.length === 0;
+  const showBubble = !!textContent || showTypingDots;
 
   return (
     <div className={containerClass}>
       <div className="flex flex-col gap-1 max-w-full">
-        <div className={`${bubbleBase} ${isUser ? userTint : assistantTint}`}>
-          {props.pending ? (
-            <span className="text-muted" aria-label={t('typing')}>
-              <span className="inline-flex items-center gap-1 align-middle mr-2">
-                <Dot delay={0} />
-                <Dot delay={150} />
-                <Dot delay={300} />
+        {showBubble && (
+          <div className={`${bubbleBase} ${isUser ? userTint : assistantTint}`}>
+            {showTypingDots ? (
+              <span className="text-muted" aria-label={t('typing')}>
+                <span className="inline-flex items-center gap-1 align-middle mr-2">
+                  <Dot delay={0} />
+                  <Dot delay={150} />
+                  <Dot delay={300} />
+                </span>
+                {t('typing')}
               </span>
-              {t('typing')}
-            </span>
-          ) : (
-            renderInlineMarkdown(props.content)
-          )}
-        </div>
+            ) : (
+              renderInlineMarkdown(textContent)
+            )}
+          </div>
+        )}
 
         {props.failed && (
           props.onRetry ? (
@@ -94,23 +106,41 @@ export function MessageBubble(props: MessageBubbleProps) {
           )
         )}
 
-        {!props.pending && !isUser && hasToolCalls && (
+        {!isUser && toolParts.length > 0 && (
           <div className="text-xs text-muted pl-2 mt-1 space-y-0.5">
             <div className="font-semibold">{t('toolCallsHeader')}</div>
             <ul className="space-y-0.5">
-              {(props.toolCalls as ToolCallEntry[]).map((entry, i) => {
+              {toolParts.map((part) => {
+                const toolName = part.type.startsWith('tool-')
+                  ? part.type.slice('tool-'.length)
+                  : 'unknown';
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const p = part as any;
+                const state = p.state as
+                  | 'input-streaming'
+                  | 'input-available'
+                  | 'output-available'
+                  | 'output-error'
+                  | undefined;
+                const output = p.output as ToolOutputShape | undefined;
+                const status = output?.status ?? (state === 'output-error' ? 'EXECUTION_FAILED' : 'EXECUTED');
+                const decisionId = output?.decisionId ?? null;
+                const summary =
+                  state === 'input-streaming' || state === 'input-available'
+                    ? t('toolStatus.executing')
+                    : output?.summary ?? p.errorText ?? '';
                 const inner = (
                   <span>
-                    <span className="mr-1">{statusIcon(entry.status)}</span>
-                    <span className="font-mono mr-1">{entry.toolName}</span>
-                    <span>— {entry.summary}</span>
+                    <span className="mr-1">{statusIcon(status)}</span>
+                    <span className="font-mono mr-1">{toolName}</span>
+                    <span>— {summary}</span>
                   </span>
                 );
                 return (
-                  <li key={`${entry.toolName}-${i}`}>
-                    {entry.decisionId ? (
+                  <li key={p.toolCallId ?? `${toolName}-${state}`}>
+                    {decisionId ? (
                       <Link
-                        href={`/dashboard/ai-pm/activity?focus=${entry.decisionId}`}
+                        href={`/dashboard/ai-pm/activity?focus=${decisionId}`}
                         className="hover:underline text-accent"
                       >
                         {inner}
@@ -123,15 +153,6 @@ export function MessageBubble(props: MessageBubbleProps) {
               })}
             </ul>
           </div>
-        )}
-
-        {!props.pending && !isUser && !hasToolCalls && props.decisionId && (
-          <Link
-            href={`/dashboard/ai-pm/activity?focus=${props.decisionId}`}
-            className="text-xs text-accent hover:underline pl-2"
-          >
-            {t('viewDecision')}
-          </Link>
         )}
       </div>
     </div>

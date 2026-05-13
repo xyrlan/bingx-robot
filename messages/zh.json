@@ -219,7 +219,8 @@
       "toolStatus": {
         "executed": "已执行",
         "rejected": "已拒绝",
-        "failed": "失败"
+        "failed": "失败",
+        "executing": "执行中..."
       },
       "budgetExhausted": "AI 达到本轮预算上限；停止。",
       "maxTurnsHit": "AI 达到调用次数上限。",
