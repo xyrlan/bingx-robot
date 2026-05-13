@@ -3,6 +3,14 @@ import { tradingBots, paperBots, aiDecisions } from '@/db/schema';
 import type { db as Db } from '@/db';
 import { createBot as defaultCreateBot } from '@/services/bingx.service';
 import { createPaperBot as defaultCreatePaperBot } from '@/services/paper-bots.service';
+import {
+  placeFuturesOrder as defaultPlaceFuturesOrder,
+  cancelFuturesOrder as defaultCancelFuturesOrder,
+  cancelAllFuturesOrders as defaultCancelAllFuturesOrders,
+  closeAllPositions as defaultCloseAllPositions,
+  listFuturesPositions as defaultListFuturesPositions,
+  type PlaceOrderParams,
+} from '@/services/bingx-orders.service';
 import type { ProposedAction } from '@/lib/ai-pm/decision.prompt';
 
 export type ExecutionStatus = 'EXECUTED' | 'EXECUTION_FAILED';
@@ -13,6 +21,7 @@ export interface ExecutionResult {
   realBotId?: string;
   paperBotId?: string;
   newBotId?: string;
+  resultOrderId?: string;
   reason?: string;
 }
 
@@ -30,8 +39,99 @@ export interface ExecuteParams {
   createBotFn?: typeof defaultCreateBot;
   createPaperBotFn?: typeof defaultCreatePaperBot;
   setLeverageFn?: (client: unknown, symbol: string, leverage: number) => Promise<void>;
+  placeOrderFn?: typeof defaultPlaceFuturesOrder;
+  cancelOrderFn?: typeof defaultCancelFuturesOrder;
+  cancelAllOrdersFn?: typeof defaultCancelAllFuturesOrders;
+  closeAllPositionsFn?: typeof defaultCloseAllPositions;
+  listPositionsFn?: typeof defaultListFuturesPositions;
+  getLastPriceFn?: (client: unknown, symbol: string) => Promise<string>;
+  getContractInfoFn?: (symbol: string) => Promise<{ quantityPrecision: number; minNotional: string }>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bingxClient?: any;
+}
+
+function computeQuantity(
+  capitalUsdt: number,
+  leverage: number,
+  lastPrice: string,
+  precision: number,
+): string {
+  const rawQty = (capitalUsdt * leverage) / Number(lastPrice);
+  const factor = Math.pow(10, precision);
+  return (Math.ceil(rawQty * factor) / factor).toFixed(precision);
+}
+
+async function defaultGetLastPriceFn(client: unknown, symbol: string): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = client as any;
+  const res = await c.get('/openApi/swap/v2/quote/price', { symbol });
+  return String(res?.price ?? '0');
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function defaultGetContractInfoFn(_symbol: string): Promise<{ quantityPrecision: number; minNotional: string }> {
+  // Conservative default. Most BTC/ETH perpetuals on BingX use 4 decimals for quantity.
+  return { quantityPrecision: 4, minNotional: '1' };
+}
+
+async function placeOrderHelper(
+  params: ExecuteParams,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  action: any,
+  bingxOrderType: PlaceOrderParams['type'],
+  extra: Partial<PlaceOrderParams>,
+): Promise<ExecutionResult> {
+  if (params.config.paperMode) {
+    return { status: 'EXECUTION_FAILED', decisionId: params.decisionId, reason: 'paper-mode raw orders not supported v1' };
+  }
+  if (!params.bingxClient) {
+    return { status: 'EXECUTION_FAILED', decisionId: params.decisionId, reason: 'missing_bingx_client' };
+  }
+  const placeFn = params.placeOrderFn ?? defaultPlaceFuturesOrder;
+  const getLastPriceFn = params.getLastPriceFn ?? defaultGetLastPriceFn;
+  const getContractInfoFn = params.getContractInfoFn ?? defaultGetContractInfoFn;
+
+  try {
+    const [lastPrice, contract] = await Promise.all([
+      getLastPriceFn(params.bingxClient, action.symbol),
+      getContractInfoFn(action.symbol),
+    ]);
+    const quantity = computeQuantity(action.capitalUsdt, action.leverage, lastPrice, contract.quantityPrecision);
+
+    const orderParams: PlaceOrderParams = {
+      symbol: action.symbol,
+      side: action.side,
+      positionSide: action.positionSide,
+      type: bingxOrderType,
+      quantity,
+      ...extra,
+    };
+
+    if (action.stopLossPercent !== undefined) {
+      const entry = Number(lastPrice);
+      const slPrice = action.side === 'BUY'
+        ? entry * (1 - action.stopLossPercent / 100)
+        : entry * (1 + action.stopLossPercent / 100);
+      orderParams.stopLoss = { type: 'STOP_MARKET', stopPrice: String(Math.round(slPrice)) };
+    }
+    if (action.takeProfitPercent !== undefined) {
+      const entry = Number(lastPrice);
+      const tpPrice = action.side === 'BUY'
+        ? entry * (1 + action.takeProfitPercent / 100)
+        : entry * (1 - action.takeProfitPercent / 100);
+      orderParams.takeProfit = { type: 'TAKE_PROFIT_MARKET', stopPrice: String(Math.round(tpPrice)) };
+    }
+
+    const res = await placeFn(params.bingxClient, orderParams);
+    await setResultOrderId(params.db, params.decisionId, res.orderId);
+    return { status: 'EXECUTED', decisionId: params.decisionId, resultOrderId: res.orderId };
+  } catch (err) {
+    return {
+      status: 'EXECUTION_FAILED',
+      decisionId: params.decisionId,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
@@ -230,6 +330,101 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
         await tx.update(tradingBots).set({ positionSizeUsdt: String(toCap + action.amountUsdt) }).where(and(eq(tradingBots.id, action.toBotId), eq(tradingBots.userId, userId))).returning();
       });
       return { status: 'EXECUTED', decisionId, realBotId: fromRow.id };
+    }
+
+    case 'place_market_order':
+      return placeOrderHelper(params, action, 'MARKET', {});
+
+    case 'place_limit_order':
+      return placeOrderHelper(params, action, 'LIMIT', {
+        price: String(action.price),
+        timeInForce: action.timeInForce,
+      });
+
+    case 'place_stop_order':
+      return placeOrderHelper(params, action, 'STOP_MARKET', {
+        stopPrice: String(action.stopPrice),
+      });
+
+    case 'place_take_profit':
+      return placeOrderHelper(params, action, 'TAKE_PROFIT_MARKET', {
+        stopPrice: String(action.stopPrice),
+      });
+
+    case 'place_trailing_stop':
+      return placeOrderHelper(params, action, 'TRAILING_STOP_MARKET', {
+        priceRate: String(action.callbackRate),
+      });
+
+    case 'close_position': {
+      if (config.paperMode) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'paper-mode raw orders not supported v1' };
+      }
+      if (!params.bingxClient) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'missing_bingx_client' };
+      }
+      try {
+        // No side+percent → close all positions for this symbol.
+        if (!action.side || !action.percent) {
+          const closeAllFn = params.closeAllPositionsFn ?? defaultCloseAllPositions;
+          const res = await closeAllFn(params.bingxClient, action.symbol);
+          return { status: 'EXECUTED', decisionId, reason: `closed ${res.closedCount} position(s)` };
+        }
+        // Partial close: look up the position, compute closeQty, place reduce-only inverse-side market.
+        const listFn = params.listPositionsFn ?? defaultListFuturesPositions;
+        const placeFn = params.placeOrderFn ?? defaultPlaceFuturesOrder;
+        const positions = await listFn(params.bingxClient, action.symbol);
+        const match = positions.find((p) => p.side === action.side);
+        if (!match) {
+          return { status: 'EXECUTION_FAILED', decisionId, reason: `no ${action.side} position for ${action.symbol}` };
+        }
+        const closeQty = (Number(match.qty) * action.percent) / 100;
+        const orderParams: PlaceOrderParams = {
+          symbol: action.symbol,
+          side: action.side === 'LONG' ? 'SELL' : 'BUY',
+          positionSide: action.side,
+          type: 'MARKET',
+          quantity: String(closeQty),
+          reduceOnly: true,
+        };
+        const res = await placeFn(params.bingxClient, orderParams);
+        await setResultOrderId(params.db, decisionId, res.orderId);
+        return { status: 'EXECUTED', decisionId, resultOrderId: res.orderId };
+      } catch (err) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    case 'cancel_order': {
+      if (config.paperMode) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'paper-mode raw orders not supported v1' };
+      }
+      if (!params.bingxClient) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'missing_bingx_client' };
+      }
+      const cancelFn = params.cancelOrderFn ?? defaultCancelFuturesOrder;
+      try {
+        await cancelFn(params.bingxClient, action.symbol, action.orderId);
+        return { status: 'EXECUTED', decisionId };
+      } catch (err) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    case 'cancel_all_orders': {
+      if (config.paperMode) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'paper-mode raw orders not supported v1' };
+      }
+      if (!params.bingxClient) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: 'missing_bingx_client' };
+      }
+      const cancelAllFn = params.cancelAllOrdersFn ?? defaultCancelAllFuturesOrders;
+      try {
+        const res = await cancelAllFn(params.bingxClient, action.symbol);
+        return { status: 'EXECUTED', decisionId, reason: `canceled ${res.canceledCount} order(s)` };
+      } catch (err) {
+        return { status: 'EXECUTION_FAILED', decisionId, reason: err instanceof Error ? err.message : String(err) };
+      }
     }
   }
 }
