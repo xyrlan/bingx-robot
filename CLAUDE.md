@@ -28,6 +28,19 @@ npm run db:push          # Push schema directly (dev only)
 npm run lint             # ESLint 9
 ```
 
+## Test database isolation
+
+Vitest runs integration tests that INSERT/DELETE rows. **Do not point it at a
+shared production database.** `vitest.config.ts` refuses to start if the
+selected URL looks like a Supabase pooler hostname.
+
+Setup: copy `.env.test.example` → `.env.test` and fill `TEST_DATABASE_URL` +
+`TEST_DIRECT_URL`. Either a local Docker postgres or a dedicated Supabase
+test project / branch is fine. Run migrations against that DB before tests:
+`TEST_DATABASE_URL=… npm run db:migrate`. The escape hatch
+`TEST_DATABASE_ALLOW_PROD=1` exists but should only be used when you fully
+own the cleanup.
+
 ## Architecture
 
 ### Tech Stack
