@@ -450,3 +450,155 @@ describe('execute — reallocate_capital', () => {
     expect(got.reason).toMatch(/same bot/i);
   });
 });
+
+describe('execute — place_market_order', () => {
+  it('paper mode is refused', async () => {
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: {} as any,
+    });
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/paper-mode/i);
+  });
+
+  it('real mode without bingxClient fails', async () => {
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: {} as any,
+    });
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/missing_bingx_client/);
+  });
+
+  it('happy path returns resultOrderId and updates decision row', async () => {
+    const updateMock = vi.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [{}] }) }) });
+    const placeFn = vi.fn().mockResolvedValue({ orderId: 'abc-123', status: 'FILLED', avgPrice: '50000' });
+    const getLastPriceFn = vi.fn().mockResolvedValue('50000');
+    const getContractInfoFn = vi.fn().mockResolvedValue({ quantityPrecision: 4, minNotional: '1' });
+
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { update: updateMock } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+      placeOrderFn: placeFn,
+      getLastPriceFn,
+      getContractInfoFn,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(got.resultOrderId).toBe('abc-123');
+    expect(placeFn).toHaveBeenCalledOnce();
+    const placeArgs = placeFn.mock.calls[0][1] as { quantity: string };
+    expect(placeArgs.quantity).toMatch(/^0\.\d+$/);
+  });
+
+  it('forwards stopLoss / takeProfit when provided', async () => {
+    const placeFn = vi.fn().mockResolvedValue({ orderId: '1', status: 'FILLED' });
+    const updateMock = vi.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [{}] }) }) });
+    await execute({
+      userId, decisionId,
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, stopLossPercent: 2, takeProfitPercent: 5, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { update: updateMock } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+      placeOrderFn: placeFn,
+      getLastPriceFn: vi.fn().mockResolvedValue('50000'),
+      getContractInfoFn: vi.fn().mockResolvedValue({ quantityPrecision: 4, minNotional: '1' }),
+    });
+    const args = placeFn.mock.calls[0][1] as { stopLoss?: { stopPrice: string }; takeProfit?: { stopPrice: string } };
+    expect(args.stopLoss?.stopPrice).toBe('49000');
+    expect(args.takeProfit?.stopPrice).toBe('52500');
+  });
+
+  it('BingX error → EXECUTION_FAILED with reason', async () => {
+    const placeFn = vi.fn().mockRejectedValue(new Error('Insufficient balance'));
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { update: vi.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [{}] }) }) }) } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+      placeOrderFn: placeFn,
+      getLastPriceFn: vi.fn().mockResolvedValue('50000'),
+      getContractInfoFn: vi.fn().mockResolvedValue({ quantityPrecision: 4, minNotional: '1' }),
+    });
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.reason).toMatch(/insufficient/i);
+  });
+});
+
+describe('execute — cancel_order', () => {
+  it('calls cancelOrderFn and returns EXECUTED', async () => {
+    const cancelFn = vi.fn().mockResolvedValue(undefined);
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'cancel_order', symbol: 'BTC-USDT', orderId: '7', reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: {} as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+      cancelOrderFn: cancelFn,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(cancelFn).toHaveBeenCalledWith(expect.anything(), 'BTC-USDT', '7');
+  });
+});
+
+describe('execute — close_position', () => {
+  it('without side+percent calls closeAllPositionsFn', async () => {
+    const closeAllFn = vi.fn().mockResolvedValue({ closedCount: 1 });
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'close_position', symbol: 'BTC-USDT', reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: {} as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+      closeAllPositionsFn: closeAllFn,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(closeAllFn).toHaveBeenCalledWith(expect.anything(), 'BTC-USDT');
+  });
+
+  it('with side+percent computes closeQty and places reduce-only market', async () => {
+    const listFn = vi.fn().mockResolvedValue([
+      { symbol: 'BTC-USDT', side: 'LONG', qty: '0.5', entryPrice: '50000', markPrice: '51000', unrealizedPnlUsdt: '500', leverage: 5, liquidationPrice: '45000' },
+    ]);
+    const placeFn = vi.fn().mockResolvedValue({ orderId: 'close-1', status: 'FILLED' });
+    const updateMock = vi.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [{}] }) }) });
+
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'close_position', symbol: 'BTC-USDT', side: 'LONG', percent: 50, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { update: updateMock } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+      listPositionsFn: listFn,
+      placeOrderFn: placeFn,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(got.resultOrderId).toBe('close-1');
+    const args = placeFn.mock.calls[0][1] as { side: string; positionSide: string; reduceOnly?: boolean; quantity: string };
+    expect(args.side).toBe('SELL');           // inverse of LONG
+    expect(args.positionSide).toBe('LONG');
+    expect(args.reduceOnly).toBe(true);
+    expect(args.quantity).toBe('0.25');        // 50% of 0.5
+  });
+});

@@ -42,12 +42,101 @@ export const NoActionSchema = z.object({
   reasoning: ReasoningSchema,
 });
 
+const SideSchema = z.enum(['BUY', 'SELL']);
+const PositionSideSchema = z.enum(['LONG', 'SHORT']);
+
+export const PlaceMarketOrderActionSchema = z.object({
+  type: z.literal('place_market_order'),
+  symbol: z.string().min(1),
+  side: SideSchema,
+  positionSide: PositionSideSchema,
+  capitalUsdt: z.number().positive(),
+  leverage: z.number().int().min(1).max(20),
+  stopLossPercent: z.number().positive().lt(100).optional(),
+  takeProfitPercent: z.number().positive().lt(500).optional(),
+  reasoning: ReasoningSchema,
+});
+
+export const PlaceLimitOrderActionSchema = z.object({
+  type: z.literal('place_limit_order'),
+  symbol: z.string().min(1),
+  side: SideSchema,
+  positionSide: PositionSideSchema,
+  price: z.number().positive(),
+  capitalUsdt: z.number().positive(),
+  leverage: z.number().int().min(1).max(20),
+  timeInForce: z.enum(['GTC', 'IOC', 'FOK', 'PostOnly']).optional(),
+  reasoning: ReasoningSchema,
+});
+
+export const PlaceStopOrderActionSchema = z.object({
+  type: z.literal('place_stop_order'),
+  symbol: z.string().min(1),
+  side: SideSchema,
+  positionSide: PositionSideSchema,
+  stopPrice: z.number().positive(),
+  capitalUsdt: z.number().positive(),
+  leverage: z.number().int().min(1).max(20),
+  reasoning: ReasoningSchema,
+});
+
+export const PlaceTakeProfitActionSchema = z.object({
+  type: z.literal('place_take_profit'),
+  symbol: z.string().min(1),
+  side: SideSchema,
+  positionSide: PositionSideSchema,
+  stopPrice: z.number().positive(),
+  capitalUsdt: z.number().positive(),
+  leverage: z.number().int().min(1).max(20),
+  reasoning: ReasoningSchema,
+});
+
+export const PlaceTrailingStopActionSchema = z.object({
+  type: z.literal('place_trailing_stop'),
+  symbol: z.string().min(1),
+  side: SideSchema,
+  positionSide: PositionSideSchema,
+  capitalUsdt: z.number().positive(),
+  leverage: z.number().int().min(1).max(20),
+  callbackRate: z.number().positive().max(1),
+  reasoning: ReasoningSchema,
+});
+
+export const ClosePositionActionSchema = z.object({
+  type: z.literal('close_position'),
+  symbol: z.string().min(1),
+  side: PositionSideSchema.optional(),
+  percent: z.number().int().min(1).max(100).optional(),
+  reasoning: ReasoningSchema,
+});
+
+export const CancelOrderActionSchema = z.object({
+  type: z.literal('cancel_order'),
+  symbol: z.string().min(1),
+  orderId: z.string().min(1),
+  reasoning: ReasoningSchema,
+});
+
+export const CancelAllOrdersActionSchema = z.object({
+  type: z.literal('cancel_all_orders'),
+  symbol: z.string().min(1).optional(),
+  reasoning: ReasoningSchema,
+});
+
 export const ActionSchema = z.discriminatedUnion('type', [
   CreateBotActionSchema,
   StopBotActionSchema,
   AdjustParamsActionSchema,
   ReallocateCapitalActionSchema,
   NoActionSchema,
+  PlaceMarketOrderActionSchema,
+  PlaceLimitOrderActionSchema,
+  PlaceStopOrderActionSchema,
+  PlaceTakeProfitActionSchema,
+  PlaceTrailingStopActionSchema,
+  ClosePositionActionSchema,
+  CancelOrderActionSchema,
+  CancelAllOrdersActionSchema,
 ]);
 
 export const ProposeActionsSchema = z.object({

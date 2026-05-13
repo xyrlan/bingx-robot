@@ -65,10 +65,113 @@ describe('chat-tools', () => {
   beforeAll(async () => { await ensureUser(); await cleanup(); });
   afterEach(async () => { await cleanup(); });
 
-  it('exports ALL_TOOL_DEFINITIONS with 8 tools', () => {
-    expect(ALL_TOOL_DEFINITIONS.map(t => t.name).sort()).toEqual(
-      ['adjust_params', 'create_bot', 'pause_kill_switch', 'read_decisions', 'read_portfolio', 'read_signals', 'reallocate_capital', 'stop_bot'].sort(),
-    );
+  it('exports ALL_TOOL_DEFINITIONS with 19 tools', () => {
+    expect(ALL_TOOL_DEFINITIONS.map((t) => t.name).sort()).toEqual([
+      'adjust_params', 'cancel_all_orders', 'cancel_order', 'close_position', 'create_bot',
+      'pause_kill_switch', 'place_limit_order', 'place_market_order', 'place_stop_order',
+      'place_take_profit', 'place_trailing_stop', 'read_balance', 'read_decisions',
+      'read_open_orders', 'read_portfolio', 'read_positions', 'read_signals',
+      'reallocate_capital', 'stop_bot',
+    ].sort());
+  });
+
+  it('place_market_order dispatches and surfaces resultOrderId in summary', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd1' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd1', resultOrderId: 'abc12345' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('place_market_order', {
+      symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG',
+      capitalUsdt: 100, leverage: 5, reasoning: 'test',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect(got.summary).toMatch(/abc12345/);
+  });
+
+  it('place_limit_order dispatches', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd2' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd2', resultOrderId: 'lim-1' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('place_limit_order', {
+      symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG',
+      price: 49000, capitalUsdt: 50, leverage: 3, reasoning: 'r',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect(validateFn).toHaveBeenCalledOnce();
+  });
+
+  it('place_stop_order dispatches', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd3' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd3', resultOrderId: 'stop-1' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('place_stop_order', {
+      symbol: 'BTC-USDT', side: 'SELL', positionSide: 'SHORT',
+      stopPrice: 60000, capitalUsdt: 50, leverage: 3, reasoning: 'r',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('place_take_profit dispatches', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd4' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd4', resultOrderId: 'tp-1' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('place_take_profit', {
+      symbol: 'BTC-USDT', side: 'SELL', positionSide: 'LONG',
+      stopPrice: 60000, capitalUsdt: 50, leverage: 3, reasoning: 'r',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('place_trailing_stop dispatches', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd5' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd5', resultOrderId: 'tr-1' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('place_trailing_stop', {
+      symbol: 'BTC-USDT', side: 'SELL', positionSide: 'LONG',
+      capitalUsdt: 50, leverage: 3, callbackRate: 0.05, reasoning: 'r',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('close_position dispatches', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd6' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd6' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('close_position', {
+      symbol: 'BTC-USDT', reasoning: 'r',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('cancel_order dispatches', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd7' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd7' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('cancel_order', {
+      symbol: 'BTC-USDT', orderId: '99', reasoning: 'r',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('cancel_all_orders dispatches', async () => {
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd8' });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd8' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    const got = await executeTool('cancel_all_orders', {
+      reasoning: 'r',
+    }, ctx);
+    expect(got.status).toBe('EXECUTED');
+  });
+
+  it('place_market_order refuses on kill switch', async () => {
+    const validateFn = vi.fn();
+    const ctx = makeCtx({ validateFn, config: { ...makeCtx().config, killSwitch: true } });
+    const got = await executeTool('place_market_order', {
+      symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG',
+      capitalUsdt: 100, leverage: 5, reasoning: 'r',
+    }, ctx);
+    expect(validateFn).not.toHaveBeenCalled();
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.summary).toMatch(/kill switch/i);
   });
 
   it('read_portfolio returns the snapshot', async () => {
@@ -219,5 +322,43 @@ describe('chat-tools', () => {
     expect(validateFn).not.toHaveBeenCalled();
     expect(got.status).toBe('EXECUTION_FAILED');
     expect(got.summary).toMatch(/kill switch/i);
+  });
+
+  it('read_balance returns balance from getFuturesBalanceFn', async () => {
+    const getFuturesBalanceFn = vi.fn().mockResolvedValue({
+      availableUsdt: '900', equityUsdt: '1000', marginUsedUsdt: '100', unrealizedPnlUsdt: '0',
+    });
+    const ctx = makeCtx({ getFuturesBalanceFn, bingxClient: {} as ToolExecContext['bingxClient'] });
+    const got = await executeTool('read_balance', {}, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect(got.decisionId).toBeNull();
+    expect(got.summary).toMatch(/\$900/);
+  });
+
+  it('read_positions returns positions from listFuturesPositionsFn', async () => {
+    const listFuturesPositionsFn = vi.fn().mockResolvedValue([
+      { symbol: 'BTC-USDT', side: 'LONG', qty: '0.1', entryPrice: '50000', markPrice: '51000', unrealizedPnlUsdt: '100', leverage: 5, liquidationPrice: '45000' },
+    ]);
+    const ctx = makeCtx({ listFuturesPositionsFn, bingxClient: {} as ToolExecContext['bingxClient'] });
+    const got = await executeTool('read_positions', {}, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect((got.payload as unknown[]).length).toBe(1);
+  });
+
+  it('read_open_orders returns from listFuturesOpenOrdersFn', async () => {
+    const listFuturesOpenOrdersFn = vi.fn().mockResolvedValue([
+      { orderId: '1', symbol: 'BTC-USDT', side: 'BUY', type: 'LIMIT', quantity: '0.01', price: '49000', stopPrice: '0', status: 'NEW', createdAt: '2026-05-13T00:00:00Z' },
+    ]);
+    const ctx = makeCtx({ listFuturesOpenOrdersFn, bingxClient: {} as ToolExecContext['bingxClient'] });
+    const got = await executeTool('read_open_orders', {}, ctx);
+    expect(got.status).toBe('EXECUTED');
+    expect((got.payload as unknown[]).length).toBe(1);
+  });
+
+  it('read_balance refuses when bingxClient is missing', async () => {
+    const ctx = makeCtx({ bingxClient: undefined });
+    const got = await executeTool('read_balance', {}, ctx);
+    expect(got.status).toBe('EXECUTION_FAILED');
+    expect(got.summary).toMatch(/bingx/i);
   });
 });

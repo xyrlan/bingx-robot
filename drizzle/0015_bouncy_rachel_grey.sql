@@ -1,0 +1,9 @@
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'PLACE_MARKET_ORDER';--> statement-breakpoint
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'PLACE_LIMIT_ORDER';--> statement-breakpoint
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'PLACE_STOP_ORDER';--> statement-breakpoint
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'PLACE_TAKE_PROFIT';--> statement-breakpoint
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'PLACE_TRAILING_STOP';--> statement-breakpoint
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'CLOSE_POSITION';--> statement-breakpoint
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'CANCEL_ORDER';--> statement-breakpoint
+ALTER TYPE "public"."ai_action_type" ADD VALUE 'CANCEL_ALL_ORDERS';--> statement-breakpoint
+ALTER TABLE "ai_decisions" ADD COLUMN "result_order_id" text;

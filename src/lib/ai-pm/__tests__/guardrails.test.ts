@@ -209,3 +209,54 @@ describe('runGuardrails — reallocate_capital', () => {
     expect(got.ok).toBe(true);
   });
 });
+
+describe('runGuardrails — raw trades', () => {
+  it('rejects place_market_order when leverage exceeds cap', () => {
+    const got = runGuardrails({
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 25, reasoning: 'r' },
+      config: { ...baseCfg, allowedStrategies: [...baseCfg.allowedStrategies] },
+      portfolioState: baseState,
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.reason).toBe('LEVERAGE_CAP');
+  });
+
+  it('rejects place_market_order when capital pushes total over cap', () => {
+    const got = runGuardrails({
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 950, leverage: 2, reasoning: 'r' },
+      config: { ...baseCfg, allowedStrategies: [...baseCfg.allowedStrategies] },
+      portfolioState: baseState,
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.reason).toBe('CAPITAL_CAP');
+  });
+
+  it('rejects place_market_order when symbol not in allowedSymbols', () => {
+    const got = runGuardrails({
+      action: { type: 'place_market_order', symbol: 'DOGE-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 50, leverage: 2, reasoning: 'r' },
+      config: { ...baseCfg, allowedStrategies: [...baseCfg.allowedStrategies], allowedSymbols: ['BTC-USDT', 'ETH-USDT'] },
+      portfolioState: baseState,
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.reason).toBe('STRATEGY_NOT_ALLOWED');
+  });
+
+  it('accepts close_position regardless of leverage/capital', () => {
+    const got = runGuardrails({
+      action: { type: 'close_position', symbol: 'BTC-USDT', reasoning: 'r' },
+      config: { ...baseCfg, allowedStrategies: [...baseCfg.allowedStrategies] },
+      portfolioState: baseState,
+    });
+    expect(got.ok).toBe(true);
+  });
+
+  it('rejects cancel_order when kill switch is engaged', () => {
+    const got = runGuardrails({
+      action: { type: 'cancel_order', symbol: 'BTC-USDT', orderId: '7', reasoning: 'r' },
+      config: { ...baseCfg, allowedStrategies: [...baseCfg.allowedStrategies], killSwitch: true },
+      portfolioState: baseState,
+    });
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.reason).toBe('KILL_SWITCH');
+  });
+});
