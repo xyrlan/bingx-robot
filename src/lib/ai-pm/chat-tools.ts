@@ -7,6 +7,7 @@ import type { AiPmConfigDecrypted } from '@/services/ai-pm-config.service';
 import { setKillSwitch as defaultSetKillSwitch } from '@/services/ai-pm-config.service';
 import { validate as defaultValidate } from '@/lib/ai-pm/validation';
 import { execute as defaultExecute, type ExecutionResult } from '@/lib/ai-pm/executor';
+import { makeGetContractInfoFn } from '@/lib/ai-pm/contract-info';
 import type { BingxClient } from '@/lib/bingx/client';
 import type { ProposedAction } from '@/lib/ai-pm/decision.prompt';
 import type { ToolDefinition } from '@/lib/ai-pm/llm';
@@ -629,6 +630,7 @@ async function dispatchMutatingAction(
       config: { bingxApiKeyId: ctx.config.bingxApiKeyId, paperMode: ctx.config.paperMode },
       db: ctx.db,
       bingxClient: ctx.bingxClient,
+      getContractInfoFn: ctx.bingxClient ? makeGetContractInfoFn(ctx.bingxClient) : undefined,
     });
     return {
       status: exec.status,

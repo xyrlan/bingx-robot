@@ -2,6 +2,7 @@ import { runSignal as defaultSignal } from '@/lib/ai-pm/signal';
 import { runDecision as defaultDecision } from '@/lib/ai-pm/decision';
 import { validate as defaultValidate } from '@/lib/ai-pm/validation';
 import { execute as defaultExecute } from '@/lib/ai-pm/executor';
+import { makeGetContractInfoFn } from '@/lib/ai-pm/contract-info';
 import { aiDecisions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import type { db as Db } from '@/db';
@@ -173,6 +174,8 @@ export async function runScopedPipeline(params: RunScopedPipelineParams): Promis
         action,
         config: { bingxApiKeyId: params.config.bingxApiKeyId, paperMode: params.config.paperMode },
         db: params.db,
+        bingxClient: params.bingxClient,
+        getContractInfoFn: makeGetContractInfoFn(params.bingxClient),
       });
     } catch (err) {
       params.logger.error('event_execute_threw', { aiEventId: params.aiEventId, err: err instanceof Error ? err.message : String(err) });

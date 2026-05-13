@@ -74,6 +74,15 @@ async function defaultGetContractInfoFn(_symbol: string): Promise<{ quantityPrec
   return { quantityPrecision: 4, minNotional: '1' };
 }
 
+function syntheticOrderId(): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const g: any = globalThis;
+  if (g.crypto?.randomUUID) {
+    return `paper-${(g.crypto.randomUUID() as string).slice(0, 8)}`;
+  }
+  return `paper-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 async function placeOrderHelper(
   params: ExecuteParams,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,15 +90,45 @@ async function placeOrderHelper(
   bingxOrderType: PlaceOrderParams['type'],
   extra: Partial<PlaceOrderParams>,
 ): Promise<ExecutionResult> {
-  if (params.config.paperMode) {
-    return { status: 'EXECUTION_FAILED', decisionId: params.decisionId, reason: 'paper-mode raw orders not supported v1' };
-  }
-  if (!params.bingxClient) {
-    return { status: 'EXECUTION_FAILED', decisionId: params.decisionId, reason: 'missing_bingx_client' };
-  }
   const placeFn = params.placeOrderFn ?? defaultPlaceFuturesOrder;
   const getLastPriceFn = params.getLastPriceFn ?? defaultGetLastPriceFn;
   const getContractInfoFn = params.getContractInfoFn ?? defaultGetContractInfoFn;
+
+  if (params.config.paperMode) {
+    try {
+      let lastPrice = '0';
+      let precision = 4;
+      if (params.bingxClient) {
+        const [price, contract] = await Promise.all([
+          getLastPriceFn(params.bingxClient, action.symbol),
+          getContractInfoFn(action.symbol),
+        ]);
+        lastPrice = price;
+        precision = contract.quantityPrecision;
+      }
+      const quantity = Number(lastPrice) > 0
+        ? computeQuantity(action.capitalUsdt, action.leverage, lastPrice, precision)
+        : '0';
+      const resultOrderId = syntheticOrderId();
+      await setResultOrderId(params.db, params.decisionId, resultOrderId);
+      return {
+        status: 'EXECUTED',
+        decisionId: params.decisionId,
+        resultOrderId,
+        reason: `paper ${bingxOrderType} ${action.symbol} qty=${quantity} @${lastPrice}`,
+      };
+    } catch (err) {
+      return {
+        status: 'EXECUTION_FAILED',
+        decisionId: params.decisionId,
+        reason: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  if (!params.bingxClient) {
+    return { status: 'EXECUTION_FAILED', decisionId: params.decisionId, reason: 'missing_bingx_client' };
+  }
 
   try {
     const [lastPrice, contract] = await Promise.all([
@@ -358,7 +397,12 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
 
     case 'close_position': {
       if (config.paperMode) {
-        return { status: 'EXECUTION_FAILED', decisionId, reason: 'paper-mode raw orders not supported v1' };
+        const resultOrderId = syntheticOrderId();
+        await setResultOrderId(params.db, decisionId, resultOrderId);
+        const detail = action.side && action.percent
+          ? `paper close ${action.percent}% ${action.side} ${action.symbol}`
+          : `paper close all ${action.symbol}`;
+        return { status: 'EXECUTED', decisionId, resultOrderId, reason: detail };
       }
       if (!params.bingxClient) {
         return { status: 'EXECUTION_FAILED', decisionId, reason: 'missing_bingx_client' };
@@ -397,7 +441,11 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
 
     case 'cancel_order': {
       if (config.paperMode) {
-        return { status: 'EXECUTION_FAILED', decisionId, reason: 'paper-mode raw orders not supported v1' };
+        return {
+          status: 'EXECUTED',
+          decisionId,
+          reason: `paper cancel ${action.orderId} on ${action.symbol}`,
+        };
       }
       if (!params.bingxClient) {
         return { status: 'EXECUTION_FAILED', decisionId, reason: 'missing_bingx_client' };
@@ -413,7 +461,11 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
 
     case 'cancel_all_orders': {
       if (config.paperMode) {
-        return { status: 'EXECUTION_FAILED', decisionId, reason: 'paper-mode raw orders not supported v1' };
+        return {
+          status: 'EXECUTED',
+          decisionId,
+          reason: `paper cancel_all${action.symbol ? ' on ' + action.symbol : ''}`,
+        };
       }
       if (!params.bingxClient) {
         return { status: 'EXECUTION_FAILED', decisionId, reason: 'missing_bingx_client' };

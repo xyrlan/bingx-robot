@@ -452,16 +452,39 @@ describe('execute — reallocate_capital', () => {
 });
 
 describe('execute — place_market_order', () => {
-  it('paper mode is refused', async () => {
+  it('paper mode simulates with bingxClient (real price → computed qty)', async () => {
+    const updateMock = vi.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [{}] }) }) });
+    const placeFn = vi.fn();
     const got = await execute({
       userId, decisionId,
       action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r' },
       config: { bingxApiKeyId: apiKeyId, paperMode: true },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db: {} as any,
+      db: { update: updateMock } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      bingxClient: {} as any,
+      placeOrderFn: placeFn,
+      getLastPriceFn: vi.fn().mockResolvedValue('50000'),
+      getContractInfoFn: vi.fn().mockResolvedValue({ quantityPrecision: 4, minNotional: '1' }),
     });
-    expect(got.status).toBe('EXECUTION_FAILED');
-    expect(got.reason).toMatch(/paper-mode/i);
+    expect(got.status).toBe('EXECUTED');
+    expect(got.resultOrderId).toMatch(/^paper-/);
+    expect(got.reason).toMatch(/paper MARKET/);
+    expect(placeFn).not.toHaveBeenCalled();
+  });
+
+  it('paper mode simulates without bingxClient (qty=0)', async () => {
+    const updateMock = vi.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [{}] }) }) });
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { update: updateMock } as any,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(got.resultOrderId).toMatch(/^paper-/);
+    expect(got.reason).toMatch(/qty=0/);
   });
 
   it('real mode without bingxClient fails', async () => {
@@ -556,9 +579,58 @@ describe('execute — cancel_order', () => {
     expect(got.status).toBe('EXECUTED');
     expect(cancelFn).toHaveBeenCalledWith(expect.anything(), 'BTC-USDT', '7');
   });
+
+  it('paper mode does NOT call cancelOrderFn and returns EXECUTED', async () => {
+    const cancelFn = vi.fn();
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'cancel_order', symbol: 'BTC-USDT', orderId: '7', reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: {} as any,
+      cancelOrderFn: cancelFn,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(got.reason).toMatch(/paper cancel/);
+    expect(cancelFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('execute — cancel_all_orders paper mode', () => {
+  it('returns EXECUTED without calling exchange', async () => {
+    const cancelAllFn = vi.fn();
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'cancel_all_orders', symbol: 'BTC-USDT', reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: {} as any,
+      cancelAllOrdersFn: cancelAllFn,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(got.reason).toMatch(/paper cancel_all/);
+    expect(cancelAllFn).not.toHaveBeenCalled();
+  });
 });
 
 describe('execute — close_position', () => {
+  it('paper mode simulates without exchange calls', async () => {
+    const closeAllFn = vi.fn();
+    const updateMock = vi.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [{}] }) }) });
+    const got = await execute({
+      userId, decisionId,
+      action: { type: 'close_position', symbol: 'BTC-USDT', side: 'LONG', percent: 50, reasoning: 'r' },
+      config: { bingxApiKeyId: apiKeyId, paperMode: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { update: updateMock } as any,
+      closeAllPositionsFn: closeAllFn,
+    });
+    expect(got.status).toBe('EXECUTED');
+    expect(got.resultOrderId).toMatch(/^paper-/);
+    expect(got.reason).toMatch(/paper close 50% LONG/);
+    expect(closeAllFn).not.toHaveBeenCalled();
+  });
+
   it('without side+percent calls closeAllPositionsFn', async () => {
     const closeAllFn = vi.fn().mockResolvedValue({ closedCount: 1 });
     const got = await execute({
