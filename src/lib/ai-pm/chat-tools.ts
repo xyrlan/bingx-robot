@@ -313,7 +313,10 @@ function guardrailConfig(cfg: ToolExecContext['config']) {
     (s): s is AllowedStrategy => (STRATEGY_VALUES as readonly string[]).includes(s),
   );
   return {
-    maxCapitalUsdt: Number(cfg.maxCapitalUsdt ?? 0),
+    // Null/unset config → fall back to the BALANCED preset cap (1000), matching
+    // event-pipeline.ts and ai-pm-tick.ts. A 0 here would silently block every
+    // mutating tool with a confusing "$0 cap" guardrail rejection.
+    maxCapitalUsdt: Number(cfg.maxCapitalUsdt ?? 1000),
     maxConcurrentBots: cfg.maxConcurrentBots ?? 5,
     maxLeverage: cfg.maxLeverage ?? 20,
     allowedStrategies: allowed,

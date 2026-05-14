@@ -39,7 +39,9 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
   const [allowedStrategies, setAllowedStrategies] = useState<Set<Strategy>>(
     new Set((config?.allowedStrategies ?? []) as Strategy[])
   );
-  const [showCustom, setShowCustom] = useState(initialMode === 'CUSTOM');
+  // Default-expanded so the capital cap / bot limit are always discoverable
+  // when editing — a hidden $0 cap silently blocks every AI order otherwise.
+  const [showCustom, setShowCustom] = useState(true);
   const [saving, setSaving] = useState(false);
 
   function selectPreset(preset: 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE') {

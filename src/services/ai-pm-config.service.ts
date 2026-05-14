@@ -56,6 +56,10 @@ export async function createAiPmConfig(
       bingxApiKeyId: input.bingxApiKeyId,
       anthropicApiKeyEncrypted: encrypted,
       mode: input.mode ?? 'BALANCED',
+      // Seed the BALANCED-preset capital cap so a config created without
+      // finishing the guardrail step isn't stuck at a $0 (block-everything) cap.
+      maxCapitalUsdt: '1000',
+      maxConcurrentBots: 5,
     })
     .returning();
   return row;
