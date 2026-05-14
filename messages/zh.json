@@ -172,12 +172,21 @@
         "STOP_BOT": "停止机器人",
         "ADJUST_PARAMS": "调整参数",
         "REALLOCATE_CAPITAL": "重新分配资金",
-        "NO_ACTION": "无操作"
+        "NO_ACTION": "无操作",
+        "PLACE_MARKET_ORDER": "市价单",
+        "PLACE_LIMIT_ORDER": "限价单",
+        "PLACE_STOP_ORDER": "止损单",
+        "PLACE_TAKE_PROFIT": "止盈单",
+        "PLACE_TRAILING_STOP": "追踪止损单",
+        "CLOSE_POSITION": "平仓",
+        "CANCEL_ORDER": "取消订单",
+        "CANCEL_ALL_ORDERS": "取消所有订单"
       },
       "detail": {
         "reasoning": "推理",
         "rejection": "拒绝原因",
         "signal": "信号快照",
+        "noSignal": "通过聊天发起，无信号",
         "params": "参数",
         "linkedBot": "关联机器人",
         "linkedPaperBot": "关联模拟机器人",

@@ -173,12 +173,21 @@
         "STOP_BOT": "Stop bot",
         "ADJUST_PARAMS": "Adjust params",
         "REALLOCATE_CAPITAL": "Reallocate capital",
-        "NO_ACTION": "No action"
+        "NO_ACTION": "No action",
+        "PLACE_MARKET_ORDER": "Market order",
+        "PLACE_LIMIT_ORDER": "Limit order",
+        "PLACE_STOP_ORDER": "Stop order",
+        "PLACE_TAKE_PROFIT": "Take profit",
+        "PLACE_TRAILING_STOP": "Trailing stop",
+        "CLOSE_POSITION": "Close position",
+        "CANCEL_ORDER": "Cancel order",
+        "CANCEL_ALL_ORDERS": "Cancel all orders"
       },
       "detail": {
         "reasoning": "Reasoning",
         "rejection": "Rejection reason",
         "signal": "Signal snapshot",
+        "noSignal": "chat-initiated, no signal",
         "params": "Params",
         "linkedBot": "Linked bot",
         "linkedPaperBot": "Linked paper bot",
