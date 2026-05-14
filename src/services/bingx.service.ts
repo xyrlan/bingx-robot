@@ -393,6 +393,8 @@ export type OpenPosition = {
   positionAmt: number;
   entryPrice: number;
   leverage?: number;
+  /** Unrealized PnL in USDT as reported by the exchange, when present. */
+  unrealizedPnl?: number;
   /** Always string to avoid JS BigInt/precision loss with exchange IDs */
   positionId?: string;
 };
@@ -455,6 +457,36 @@ export async function getKlines(
   }
 }
 
+function extractPositionsArray(data: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(data)) {
+    return data as Array<Record<string, unknown>>;
+  }
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    return (Array.isArray(o.positions) ? o.positions : []) as Array<Record<string, unknown>>;
+  }
+  return [];
+}
+
+function hasOpenAmount(p: Record<string, unknown>): boolean {
+  return Math.abs(Number(p?.positionAmt ?? p?.position ?? 0)) > 0;
+}
+
+function mapRawPosition(p: Record<string, unknown>): OpenPosition {
+  const rawPositionId = (p?.positionId ?? p?.position_id) as string | number | bigint | null | undefined;
+  const rawLeverage = Number(p?.leverage ?? 0);
+  const rawPnl = p?.unrealizedProfit ?? p?.unrealizedPnl;
+  return {
+    symbol: String(p?.symbol ?? ''),
+    positionSide: String(p?.positionSide ?? 'LONG'),
+    positionAmt: Math.abs(Number(p?.positionAmt ?? p?.position ?? 0)),
+    entryPrice: Number(p?.entryPrice ?? p?.avgPrice ?? 0),
+    leverage: rawLeverage > 0 ? rawLeverage : undefined,
+    unrealizedPnl: rawPnl != null ? Number(rawPnl) : undefined,
+    positionId: toSafeIdString(rawPositionId),
+  };
+}
+
 export async function getOpenPositions(
   client: BingxClient,
   symbol: string
@@ -466,35 +498,25 @@ export async function getOpenPositions(
     } catch {
       data = await client.get('/openApi/swap/v2/user/positions', {});
     }
-    let positions: Array<Record<string, unknown>> = [];
-    if (Array.isArray(data)) {
-      positions = data as Array<Record<string, unknown>>;
-    } else if (data && typeof data === 'object') {
-      const o = data as Record<string, unknown>;
-      positions = (Array.isArray(o.positions) ? o.positions : []) as Array<Record<string, unknown>>;
-    }
     const sym = symbol.toUpperCase().replace(/\s/g, '');
-    return positions
+    return extractPositionsArray(data)
       .filter((p) => {
         const s = String(p?.symbol ?? '').toUpperCase().replace(/\s/g, '');
         return s === sym || s.includes(sym);
       })
-      .filter((p) => {
-        const amt = Number(p?.positionAmt ?? p?.position ?? 0);
-        return Math.abs(amt) > 0;
-      })
-      .map((p) => {
-        const rawPositionId = (p?.positionId ?? p?.position_id) as string | number | bigint | null | undefined;
-        const rawLeverage = Number(p?.leverage ?? 0);
-        return {
-          symbol: String(p?.symbol ?? ''),
-          positionSide: String(p?.positionSide ?? 'LONG'),
-          positionAmt: Math.abs(Number(p?.positionAmt ?? p?.position ?? 0)),
-          entryPrice: Number(p?.entryPrice ?? p?.avgPrice ?? 0),
-          leverage: rawLeverage > 0 ? rawLeverage : undefined,
-          positionId: toSafeIdString(rawPositionId),
-        };
-      });
+      .filter(hasOpenAmount)
+      .map(mapRawPosition);
+  } catch {
+    return [];
+  }
+}
+
+export async function getAllOpenPositions(
+  client: BingxClient
+): Promise<OpenPosition[]> {
+  try {
+    const data = await client.get('/openApi/swap/v2/user/positions', {});
+    return extractPositionsArray(data).filter(hasOpenAmount).map(mapRawPosition);
   } catch {
     return [];
   }

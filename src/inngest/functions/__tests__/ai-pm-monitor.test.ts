@@ -92,4 +92,37 @@ describe('ai-pm-monitor', () => {
       allowedSymbols: ['BTC-USDT'],
     }));
   });
+
+  it('calls tickRealBots in real mode with config scope', async () => {
+    const realFn = vi.fn().mockResolvedValue({ advanced: 0, bots: [] });
+    const paperFn = vi.fn().mockResolvedValue({ advanced: 0, bots: [] });
+    const fakeDb = {
+      query: {
+        paperBots: { findMany: async () => [] },
+        aiPmFundingCache: { findFirst: async () => null },
+      },
+      update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
+      insert: () => ({ values: () => ({ onConflictDoUpdate: () => ({ returning: async () => [] }) }) }),
+    } as never;
+
+    await runMonitorForConfig({
+      db: fakeDb,
+      config: { ...baseCfg(), paperMode: false },
+      loadBingxClientFn: async () => ({}) as never,
+      fetchFundingRateFn: async () => 0,
+      tickPaperBotsFn: paperFn,
+      tickRealBotsFn: realFn,
+      sendEventFn: async () => {},
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    expect(paperFn).not.toHaveBeenCalled();
+    expect(realFn).toHaveBeenCalledWith(expect.objectContaining({
+      configId: 'cfg1',
+      userId: 'u1',
+      bingxApiKeyId: 'k1',
+      maxDrawdownPct: 10,
+      allowedSymbols: ['BTC-USDT'],
+    }));
+  });
 });

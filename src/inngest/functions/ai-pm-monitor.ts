@@ -5,6 +5,7 @@ import { aiPmFundingCache } from '@/db/schema';
 import { listEnabledAiPmConfigs } from '@/services/ai-pm-config.service';
 import { getBingxClientByApiKeyId } from '@/services/bingx.service';
 import { tickPaperBots } from '@/services/paper-bot-sim.service';
+import { tickRealBots } from '@/services/real-bot-monitor.service';
 import type { BingxClient } from '@/lib/bingx/client';
 import type { AiPmEventName, AiPmEventPayload } from '@/lib/ai-pm/events';
 import type { AiPmConfigDecrypted } from '@/services/ai-pm-config.service';
@@ -15,6 +16,7 @@ export interface RunMonitorForConfigParams {
   loadBingxClientFn?: (apiKeyId: string) => Promise<BingxClient | null>;
   fetchFundingRateFn?: (client: BingxClient, symbol: string) => Promise<number>;
   tickPaperBotsFn?: typeof tickPaperBots;
+  tickRealBotsFn?: typeof tickRealBots;
   sendEventFn: (event: { name: AiPmEventName; data: AiPmEventPayload }) => Promise<void>;
   logger: { info: (msg: string, ctx?: unknown) => void; warn: (msg: string, ctx?: unknown) => void; error: (msg: string, ctx?: unknown) => void };
 }
@@ -37,6 +39,7 @@ export async function runMonitorForConfig(params: RunMonitorForConfigParams): Pr
   const loadBingx = params.loadBingxClientFn ?? getBingxClientByApiKeyId;
   const fetchRate = params.fetchFundingRateFn ?? defaultFetchFundingRate;
   const tickFn = params.tickPaperBotsFn ?? tickPaperBots;
+  const tickRealFn = params.tickRealBotsFn ?? tickRealBots;
 
   const client = await loadBingx(params.config.bingxApiKeyId);
   if (!client) {
@@ -58,7 +61,17 @@ export async function runMonitorForConfig(params: RunMonitorForConfigParams): Pr
         bingxClient: client,
         logger: params.logger,
       })
-    : { advanced: 0, bots: [] };
+    : await tickRealFn({
+        db: params.db,
+        configId: params.config.id,
+        userId: params.config.userId,
+        bingxApiKeyId: params.config.bingxApiKeyId,
+        allowedSymbols,
+        maxDrawdownPct,
+        sendEventFn: params.sendEventFn,
+        bingxClient: client,
+        logger: params.logger,
+      });
 
   const flipped: string[] = [];
   for (const symbol of allowedSymbols) {
