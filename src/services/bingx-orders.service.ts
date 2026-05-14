@@ -40,9 +40,13 @@ export async function placeFuturesOrder(
   if (params.stopLoss !== undefined) body.stopLoss = JSON.stringify(params.stopLoss);
   if (params.takeProfit !== undefined) body.takeProfit = JSON.stringify(params.takeProfit);
 
+  // BingX swap v2 signs params in the query string — the 3rd arg `true`
+  // (useQueryParams) is mandatory. Without it the client sends a JSON body,
+  // BingX receives no signed params and rejects with "invalid parameters".
   const res = await client.post<{ order: { orderId: string; status: string; avgPrice?: string } }>(
     '/openApi/swap/v2/trade/order',
     body,
+    true,
   );
   return {
     orderId: String(res.order.orderId),
@@ -83,6 +87,7 @@ export async function closeAllPositions(
   const res = await client.post<{ success?: unknown[] }>(
     '/openApi/swap/v2/trade/closeAllPositions',
     { symbol },
+    true,
   );
   return { closedCount: res.success?.length ?? 0 };
 }

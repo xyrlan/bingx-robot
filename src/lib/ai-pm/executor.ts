@@ -11,7 +11,20 @@ import {
   listFuturesPositions as defaultListFuturesPositions,
   type PlaceOrderParams,
 } from '@/services/bingx-orders.service';
+import { BingxApiError } from '@/lib/bingx/errors';
 import type { ProposedAction } from '@/lib/ai-pm/decision.prompt';
+
+/**
+ * Verbatim error string for tool results. BingX errors carry a numeric `code`
+ * that is NOT in `.message`; surfacing it lets the operator (and the LLM)
+ * identify the exact failure instead of guessing.
+ */
+function errReason(err: unknown): string {
+  if (err instanceof BingxApiError) {
+    return `BingX error ${err.code}: ${err.message}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
 
 export type ExecutionStatus = 'EXECUTED' | 'EXECUTION_FAILED';
 
@@ -121,7 +134,7 @@ async function placeOrderHelper(
       return {
         status: 'EXECUTION_FAILED',
         decisionId: params.decisionId,
-        reason: err instanceof Error ? err.message : String(err),
+        reason: errReason(err),
       };
     }
   }
@@ -168,7 +181,7 @@ async function placeOrderHelper(
     return {
       status: 'EXECUTION_FAILED',
       decisionId: params.decisionId,
-      reason: err instanceof Error ? err.message : String(err),
+      reason: errReason(err),
     };
   }
 }
@@ -435,7 +448,7 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
         await setResultOrderId(params.db, decisionId, res.orderId);
         return { status: 'EXECUTED', decisionId, resultOrderId: res.orderId };
       } catch (err) {
-        return { status: 'EXECUTION_FAILED', decisionId, reason: err instanceof Error ? err.message : String(err) };
+        return { status: 'EXECUTION_FAILED', decisionId, reason: errReason(err) };
       }
     }
 
@@ -455,7 +468,7 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
         await cancelFn(params.bingxClient, action.symbol, action.orderId);
         return { status: 'EXECUTED', decisionId };
       } catch (err) {
-        return { status: 'EXECUTION_FAILED', decisionId, reason: err instanceof Error ? err.message : String(err) };
+        return { status: 'EXECUTION_FAILED', decisionId, reason: errReason(err) };
       }
     }
 
@@ -475,7 +488,7 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
         const res = await cancelAllFn(params.bingxClient, action.symbol);
         return { status: 'EXECUTED', decisionId, reason: `canceled ${res.canceledCount} order(s)` };
       } catch (err) {
-        return { status: 'EXECUTION_FAILED', decisionId, reason: err instanceof Error ? err.message : String(err) };
+        return { status: 'EXECUTION_FAILED', decisionId, reason: errReason(err) };
       }
     }
   }
