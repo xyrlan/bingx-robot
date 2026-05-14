@@ -173,12 +173,21 @@
         "STOP_BOT": "Parar bot",
         "ADJUST_PARAMS": "Ajustar parâmetros",
         "REALLOCATE_CAPITAL": "Realocar capital",
-        "NO_ACTION": "Sem ação"
+        "NO_ACTION": "Sem ação",
+        "PLACE_MARKET_ORDER": "Ordem a mercado",
+        "PLACE_LIMIT_ORDER": "Ordem limite",
+        "PLACE_STOP_ORDER": "Ordem stop",
+        "PLACE_TAKE_PROFIT": "Take profit",
+        "PLACE_TRAILING_STOP": "Trailing stop",
+        "CLOSE_POSITION": "Fechar posição",
+        "CANCEL_ORDER": "Cancelar ordem",
+        "CANCEL_ALL_ORDERS": "Cancelar todas as ordens"
       },
       "detail": {
         "reasoning": "Raciocínio",
         "rejection": "Motivo da rejeição",
         "signal": "Snapshot do sinal",
+        "noSignal": "iniciada via chat, sem sinal",
         "params": "Parâmetros",
         "linkedBot": "Bot vinculado",
         "linkedPaperBot": "Bot de papel vinculado",

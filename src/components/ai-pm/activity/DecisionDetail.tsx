@@ -3,8 +3,20 @@
 import { useTranslations } from 'next-intl';
 import type { AiDecisionPublic } from '@/services/ai-pm-activity.service';
 
+function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return Object.keys(value as object).length === 0;
+  }
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
 export function DecisionDetail({ decision }: { decision: AiDecisionPublic }) {
   const t = useTranslations('AiPm.Activity.detail');
+
+  const hasSignal = !isEmpty(decision.signalSnapshot);
+  const hasParams = !isEmpty(decision.params);
 
   return (
     <div className="space-y-4 px-4 py-3 bg-default-50 border-t border-default-200">
@@ -22,22 +34,30 @@ export function DecisionDetail({ decision }: { decision: AiDecisionPublic }) {
       )}
 
       <section>
-        <details>
-          <summary className="cursor-pointer text-xs font-semibold uppercase text-muted">{t('signal')}</summary>
-          <pre className="text-xs mt-2 overflow-x-auto bg-background p-2 rounded border border-default-200">
-            {JSON.stringify(decision.signalSnapshot, null, 2)}
-          </pre>
-        </details>
+        {hasSignal ? (
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold uppercase text-muted">{t('signal')}</summary>
+            <pre className="text-xs mt-2 overflow-x-auto bg-background p-2 rounded border border-default-200">
+              {JSON.stringify(decision.signalSnapshot, null, 2)}
+            </pre>
+          </details>
+        ) : (
+          <div className="text-xs font-semibold uppercase text-muted">
+            {t('signal')} <span className="font-normal normal-case">— {t('noSignal')}</span>
+          </div>
+        )}
       </section>
 
-      <section>
-        <details>
-          <summary className="cursor-pointer text-xs font-semibold uppercase text-muted">{t('params')}</summary>
-          <pre className="text-xs mt-2 overflow-x-auto bg-background p-2 rounded border border-default-200">
-            {JSON.stringify(decision.params, null, 2)}
-          </pre>
-        </details>
-      </section>
+      {hasParams && (
+        <section>
+          <details>
+            <summary className="cursor-pointer text-xs font-semibold uppercase text-muted">{t('params')}</summary>
+            <pre className="text-xs mt-2 overflow-x-auto bg-background p-2 rounded border border-default-200">
+              {JSON.stringify(decision.params, null, 2)}
+            </pre>
+          </details>
+        </section>
+      )}
 
       <section>
         <h4 className="text-xs font-semibold uppercase text-muted mb-1">
