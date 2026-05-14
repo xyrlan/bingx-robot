@@ -260,3 +260,70 @@ describe('runGuardrails — raw trades', () => {
     if (!got.ok) expect(got.reason).toBe('KILL_SWITCH');
   });
 });
+
+describe('runGuardrails — available margin', () => {
+  function stateWithMargin(avail: number | undefined, used = 0): PortfolioState {
+    return {
+      runningBots:
+        used > 0
+          ? [{ id: botId, symbol: 'BTC-USDT', strategy: 'DCA', capitalUsdt: used, leverage: 3, status: 'RUNNING' }]
+          : [],
+      capitalUsedUsdt: used,
+      bingxApiKeyId: '00000000-0000-0000-0000-0000000000a0',
+      availableBalanceUsdt: avail,
+    };
+  }
+
+  it('rejects create_bot that fits maxCapitalUsdt but exceeds 90% of available margin', () => {
+    const result = runGuardrails({
+      action: { type: 'create_bot', symbol: 'ETH-USDT', strategy: 'DCA', capitalUsdt: 95, leverage: 5, reasoning: 'r' },
+      config: baseConfig,
+      portfolioState: stateWithMargin(100),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected fail');
+    expect(result.reason).toBe('INSUFFICIENT_MARGIN');
+  });
+
+  it('passes create_bot within both the cap and 90% of available margin', () => {
+    expect(
+      runGuardrails({
+        action: { type: 'create_bot', symbol: 'ETH-USDT', strategy: 'DCA', capitalUsdt: 90, leverage: 5, reasoning: 'r' },
+        config: baseConfig,
+        portfolioState: stateWithMargin(100),
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('skips the margin check when availableBalanceUsdt is undefined (fail-open)', () => {
+    expect(
+      runGuardrails({
+        action: { type: 'create_bot', symbol: 'ETH-USDT', strategy: 'DCA', capitalUsdt: 95, leverage: 5, reasoning: 'r' },
+        config: baseConfig,
+        portfolioState: stateWithMargin(undefined),
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('rejects adjust_params capital increase that exceeds available margin', () => {
+    const result = runGuardrails({
+      action: { type: 'adjust_params', botId, params: { capitalUsdt: 200 }, reasoning: 'r' },
+      config: baseConfig,
+      portfolioState: stateWithMargin(110, 100),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected fail');
+    expect(result.reason).toBe('INSUFFICIENT_MARGIN');
+  });
+
+  it('rejects place_market_order that exceeds available margin', () => {
+    const result = runGuardrails({
+      action: { type: 'place_market_order', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 50, leverage: 2, reasoning: 'r' },
+      config: baseConfig,
+      portfolioState: stateWithMargin(100, 100),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected fail');
+    expect(result.reason).toBe('INSUFFICIENT_MARGIN');
+  });
+});

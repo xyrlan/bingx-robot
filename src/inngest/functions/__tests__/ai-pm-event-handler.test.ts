@@ -44,6 +44,17 @@ describe('handleAiPmEvent', () => {
     expect(result.status).toBe('PROCESSED');
   });
 
+  it('passes the loaded bingx client to loadPortfolio', async () => {
+    const b = basics();
+    await handleAiPmEvent({
+      eventName: 'ai-pm/event.fill',
+      data: fillPayload,
+      db: {} as never,
+      ...b,
+    });
+    expect(b.loadPortfolioFn).toHaveBeenCalledWith(expect.objectContaining({ bingxClient: {} }));
+  });
+
   it('marks THROTTLED and skips pipeline when checkThrottle returns true', async () => {
     const b = basics();
     b.checkThrottleFn.mockResolvedValueOnce(true);

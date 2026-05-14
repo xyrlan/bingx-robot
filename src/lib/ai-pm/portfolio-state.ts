@@ -1,5 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { tradingBots } from '@/db/schema';
+import { getFuturesBalance } from '@/services/bingx-orders.service';
+import type { BingxClient } from '@/lib/bingx/client';
 import type { db as Db } from '@/db';
 
 export interface PortfolioBotSnapshot {
@@ -15,6 +17,8 @@ export interface PortfolioState {
   runningBots: PortfolioBotSnapshot[];
   capitalUsedUsdt: number;
   bingxApiKeyId: string;
+  /** Real free margin (USDT) from BingX. Undefined when not fetched or the fetch failed. */
+  availableBalanceUsdt?: number;
 }
 
 const NON_GRID_STRATEGIES = ['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER'] as const;
@@ -28,6 +32,8 @@ export async function loadPortfolioState(params: {
   userId: string;
   bingxApiKeyId: string;
   db: typeof Db;
+  bingxClient?: BingxClient;
+  getFuturesBalanceFn?: typeof getFuturesBalance;
 }): Promise<PortfolioState> {
   const rows = await params.db
     .select()
@@ -57,5 +63,17 @@ export async function loadPortfolioState(params: {
     capitalUsedUsdt += capital;
   }
 
-  return { runningBots, capitalUsedUsdt, bingxApiKeyId: params.bingxApiKeyId };
+  let availableBalanceUsdt: number | undefined;
+  if (params.bingxClient) {
+    const fetchBalance = params.getFuturesBalanceFn ?? getFuturesBalance;
+    try {
+      const balance = await fetchBalance(params.bingxClient);
+      const parsed = Number(balance.availableUsdt);
+      if (Number.isFinite(parsed)) availableBalanceUsdt = parsed;
+    } catch {
+      // fail-open: leave undefined — guardrails degrade to static-cap-only behaviour
+    }
+  }
+
+  return { runningBots, capitalUsedUsdt, bingxApiKeyId: params.bingxApiKeyId, availableBalanceUsdt };
 }

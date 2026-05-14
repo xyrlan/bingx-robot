@@ -36,7 +36,7 @@ export interface RunUserTickParams {
   reviewerThresholdPct?: number;
   isKillSwitchActive: () => Promise<boolean>;
   loadBingxClient: () => Promise<BingxClient | null>;
-  loadPortfolio: () => Promise<PortfolioState>;
+  loadPortfolio: (client: BingxClient) => Promise<PortfolioState>;
   signalFn: typeof runSignal;
   decisionFn: typeof runDecision;
   validateFn: typeof validate;
@@ -98,7 +98,7 @@ export async function runUserTick(params: RunUserTickParams): Promise<UserTickRe
     return { ...report, status: 'SKIPPED_NO_BINGX_CLIENT' };
   }
 
-  const portfolioState = await params.loadPortfolio();
+  const portfolioState = await params.loadPortfolio(client);
 
   const signalOutcome: SignalOutcome = await params.signalFn({
     userId: params.userId,
@@ -243,8 +243,8 @@ export const aiPmTick = inngest.createFunction(
             return Boolean(fresh?.killSwitch);
           },
           loadBingxClient: async () => getBingxClientByApiKeyId(cfg.bingxApiKeyId),
-          loadPortfolio: async () =>
-            loadPortfolioState({ userId: cfg.userId, bingxApiKeyId: cfg.bingxApiKeyId, db }),
+          loadPortfolio: (client) =>
+            loadPortfolioState({ userId: cfg.userId, bingxApiKeyId: cfg.bingxApiKeyId, db, bingxClient: client }),
           signalFn: runSignal,
           decisionFn: runDecision,
           validateFn: validate,

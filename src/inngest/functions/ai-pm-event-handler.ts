@@ -111,6 +111,7 @@ export async function handleAiPmEvent(params: HandleAiPmEventParams): Promise<Ha
       userId: config.userId,
       bingxApiKeyId: config.bingxApiKeyId,
       db: params.db,
+      bingxClient: client,
     });
 
     const result = await runScoped({

@@ -88,6 +88,13 @@ describe('runUserTick', () => {
     expect(report.failedCount).toBe(0);
   });
 
+  it('passes the loaded bingx client to loadPortfolio', async () => {
+    const loadPortfolioSpy = vi.fn(async () => basePortfolio());
+    p.loadPortfolio = loadPortfolioSpy;
+    await runUserTick(p);
+    expect(loadPortfolioSpy).toHaveBeenCalledWith({ __fake: true });
+  });
+
   it('skips when kill switch active at start', async () => {
     p.isKillSwitchActive = async () => true;
     const signalSpy = vi.spyOn(p, 'signalFn');

@@ -53,4 +53,40 @@ describe('loadPortfolioState', () => {
     expect(state.runningBots).toEqual([]);
     expect(state.capitalUsedUsdt).toBe(0);
   });
+
+  it('loads availableBalanceUsdt from getFuturesBalance when a bingxClient is provided', async () => {
+    const getFuturesBalanceFn = async () => ({
+      availableUsdt: '500',
+      equityUsdt: '600',
+      marginUsedUsdt: '100',
+      unrealizedPnlUsdt: '0',
+    });
+    const state = await loadPortfolioState({
+      userId,
+      bingxApiKeyId: apiKeyId,
+      db: fakeDb([]),
+      bingxClient: {} as never,
+      getFuturesBalanceFn,
+    });
+    expect(state.availableBalanceUsdt).toBe(500);
+  });
+
+  it('leaves availableBalanceUsdt undefined when the balance fetch throws (fail-open)', async () => {
+    const getFuturesBalanceFn = async () => {
+      throw new Error('BingX 500');
+    };
+    const state = await loadPortfolioState({
+      userId,
+      bingxApiKeyId: apiKeyId,
+      db: fakeDb([]),
+      bingxClient: {} as never,
+      getFuturesBalanceFn,
+    });
+    expect(state.availableBalanceUsdt).toBeUndefined();
+  });
+
+  it('leaves availableBalanceUsdt undefined when no bingxClient is provided', async () => {
+    const state = await loadPortfolioState({ userId, bingxApiKeyId: apiKeyId, db: fakeDb([]) });
+    expect(state.availableBalanceUsdt).toBeUndefined();
+  });
 });

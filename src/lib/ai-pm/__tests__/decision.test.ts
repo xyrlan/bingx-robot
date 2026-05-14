@@ -3,7 +3,7 @@ import { runDecision } from '@/lib/ai-pm/decision';
 import type { AnthropicFactory } from '@/lib/ai-pm/llm';
 import type { SignalCandidate } from '@/lib/ai-pm/signal';
 import type { PortfolioState } from '@/lib/ai-pm/portfolio-state';
-import type { DecisionConfig } from '@/lib/ai-pm/decision.prompt';
+import { buildUserPrompt, type DecisionConfig } from '@/lib/ai-pm/decision.prompt';
 
 function fakeFactory(opts: {
   toolUseInput?: unknown;
@@ -163,5 +163,35 @@ describe('runDecision', () => {
     if (!result.ok) throw new Error('expected ok');
     expect(result.result.proposedActions).toEqual([]);
     expect(result.result.rejectedActions).toEqual([]);
+  });
+});
+
+describe('buildUserPrompt — available margin', () => {
+  it('shows the real available margin when known', () => {
+    const prompt = buildUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: { ...baseState, availableBalanceUsdt: 500 },
+      config: baseConfig,
+    });
+    expect(prompt).toContain('Real available margin USDT: 500');
+  });
+
+  it('shows "unknown" for available margin when the balance fetch failed', () => {
+    const prompt = buildUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: baseState,
+      config: baseConfig,
+    });
+    expect(prompt).toContain('Real available margin USDT: unknown');
+  });
+
+  it('shows effective spendable capped by the 90% margin headroom', () => {
+    const prompt = buildUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: { ...baseState, availableBalanceUsdt: 500 },
+      config: baseConfig,
+    });
+    // min(maxCapital 1000 - used 100, avail 500 * 0.9) = min(900, 450) = 450
+    expect(prompt).toContain('Effective spendable USDT: 450');
   });
 });

@@ -16,11 +16,39 @@ export type GuardrailReason =
   | 'CONCURRENT_CAP'
   | 'LEVERAGE_CAP'
   | 'STRATEGY_NOT_ALLOWED'
-  | 'UNKNOWN_BOT_ID';
+  | 'UNKNOWN_BOT_ID'
+  | 'INSUFFICIENT_MARGIN';
 
 export type GuardrailResult =
   | { ok: true }
   | { ok: false; reason: GuardrailReason; message: string };
+
+/** Fraction of real BingX free margin the AI is allowed to commit — leaves a
+ *  buffer for fees, slippage and funding. */
+export const MARGIN_HEADROOM_PCT = 0.9;
+
+/**
+ * Hard balance gate: rejects when committing `actionCapital` more would push
+ * total committed capital past `MARGIN_HEADROOM_PCT` of the account's real free
+ * margin. Returns null (skip) when the balance is unknown — fail-open, degrading
+ * to the static `maxCapitalUsdt` cap only.
+ */
+function checkAvailableMargin(
+  portfolioState: PortfolioState,
+  actionCapital: number,
+): GuardrailResult | null {
+  const avail = portfolioState.availableBalanceUsdt;
+  if (typeof avail !== 'number') return null;
+  const limit = avail * MARGIN_HEADROOM_PCT;
+  if (portfolioState.capitalUsedUsdt + actionCapital > limit) {
+    return {
+      ok: false,
+      reason: 'INSUFFICIENT_MARGIN',
+      message: `Capital used ${portfolioState.capitalUsedUsdt} + new ${actionCapital} exceeds ${MARGIN_HEADROOM_PCT * 100}% of available margin ${avail}`,
+    };
+  }
+  return null;
+}
 
 export function runGuardrails(input: {
   action: ProposedAction;
@@ -60,6 +88,10 @@ export function runGuardrails(input: {
           reason: 'CAPITAL_CAP',
           message: `Capital used + new ${action.capitalUsdt} exceeds cap ${config.maxCapitalUsdt}`,
         };
+      }
+      {
+        const marginFail = checkAvailableMargin(portfolioState, action.capitalUsdt);
+        if (marginFail) return marginFail;
       }
       if (action.leverage > config.maxLeverage) {
         return {
@@ -113,6 +145,8 @@ export function runGuardrails(input: {
             message: `New capital pushes total over cap ${config.maxCapitalUsdt}`,
           };
         }
+        const marginFail = checkAvailableMargin(portfolioState, delta);
+        if (marginFail) return marginFail;
       }
       return { ok: true };
     }
@@ -136,6 +170,10 @@ export function runGuardrails(input: {
       }
       if (portfolioState.capitalUsedUsdt + action.capitalUsdt > config.maxCapitalUsdt) {
         return { ok: false, reason: 'CAPITAL_CAP', message: `Capital used + new ${action.capitalUsdt} exceeds cap ${config.maxCapitalUsdt}` };
+      }
+      {
+        const marginFail = checkAvailableMargin(portfolioState, action.capitalUsdt);
+        if (marginFail) return marginFail;
       }
       if (config.allowedSymbols && config.allowedSymbols.length > 0 && !config.allowedSymbols.includes(action.symbol)) {
         return { ok: false, reason: 'STRATEGY_NOT_ALLOWED', message: `Symbol ${action.symbol} not in allowedSymbols` };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { SignalCandidate } from '@/lib/ai-pm/signal';
 import type { PortfolioState } from '@/lib/ai-pm/portfolio-state';
+import { MARGIN_HEADROOM_PCT } from '@/lib/ai-pm/guardrails';
 
 export const ALLOWED_STRATEGIES = ['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER'] as const;
 export const AllowedStrategySchema = z.enum(ALLOWED_STRATEGIES);
@@ -169,6 +170,7 @@ export function buildSystemPrompt(): string {
     'Constraints:',
     '- Only use strategies from config.allowedStrategies.',
     '- Total capital across running bots + new create_bot capital must not exceed config.maxCapitalUsdt.',
+    '- New or increased capital must also fit within the account\'s real available margin — never propose more than "Effective spendable USDT" shown below.',
     '- Active bots after actions must not exceed config.maxConcurrentBots.',
     '- Each action requires a one-sentence reasoning (plain English, no markdown).',
     '',
@@ -191,12 +193,25 @@ export function buildUserPrompt(input: {
     )
     .join('\n');
 
-  return [
+  const avail = input.portfolioState.availableBalanceUsdt;
+  const lines = [
     `Mode: ${input.config.mode}`,
     `Max capital USDT: ${input.config.maxCapitalUsdt}`,
     `Max concurrent bots: ${input.config.maxConcurrentBots}`,
     `Allowed strategies: ${input.config.allowedStrategies.join(', ')}`,
     `Capital used USDT: ${input.portfolioState.capitalUsedUsdt}`,
+    `Real available margin USDT: ${avail ?? 'unknown'}`,
+  ];
+
+  if (typeof avail === 'number') {
+    const effectiveSpendable = Math.min(
+      input.config.maxCapitalUsdt - input.portfolioState.capitalUsedUsdt,
+      avail * MARGIN_HEADROOM_PCT,
+    );
+    lines.push(`Effective spendable USDT: ${effectiveSpendable}`);
+  }
+
+  lines.push(
     '',
     'Signal candidates:',
     candLines || '(none)',
@@ -205,5 +220,7 @@ export function buildUserPrompt(input: {
     botLines || '(none)',
     '',
     'Decide actions via `propose_actions` tool.',
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }
