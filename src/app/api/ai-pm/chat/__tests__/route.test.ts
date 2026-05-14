@@ -46,6 +46,11 @@ vi.mock('ai', () => ({
   tool: (def: unknown) => def,
 }));
 
+const createAnthropicMock = vi.fn().mockReturnValue((modelName: string) => ({ provider: 'anthropic', modelId: modelName }));
+vi.mock('@ai-sdk/anthropic', () => ({
+  createAnthropic: (opts: unknown) => createAnthropicMock(opts),
+}));
+
 vi.mock('@/lib/ai-pm/ai-sdk-tools', () => ({
   buildAiSdkTools: vi.fn(() => ({ read_portfolio: { description: 'fake' } })),
 }));
@@ -145,8 +150,10 @@ describe('POST /api/ai-pm/chat', () => {
     expect(streamTextMock).toHaveBeenCalledOnce();
     expect(consumeStreamMock).toHaveBeenCalledOnce();
     expect(toUIMessageStreamResponseMock).toHaveBeenCalledOnce();
-    const opts = streamTextMock.mock.calls[0][0] as { model: string; tools: unknown };
-    expect(opts.model).toBe('anthropic/claude-sonnet-4.6');
+    const opts = streamTextMock.mock.calls[0][0] as { model: { provider: string; modelId: string }; tools: unknown };
+    expect(opts.model.provider).toBe('anthropic');
+    expect(opts.model.modelId).toBe('claude-sonnet-4-6');
     expect(opts.tools).toBeTruthy();
+    expect(createAnthropicMock).toHaveBeenCalledWith({ apiKey: 'sk' });
   });
 });

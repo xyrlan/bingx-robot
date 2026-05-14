@@ -4,6 +4,7 @@ import {
   convertToModelMessages,
   type UIMessage,
 } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { z } from 'zod';
 import { db } from '@/db';
 import { getAuthenticatedUser } from '@/services/auth.service';
@@ -30,7 +31,7 @@ const BodySchema = z.object({
   messages: z.array(z.unknown()).min(1),
 });
 
-const MODEL_ID = 'anthropic/claude-sonnet-4.6';
+const MODEL_NAME = 'claude-sonnet-4-6';
 
 export async function POST(req: Request): Promise<Response> {
   const user = await getAuthenticatedUser();
@@ -133,8 +134,9 @@ export async function POST(req: Request): Promise<Response> {
   };
 
   const modelMessages = await convertToModelMessages(messages);
+  const anthropic = createAnthropic({ apiKey: config.anthropicApiKey });
   const result = streamText({
-    model: MODEL_ID,
+    model: anthropic(MODEL_NAME),
     system: DEFAULT_AI_PM_SYSTEM_PROMPT,
     messages: modelMessages,
     tools,
