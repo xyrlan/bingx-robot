@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Card, TextField, Input, Label, Button, Spinner, Checkbox, toast } from '@heroui/react';
+import { AI_PM_SYMBOLS } from '@/lib/ai-pm/symbols';
 import type { AiPmConfigPublic } from './types';
 
 type Mode = 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE' | 'CUSTOM';
@@ -33,16 +34,21 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
   const [maxBots, setMaxBots] = useState<string>(
     config?.maxConcurrentBots != null ? String(config.maxConcurrentBots) : String(PRESETS.BALANCED.maxConcurrentBots)
   );
-  const [allowedSymbols, setAllowedSymbols] = useState<string>(
-    config?.allowedSymbols ? config.allowedSymbols.join(', ') : ''
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(
+    new Set(config?.allowedSymbols ?? [])
   );
+  const [symbolSearch, setSymbolSearch] = useState('');
   const [allowedStrategies, setAllowedStrategies] = useState<Set<Strategy>>(
     new Set((config?.allowedStrategies ?? []) as Strategy[])
   );
-  // Default-expanded so the capital cap / bot limit are always discoverable
-  // when editing — a hidden $0 cap silently blocks every AI order otherwise.
-  const [showCustom, setShowCustom] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const query = symbolSearch.trim().toLowerCase();
+  const filteredSymbols = query
+    ? AI_PM_SYMBOLS.filter(
+        (s) => s.name.toLowerCase().includes(query) || s.code.toLowerCase().includes(query),
+      )
+    : AI_PM_SYMBOLS;
 
   function selectPreset(preset: 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE') {
     setMode(preset);
@@ -52,6 +58,19 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
 
   function handleCustomFieldChange(setter: () => void) {
     setter();
+    setMode('CUSTOM');
+  }
+
+  function toggleSymbol(code: string) {
+    setSelectedSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
     setMode('CUSTOM');
   }
 
@@ -71,10 +90,7 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
   async function handleSave() {
     setSaving(true);
     try {
-      const symbolsArray = allowedSymbols
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const symbolsArray = Array.from(selectedSymbols);
 
       const patch = {
         mode,
@@ -137,77 +153,97 @@ export function GuardrailForm({ config, configId, onSaved, onCancel }: Guardrail
         })}
       </div>
 
-      {/* Custom fields toggle */}
-      <button
-        type="button"
-        className="text-sm font-medium text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-        onClick={() => setShowCustom((v) => !v)}
-        aria-expanded={showCustom}
-      >
-        {showCustom ? t('hideCustom') : t('showCustom')}
-      </button>
-
-      {showCustom && (
-        <Card variant="default">
-          <Card.Content className="p-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <TextField variant="primary" isDisabled={saving}>
-                <Label>{t('maxCapital')}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={maxCapital}
-                  onChange={(e) => handleCustomFieldChange(() => setMaxCapital(e.target.value))}
-                  aria-label={t('maxCapital')}
-                />
-              </TextField>
-              <TextField variant="primary" isDisabled={saving}>
-                <Label>{t('maxBots')}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={maxBots}
-                  onChange={(e) => handleCustomFieldChange(() => setMaxBots(e.target.value))}
-                  aria-label={t('maxBots')}
-                />
-              </TextField>
-            </div>
+      {/* Custom config — always visible: a hidden $0 cap or empty symbol list
+          silently blocks every AI order, so these fields stay discoverable. */}
+      <Card variant="default">
+        <Card.Content className="p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <TextField variant="primary" isDisabled={saving}>
-              <Label>{t('allowedSymbols')}</Label>
+              <Label>{t('maxCapital')}</Label>
               <Input
-                type="text"
-                value={allowedSymbols}
-                onChange={(e) => handleCustomFieldChange(() => setAllowedSymbols(e.target.value))}
-                placeholder="e.g. BTC-USDT,ETH-USDT"
-                aria-label={t('allowedSymbols')}
+                type="number"
+                min={0}
+                value={maxCapital}
+                onChange={(e) => handleCustomFieldChange(() => setMaxCapital(e.target.value))}
+                aria-label={t('maxCapital')}
               />
             </TextField>
+            <TextField variant="primary" isDisabled={saving}>
+              <Label>{t('maxBots')}</Label>
+              <Input
+                type="number"
+                min={1}
+                value={maxBots}
+                onChange={(e) => handleCustomFieldChange(() => setMaxBots(e.target.value))}
+                aria-label={t('maxBots')}
+              />
+            </TextField>
+          </div>
 
-            {/* Strategy multi-checkbox */}
-            <div role="group" aria-label={t('allowedStrategies')}>
-              <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">
-                {t('allowedStrategies')}
+          {/* Allowed symbols — searchable checkbox list over a curated set */}
+          <div role="group" aria-label={t('allowedSymbols')}>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">
+              {t('allowedSymbols')}
+            </p>
+            <TextField variant="primary" isDisabled={saving}>
+              <Input
+                type="text"
+                value={symbolSearch}
+                onChange={(e) => setSymbolSearch(e.target.value)}
+                placeholder={t('symbolSearchPlaceholder')}
+                aria-label={t('symbolSearchPlaceholder')}
+              />
+            </TextField>
+            {selectedSymbols.size === 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-2">
+                {t('noSymbolsWarning')}
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                {STRATEGIES.map((strategy) => (
-                  <Checkbox
-                    key={strategy}
-                    isSelected={allowedStrategies.has(strategy)}
-                    onChange={() => toggleStrategy(strategy)}
-                    isDisabled={saving}
-                    aria-label={strategy}
-                  >
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">{strategy}</span>
-                  </Checkbox>
-                ))}
-              </div>
+            )}
+            <div className="mt-2 grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+              {filteredSymbols.map((s) => (
+                <Checkbox
+                  key={s.code}
+                  isSelected={selectedSymbols.has(s.code)}
+                  onChange={() => toggleSymbol(s.code)}
+                  isDisabled={saving}
+                  aria-label={s.name}
+                >
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="text-sm text-slate-700 dark:text-slate-300">
+                    {s.name}
+                    <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">{s.code}</span>
+                  </span>
+                </Checkbox>
+              ))}
             </div>
-          </Card.Content>
-        </Card>
-      )}
+          </div>
+
+          {/* Strategy multi-checkbox */}
+          <div role="group" aria-label={t('allowedStrategies')}>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">
+              {t('allowedStrategies')}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {STRATEGIES.map((strategy) => (
+                <Checkbox
+                  key={strategy}
+                  isSelected={allowedStrategies.has(strategy)}
+                  onChange={() => toggleStrategy(strategy)}
+                  isDisabled={saving}
+                  aria-label={strategy}
+                >
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="text-sm text-slate-700 dark:text-slate-300">{strategy}</span>
+                </Checkbox>
+              ))}
+            </div>
+          </div>
+        </Card.Content>
+      </Card>
 
       <div className="flex gap-2">
         <Button
