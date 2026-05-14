@@ -41,6 +41,25 @@ function fakeDb(state: DbState): any {
   };
 }
 
+// Variant that records every `.update().set(...)` payload so tests can assert
+// what was written (e.g. resultBotId linkage onto ai_decisions).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fakeDbCapturing(state: DbState): { db: any; sets: any[] } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sets: any[] = [];
+  const db = {
+    query: { tradingBots: { findFirst: async () => state.trading[0] ?? null } },
+    update: () => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      set: (p: any) => {
+        sets.push(p);
+        return { where: () => ({ returning: async () => state.trading.map((r) => ({ ...r })) }) };
+      },
+    }),
+  };
+  return { db, sets };
+}
+
 describe('execute', () => {
   let state: DbState;
   let createBotMock: ReturnType<typeof vi.fn>;
@@ -68,6 +87,7 @@ describe('execute', () => {
       createBotFn: createBotMock as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       createPaperBotFn: createPaperBotMock as any,
+      setBotStatusFn: vi.fn(async () => undefined),
     });
     expect(result.status).toBe('EXECUTED');
     expect(result.realBotId).toBe('tb-1');
@@ -75,6 +95,46 @@ describe('execute', () => {
     expect(createBotMock.mock.calls[0][1].apiKeyId).toBe(apiKeyId);
     expect(createBotMock.mock.calls[0][1].botType).toBe('DCA');
     expect(createPaperBotMock).not.toHaveBeenCalled();
+  });
+
+  it('real-mode create_bot starts the new bot (RUNNING) and links it to the decision', async () => {
+    const action: ProposedAction = {
+      type: 'create_bot', symbol: 'BTC-USDT', strategy: 'DCA',
+      capitalUsdt: 100, leverage: 3, reasoning: 'r',
+    };
+    const setBotStatusMock = vi.fn(async () => undefined);
+    const { db, sets } = fakeDbCapturing(state);
+    const result = await execute({
+      userId, decisionId, action, config: realConfig,
+      db: db as never,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      createBotFn: createBotMock as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      createPaperBotFn: createPaperBotMock as any,
+      setBotStatusFn: setBotStatusMock,
+    });
+    expect(result.status).toBe('EXECUTED');
+    expect(result.realBotId).toBe('tb-1');
+    expect(setBotStatusMock).toHaveBeenCalledWith('tb-1', userId, 'RUNNING');
+    expect(sets).toContainEqual({ resultBotId: 'tb-1' });
+  });
+
+  it('paper-mode create_bot does not call setBotStatus', async () => {
+    const action: ProposedAction = {
+      type: 'create_bot', symbol: 'BTC-USDT', strategy: 'DCA',
+      capitalUsdt: 100, leverage: 3, reasoning: 'r',
+    };
+    const setBotStatusMock = vi.fn(async () => undefined);
+    await execute({
+      userId, decisionId, action, config: paperConfig,
+      db: fakeDb(state) as never,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      createBotFn: createBotMock as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      createPaperBotFn: createPaperBotMock as any,
+      setBotStatusFn: setBotStatusMock,
+    });
+    expect(setBotStatusMock).not.toHaveBeenCalled();
   });
 
   it('paper-mode create_bot writes paper_bots, skips real createBot', async () => {

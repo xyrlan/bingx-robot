@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { tradingBots, paperBots, aiDecisions } from '@/db/schema';
 import type { db as Db } from '@/db';
-import { createBot as defaultCreateBot } from '@/services/bingx.service';
+import { createBot as defaultCreateBot, setBotStatus as defaultSetBotStatus } from '@/services/bingx.service';
 import { createPaperBot as defaultCreatePaperBot } from '@/services/paper-bots.service';
 import {
   placeFuturesOrder as defaultPlaceFuturesOrder,
@@ -50,6 +50,7 @@ export interface ExecuteParams {
   config: ExecutorConfig;
   db: typeof Db;
   createBotFn?: typeof defaultCreateBot;
+  setBotStatusFn?: typeof defaultSetBotStatus;
   createPaperBotFn?: typeof defaultCreatePaperBot;
   setLeverageFn?: (client: unknown, symbol: string, leverage: number) => Promise<void>;
   placeOrderFn?: typeof defaultPlaceFuturesOrder;
@@ -189,6 +190,7 @@ async function placeOrderHelper(
 export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
   const { action, userId, decisionId, config } = params;
   const createBot = params.createBotFn ?? defaultCreateBot;
+  const setBotStatus = params.setBotStatusFn ?? defaultSetBotStatus;
   const createPaper = params.createPaperBotFn ?? defaultCreatePaperBot;
 
   switch (action.type) {
@@ -219,6 +221,14 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
         gridCount: 1,
         config: { reasoning: action.reasoning },
       });
+      // createBot inserts the row at the schema default status STOPPED. Without
+      // this, master-tick (which only dispatches RUNNING bots) never picks it
+      // up — the bot would exist but never trade. Mirrors bot/start/route.ts.
+      await setBotStatus(bot.id, userId, 'RUNNING');
+      await params.db
+        .update(aiDecisions)
+        .set({ resultBotId: bot.id })
+        .where(eq(aiDecisions.id, decisionId));
       return { status: 'EXECUTED', decisionId, realBotId: bot.id };
     }
 
