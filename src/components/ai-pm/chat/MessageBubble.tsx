@@ -54,7 +54,10 @@ export function MessageBubble(props: MessageBubbleProps) {
   const t = useTranslations('AiPm.Chat');
   const isUser = props.message.role === 'user';
   const containerClass = isUser ? 'flex justify-end mb-3' : 'flex justify-start mb-3';
-  const bubbleBase = 'max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words';
+  // max-width lives on the wrapper, not the bubble. Putting it on the bubble
+  // while the flex-col wrapper is content-sized creates a circular constraint
+  // that collapses the bubble to ~1ch and break-words shatters words per-char.
+  const bubbleBase = 'w-fit rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words';
   const userTint = props.failed
     ? 'bg-danger/10 border border-danger/40 text-danger-foreground'
     : 'bg-accent/15 text-foreground';
@@ -74,7 +77,7 @@ export function MessageBubble(props: MessageBubbleProps) {
 
   return (
     <div className={containerClass}>
-      <div className="flex flex-col gap-1 max-w-full">
+      <div className="flex flex-col gap-1 max-w-[80%]">
         {showBubble && (
           <div className={`${bubbleBase} ${isUser ? userTint : assistantTint}`}>
             {showTypingDots ? (
