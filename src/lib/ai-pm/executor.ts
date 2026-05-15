@@ -88,6 +88,24 @@ async function defaultGetContractInfoFn(_symbol: string): Promise<{ quantityPrec
   return { quantityPrecision: 4, minNotional: '1' };
 }
 
+/**
+ * BingX rejects unhyphenated symbols (err 109400). LLM occasionally emits
+ * `BTCUSDT` instead of `BTC-USDT`. Normalise once at the executor boundary so
+ * every downstream call (price lookup, contract info, place/cancel) hits the
+ * canonical form. Already-canonical symbols pass through unchanged.
+ */
+export function normalizeSymbol(symbol: string): string {
+  if (!symbol) return symbol;
+  if (symbol.includes('-')) return symbol.toUpperCase();
+  const upper = symbol.toUpperCase();
+  for (const quote of ['USDT', 'USDC'] as const) {
+    if (upper.endsWith(quote) && upper.length > quote.length) {
+      return `${upper.slice(0, -quote.length)}-${quote}`;
+    }
+  }
+  return upper;
+}
+
 function syntheticOrderId(): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const g: any = globalThis;
@@ -192,6 +210,15 @@ export async function execute(params: ExecuteParams): Promise<ExecutionResult> {
   const createBot = params.createBotFn ?? defaultCreateBot;
   const setBotStatus = params.setBotStatusFn ?? defaultSetBotStatus;
   const createPaper = params.createPaperBotFn ?? defaultCreatePaperBot;
+
+  // Canonicalise symbol before any downstream call. Single mutation point
+  // covers all action variants (no_action has no symbol; cancel_all_orders
+  // has optional symbol — both safely no-op below).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const a = action as any;
+  if (typeof a.symbol === 'string' && a.symbol.length > 0) {
+    a.symbol = normalizeSymbol(a.symbol);
+  }
 
   switch (action.type) {
     case 'no_action':

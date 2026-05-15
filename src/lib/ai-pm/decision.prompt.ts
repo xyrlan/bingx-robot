@@ -217,6 +217,7 @@ export function buildAutonomousSystemPrompt(): string {
     '- no_action: skip this tick. Fields: reasoning.',
     '',
     'Constraints:',
+    '- Symbols must use BingX dashed form: BTC-USDT, ETH-USDT, BTC-USDC. Never emit BTCUSDT or ETHUSDT (no dash) — the exchange will reject the order.',
     '- Always reconcile your proposals with the reported open positions and open orders before acting — do not duplicate an existing position or stack redundant stop/TP orders.',
     '- New or increased capital must fit within the account\'s real available margin — never propose more than "Effective spendable USDT" shown below.',
     '- Total deployed capital must not exceed config.maxCapitalUsdt.',
