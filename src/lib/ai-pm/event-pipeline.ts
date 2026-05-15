@@ -121,6 +121,7 @@ export async function runScopedPipeline(params: RunScopedPipelineParams): Promis
       allowedStrategies: (params.config.allowedStrategies ?? ['DCA', 'TRAILING_STOP', 'DCA_SPOT', 'SMA_CROSSOVER']) as Array<'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER'>,
     },
     anthropicApiKey: params.config.anthropicApiKey,
+    autonomous: true,
   });
 
   if (!decisionOutcome.ok) {

@@ -530,6 +530,7 @@ export type OpenOrderInfo = {
   positionSide?: string;
   price?: number | string;
   stopPrice?: number | string;
+  quantity?: number | string;
   /** Always string to avoid JS BigInt/precision loss with exchange IDs */
   positionId?: string;
 };
@@ -566,6 +567,38 @@ export async function getOpenOrders(client: BingxClient, symbol: string): Promis
       positionId: toSafeIdString(rawPositionId),
     } as OpenOrderInfo;
   });
+}
+
+export async function getAllOpenOrders(client: BingxClient): Promise<OpenOrderInfo[]> {
+  try {
+    const data = (await client.get('/openApi/swap/v2/trade/openOrders', {})) as
+      | { orders?: Array<Record<string, unknown>> }
+      | Array<Record<string, unknown>>;
+    const rawOrders = Array.isArray(data) ? data : data?.orders ?? [];
+    return rawOrders.map((o) => {
+      const rawOrderId = o.orderId as string | number | bigint | null | undefined;
+      const rawPositionId = (o.positionId ?? (o as { position_id?: unknown }).position_id) as
+        | string
+        | number
+        | bigint
+        | null
+        | undefined;
+      const rawQty = (o.origQty ?? o.quantity) as string | number | undefined;
+      return {
+        orderId: toSafeIdString(rawOrderId) ?? (rawOrderId != null ? String(rawOrderId) : ''),
+        symbol: o.symbol as string | undefined,
+        type: o.type as string | undefined,
+        side: o.side as string | undefined,
+        positionSide: o.positionSide as string | undefined,
+        price: o.price as number | string | undefined,
+        stopPrice: o.stopPrice as number | string | undefined,
+        positionId: toSafeIdString(rawPositionId),
+        ...(rawQty != null ? { quantity: rawQty } : {}),
+      } as OpenOrderInfo;
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function hasTakeProfitForPosition(

@@ -1,9 +1,12 @@
 import { callSonnet, type AnthropicFactory, type LlmError, type LlmUsage } from '@/lib/ai-pm/llm';
 import {
   ActionSchema,
+  AutonomousActionSchema,
   ProposeActionsSchema,
   buildSystemPrompt,
   buildUserPrompt,
+  buildAutonomousSystemPrompt,
+  buildAutonomousUserPrompt,
   type ProposedAction,
   type DecisionConfig,
 } from '@/lib/ai-pm/decision.prompt';
@@ -38,19 +41,32 @@ export interface RunDecisionParams {
   anthropicApiKey: string;
   factory?: AnthropicFactory;
   cacheSystem?: boolean;
+  /** When true, restrict the action surface to direct-order actions and use the autonomous prompts. */
+  autonomous?: boolean;
 }
 
 const TOOL_NAME = 'propose_actions';
 
 export async function runDecision(params: RunDecisionParams): Promise<DecisionOutcome> {
+  const autonomous = params.autonomous === true;
+  const systemPrompt = autonomous ? buildAutonomousSystemPrompt() : buildSystemPrompt();
+  const userPrompt = autonomous
+    ? buildAutonomousUserPrompt({
+        candidates: params.candidates,
+        portfolioState: params.portfolioState,
+        config: params.config,
+      })
+    : buildUserPrompt({
+        candidates: params.candidates,
+        portfolioState: params.portfolioState,
+        config: params.config,
+      });
+  const actionSchema = autonomous ? AutonomousActionSchema : ActionSchema;
+
   const llm = await callSonnet({
     apiKey: params.anthropicApiKey,
-    systemPrompt: buildSystemPrompt(),
-    userPrompt: buildUserPrompt({
-      candidates: params.candidates,
-      portfolioState: params.portfolioState,
-      config: params.config,
-    }),
+    systemPrompt,
+    userPrompt,
     tools: [
       {
         name: TOOL_NAME,
@@ -77,7 +93,7 @@ export async function runDecision(params: RunDecisionParams): Promise<DecisionOu
   const rejectedActions: RejectedAction[] = [];
 
   for (const entry of raw.actions) {
-    const parsed = ActionSchema.safeParse(entry);
+    const parsed = actionSchema.safeParse(entry);
     if (parsed.success) {
       proposedActions.push(parsed.data);
     } else {

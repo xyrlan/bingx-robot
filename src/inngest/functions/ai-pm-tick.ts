@@ -128,6 +128,7 @@ export async function runUserTick(params: RunUserTickParams): Promise<UserTickRe
       allowedStrategies: params.allowedStrategies,
     },
     anthropicApiKey: params.anthropicApiKey,
+    autonomous: true,
   });
 
   if (!decisionOutcome.ok) {
