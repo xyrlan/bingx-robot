@@ -61,6 +61,17 @@ async function cleanup() {
   await db.delete(aiPmConfigs).where(eq(aiPmConfigs.userId, TEST_USER_ID));
 }
 
+async function insertDecisionRow(actionType: string): Promise<string> {
+  const [row] = await db.insert(aiDecisions).values({
+    userId: TEST_USER_ID,
+    triggeredBy: 'CHAT',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    actionType: actionType as any,
+    status: 'PROPOSED',
+  }).returning();
+  return row.id;
+}
+
 describe('chat-tools', () => {
   beforeAll(async () => { await ensureUser(); await cleanup(); });
   afterEach(async () => { await cleanup(); });
@@ -76,8 +87,9 @@ describe('chat-tools', () => {
   });
 
   it('place_market_order dispatches and surfaces resultOrderId in summary', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd1' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd1', resultOrderId: 'abc12345' });
+    const id = await insertDecisionRow('PLACE_MARKET_ORDER');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id, resultOrderId: 'abc12345' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('place_market_order', {
       symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG',
@@ -88,8 +100,9 @@ describe('chat-tools', () => {
   });
 
   it('place_limit_order dispatches', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd2' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd2', resultOrderId: 'lim-1' });
+    const id = await insertDecisionRow('PLACE_LIMIT_ORDER');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id, resultOrderId: 'lim-1' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('place_limit_order', {
       symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG',
@@ -100,8 +113,9 @@ describe('chat-tools', () => {
   });
 
   it('place_stop_order dispatches', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd3' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd3', resultOrderId: 'stop-1' });
+    const id = await insertDecisionRow('PLACE_STOP_ORDER');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id, resultOrderId: 'stop-1' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('place_stop_order', {
       symbol: 'BTC-USDT', side: 'SELL', positionSide: 'SHORT',
@@ -111,8 +125,9 @@ describe('chat-tools', () => {
   });
 
   it('place_take_profit dispatches', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd4' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd4', resultOrderId: 'tp-1' });
+    const id = await insertDecisionRow('PLACE_TAKE_PROFIT');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id, resultOrderId: 'tp-1' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('place_take_profit', {
       symbol: 'BTC-USDT', side: 'SELL', positionSide: 'LONG',
@@ -122,8 +137,9 @@ describe('chat-tools', () => {
   });
 
   it('place_trailing_stop dispatches', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd5' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd5', resultOrderId: 'tr-1' });
+    const id = await insertDecisionRow('PLACE_TRAILING_STOP');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id, resultOrderId: 'tr-1' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('place_trailing_stop', {
       symbol: 'BTC-USDT', side: 'SELL', positionSide: 'LONG',
@@ -133,8 +149,9 @@ describe('chat-tools', () => {
   });
 
   it('close_position dispatches', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd6' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd6' });
+    const id = await insertDecisionRow('CLOSE_POSITION');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('close_position', {
       symbol: 'BTC-USDT', reasoning: 'r',
@@ -143,8 +160,9 @@ describe('chat-tools', () => {
   });
 
   it('cancel_order dispatches', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd7' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd7' });
+    const id = await insertDecisionRow('CANCEL_ORDER');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('cancel_order', {
       symbol: 'BTC-USDT', orderId: '99', reasoning: 'r',
@@ -153,13 +171,58 @@ describe('chat-tools', () => {
   });
 
   it('cancel_all_orders dispatches', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'd8' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'd8' });
+    const id = await insertDecisionRow('CANCEL_ALL_ORDERS');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('cancel_all_orders', {
       reasoning: 'r',
     }, ctx);
     expect(got.status).toBe('EXECUTED');
+  });
+
+  it('place_market_order flips ai_decisions.status from PROPOSED to EXECUTED in DB', async () => {
+    const [row] = await db.insert(aiDecisions).values({
+      userId: TEST_USER_ID, triggeredBy: 'CHAT', actionType: 'PLACE_MARKET_ORDER', status: 'PROPOSED',
+    }).returning();
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: row.id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: row.id, resultOrderId: 'real-7' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    await executeTool('place_market_order', {
+      symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r',
+    }, ctx);
+    const [after] = await db.select().from(aiDecisions).where(eq(aiDecisions.id, row.id));
+    expect(after.status).toBe('EXECUTED');
+    expect(after.executedAt).toBeInstanceOf(Date);
+  });
+
+  it('place_market_order flips status to EXECUTION_FAILED with rejectionReason on exec failure', async () => {
+    const [row] = await db.insert(aiDecisions).values({
+      userId: TEST_USER_ID, triggeredBy: 'CHAT', actionType: 'PLACE_MARKET_ORDER', status: 'PROPOSED',
+    }).returning();
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: row.id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTION_FAILED', decisionId: row.id, reason: 'BingX error 80014: bad symbol' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    await executeTool('place_market_order', {
+      symbol: 'XYZ-USDT', side: 'BUY', positionSide: 'LONG', capitalUsdt: 100, leverage: 5, reasoning: 'r',
+    }, ctx);
+    const [after] = await db.select().from(aiDecisions).where(eq(aiDecisions.id, row.id));
+    expect(after.status).toBe('EXECUTION_FAILED');
+    expect(after.rejectionReason).toMatch(/80014/);
+  });
+
+  it('create_bot flips ai_decisions.status from PROPOSED to EXECUTED in DB', async () => {
+    const [row] = await db.insert(aiDecisions).values({
+      userId: TEST_USER_ID, triggeredBy: 'CHAT', actionType: 'CREATE_BOT', status: 'PROPOSED',
+    }).returning();
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: row.id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: row.id, paperBotId: 'paper-1' });
+    const ctx = makeCtx({ validateFn, executeFn });
+    await executeTool('create_bot', {
+      symbol: 'BTC-USDT', strategy: 'DCA', capitalUsdt: 100, leverage: 2, reasoning: 'r',
+    }, ctx);
+    const [after] = await db.select().from(aiDecisions).where(eq(aiDecisions.id, row.id));
+    expect(after.status).toBe('EXECUTED');
   });
 
   it('place_market_order refuses on kill switch', async () => {
@@ -207,8 +270,9 @@ describe('chat-tools', () => {
   });
 
   it('create_bot routes through validate+execute and returns decisionId', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'dec-1' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'dec-1', paperBotId: 'paper-1' });
+    const id = await insertDecisionRow('CREATE_BOT');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id, paperBotId: 'paper-1' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('create_bot', {
       symbol: 'BTC-USDT', strategy: 'DCA', capitalUsdt: 100, leverage: 2, reasoning: 'test',
@@ -216,7 +280,7 @@ describe('chat-tools', () => {
     expect(validateFn).toHaveBeenCalledOnce();
     expect(executeFn).toHaveBeenCalledOnce();
     expect(got.status).toBe('EXECUTED');
-    expect(got.decisionId).toBe('dec-1');
+    expect(got.decisionId).toBe(id);
   });
 
   it('create_bot returns REJECTED_GUARDRAIL when validate rejects', async () => {
@@ -232,15 +296,16 @@ describe('chat-tools', () => {
   });
 
   it('stop_bot routes through validate+execute', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'dec-3' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'dec-3' });
+    const id = await insertDecisionRow('STOP_BOT');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('stop_bot', {
       botId: '11111111-2222-4333-8444-555555555555',
       reasoning: 'risk off',
     }, ctx);
     expect(got.status).toBe('EXECUTED');
-    expect(got.decisionId).toBe('dec-3');
+    expect(got.decisionId).toBe(id);
   });
 
   it('pause_kill_switch flips switch and inserts NO_ACTION decision', async () => {
@@ -279,8 +344,9 @@ describe('chat-tools', () => {
   });
 
   it('adjust_params dispatches through validate+execute', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'dec-adj' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'dec-adj', realBotId: 'bot-1' });
+    const id = await insertDecisionRow('ADJUST_PARAMS');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id, realBotId: 'bot-1' });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('adjust_params', {
       botId: '11111111-2222-4333-8444-555555555555',
@@ -290,12 +356,13 @@ describe('chat-tools', () => {
     expect(validateFn).toHaveBeenCalledOnce();
     expect(executeFn).toHaveBeenCalledOnce();
     expect(got.status).toBe('EXECUTED');
-    expect(got.decisionId).toBe('dec-adj');
+    expect(got.decisionId).toBe(id);
   });
 
   it('reallocate_capital dispatches through validate+execute', async () => {
-    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: 'dec-re' });
-    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: 'dec-re' });
+    const id = await insertDecisionRow('REALLOCATE_CAPITAL');
+    const validateFn = vi.fn().mockResolvedValue({ status: 'PROPOSED', decisionId: id });
+    const executeFn = vi.fn().mockResolvedValue({ status: 'EXECUTED', decisionId: id });
     const ctx = makeCtx({ validateFn, executeFn });
     const got = await executeTool('reallocate_capital', {
       fromBotId: '11111111-2222-4333-8444-555555555555',
