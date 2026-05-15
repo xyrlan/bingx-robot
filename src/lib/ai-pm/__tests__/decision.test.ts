@@ -3,7 +3,13 @@ import { runDecision } from '@/lib/ai-pm/decision';
 import type { AnthropicFactory } from '@/lib/ai-pm/llm';
 import type { SignalCandidate } from '@/lib/ai-pm/signal';
 import type { PortfolioState } from '@/lib/ai-pm/portfolio-state';
-import { buildUserPrompt, type DecisionConfig } from '@/lib/ai-pm/decision.prompt';
+import {
+  buildUserPrompt,
+  buildAutonomousUserPrompt,
+  buildAutonomousSystemPrompt,
+  AutonomousActionSchema,
+  type DecisionConfig,
+} from '@/lib/ai-pm/decision.prompt';
 
 function fakeFactory(opts: {
   toolUseInput?: unknown;
@@ -193,5 +199,177 @@ describe('buildUserPrompt — available margin', () => {
     });
     // min(maxCapital 1000 - used 100, avail 500 * 0.9) = min(900, 450) = 450
     expect(prompt).toContain('Effective spendable USDT: 450');
+  });
+});
+
+describe('buildAutonomousSystemPrompt', () => {
+  it('describes only direct-order actions and excludes bot-management types', () => {
+    const sys = buildAutonomousSystemPrompt();
+    // Direct-order surface
+    expect(sys).toContain('place_market_order');
+    expect(sys).toContain('place_limit_order');
+    expect(sys).toContain('place_stop_order');
+    expect(sys).toContain('place_take_profit');
+    expect(sys).toContain('place_trailing_stop');
+    expect(sys).toContain('close_position');
+    expect(sys).toContain('cancel_order');
+    expect(sys).toContain('cancel_all_orders');
+    expect(sys).toContain('no_action');
+    // Bot-management actions deprecated in autonomous mode
+    expect(sys).not.toContain('create_bot');
+    expect(sys).not.toContain('stop_bot');
+    expect(sys).not.toContain('adjust_params');
+    expect(sys).not.toContain('reallocate_capital');
+  });
+
+  it('reminds the model to reconcile with reported open positions', () => {
+    const sys = buildAutonomousSystemPrompt();
+    expect(sys.toLowerCase()).toContain('reconcile');
+    expect(sys.toLowerCase()).toContain('open position');
+  });
+});
+
+describe('buildAutonomousUserPrompt', () => {
+  const stateWithLive: PortfolioState = {
+    ...baseState,
+    availableBalanceUsdt: 500,
+    openPositions: [
+      { symbol: 'BTC-USDT', positionSide: 'LONG', positionAmt: 0.5, entryPrice: 60000, unrealizedPnl: 120, leverage: 10, positionId: 'p1' },
+    ],
+    openOrders: [
+      { orderId: 'o7', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', type: 'LIMIT', price: '59000', stopPrice: '0', quantity: '0.01' },
+    ],
+  };
+
+  it('shows real positions with entry/qty/pnl/leverage', () => {
+    const prompt = buildAutonomousUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: stateWithLive,
+      config: baseConfig,
+    });
+    expect(prompt).toContain('Open positions:');
+    expect(prompt).toContain('BTC-USDT');
+    expect(prompt).toContain('LONG');
+    expect(prompt).toContain('entry=60000');
+    expect(prompt).toContain('qty=0.5');
+    expect(prompt).toContain('pnl=120');
+    expect(prompt).toContain('lev=10');
+  });
+
+  it('shows open orders with id/type/side/price', () => {
+    const prompt = buildAutonomousUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: stateWithLive,
+      config: baseConfig,
+    });
+    expect(prompt).toContain('Open orders:');
+    expect(prompt).toContain('id=o7');
+    expect(prompt).toContain('type=LIMIT');
+    expect(prompt).toContain('side=BUY');
+    expect(prompt).toContain('price=59000');
+  });
+
+  it('shows available margin and effective spendable', () => {
+    const prompt = buildAutonomousUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: stateWithLive,
+      config: baseConfig,
+    });
+    expect(prompt).toContain('Real available margin USDT: 500');
+    expect(prompt).toContain('Effective spendable USDT:');
+  });
+
+  it('shows signal candidates and (none) placeholders for empties', () => {
+    const prompt = buildAutonomousUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: { ...baseState, openPositions: [], openOrders: [] },
+      config: baseConfig,
+    });
+    expect(prompt).toContain('Signal candidates:');
+    expect(prompt).toContain('ETH-USDT');
+    expect(prompt).toContain('Open positions:\n(none)');
+    expect(prompt).toContain('Open orders:\n(none)');
+  });
+
+  it('omits the legacy "Running AI bots" section', () => {
+    const prompt = buildAutonomousUserPrompt({
+      candidates: baseCandidates,
+      portfolioState: stateWithLive,
+      config: baseConfig,
+    });
+    expect(prompt).not.toContain('Running AI bots');
+  });
+});
+
+describe('AutonomousActionSchema', () => {
+  it('accepts direct-order action shapes', () => {
+    expect(AutonomousActionSchema.safeParse({ type: 'no_action', reasoning: 'r' }).success).toBe(true);
+    expect(
+      AutonomousActionSchema.safeParse({
+        type: 'place_market_order',
+        symbol: 'BTC-USDT',
+        side: 'BUY',
+        positionSide: 'LONG',
+        capitalUsdt: 50,
+        leverage: 5,
+        reasoning: 'r',
+      }).success,
+    ).toBe(true);
+    expect(AutonomousActionSchema.safeParse({ type: 'close_position', symbol: 'BTC-USDT', reasoning: 'r' }).success).toBe(true);
+    expect(
+      AutonomousActionSchema.safeParse({ type: 'cancel_order', symbol: 'BTC-USDT', orderId: 'o1', reasoning: 'r' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects bot-management action shapes', () => {
+    expect(
+      AutonomousActionSchema.safeParse({ type: 'create_bot', symbol: 'X', strategy: 'DCA', capitalUsdt: 10, leverage: 1, reasoning: 'r' }).success,
+    ).toBe(false);
+    expect(AutonomousActionSchema.safeParse({ type: 'stop_bot', botId: '00000000-0000-0000-0000-000000000001', reasoning: 'r' }).success).toBe(false);
+    expect(
+      AutonomousActionSchema.safeParse({ type: 'adjust_params', botId: '00000000-0000-0000-0000-000000000001', params: {}, reasoning: 'r' }).success,
+    ).toBe(false);
+    expect(
+      AutonomousActionSchema.safeParse({
+        type: 'reallocate_capital',
+        fromBotId: '00000000-0000-0000-0000-000000000001',
+        toBotId: '00000000-0000-0000-0000-000000000002',
+        amountUsdt: 10,
+        reasoning: 'r',
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('runDecision — autonomous mode', () => {
+  it('drops bot-management actions and keeps direct-order actions', async () => {
+    const input = {
+      actions: [
+        { type: 'create_bot', symbol: 'BTC-USDT', strategy: 'DCA', capitalUsdt: 50, leverage: 3, reasoning: 'r' },
+        {
+          type: 'place_market_order',
+          symbol: 'ETH-USDT',
+          side: 'BUY',
+          positionSide: 'LONG',
+          capitalUsdt: 80,
+          leverage: 5,
+          reasoning: 'r',
+        },
+        { type: 'no_action', reasoning: 'wait' },
+      ],
+    };
+    const result = await runDecision({
+      userId,
+      candidates: baseCandidates,
+      portfolioState: baseState,
+      config: baseConfig,
+      anthropicApiKey: 'sk-ant',
+      factory: fakeFactory({ toolUseInput: input }),
+      autonomous: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.result.proposedActions.map((a) => a.type)).toEqual(['place_market_order', 'no_action']);
+    expect(result.result.rejectedActions).toHaveLength(1);
   });
 });

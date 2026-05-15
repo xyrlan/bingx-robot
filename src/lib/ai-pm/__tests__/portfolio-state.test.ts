@@ -89,4 +89,46 @@ describe('loadPortfolioState', () => {
     const state = await loadPortfolioState({ userId, bingxApiKeyId: apiKeyId, db: fakeDb([]) });
     expect(state.availableBalanceUsdt).toBeUndefined();
   });
+
+  it('loads openPositions and openOrders from BingX when a client is provided', async () => {
+    const getAllOpenPositionsFn = async () => [
+      { symbol: 'BTC-USDT', positionSide: 'LONG', positionAmt: 0.5, entryPrice: 60000, unrealizedPnl: 100, leverage: 10, positionId: 'p1' },
+    ];
+    const getAllOpenOrdersFn = async () => [
+      { orderId: 'o1', symbol: 'BTC-USDT', side: 'BUY', positionSide: 'LONG', type: 'LIMIT', price: '59000', stopPrice: '0', quantity: '0.01' },
+    ];
+    const state = await loadPortfolioState({
+      userId,
+      bingxApiKeyId: apiKeyId,
+      db: fakeDb([]),
+      bingxClient: {} as never,
+      getFuturesBalanceFn: async () => ({ availableUsdt: '0', equityUsdt: '0', marginUsedUsdt: '0', unrealizedPnlUsdt: '0' }),
+      getAllOpenPositionsFn,
+      getAllOpenOrdersFn,
+    });
+    expect(state.openPositions).toHaveLength(1);
+    expect(state.openPositions?.[0].symbol).toBe('BTC-USDT');
+    expect(state.openOrders).toHaveLength(1);
+    expect(state.openOrders?.[0].orderId).toBe('o1');
+  });
+
+  it('returns empty arrays for openPositions/openOrders when no bingxClient is provided', async () => {
+    const state = await loadPortfolioState({ userId, bingxApiKeyId: apiKeyId, db: fakeDb([]) });
+    expect(state.openPositions).toEqual([]);
+    expect(state.openOrders).toEqual([]);
+  });
+
+  it('fails-open with empty arrays when openPositions/openOrders fetches throw', async () => {
+    const state = await loadPortfolioState({
+      userId,
+      bingxApiKeyId: apiKeyId,
+      db: fakeDb([]),
+      bingxClient: {} as never,
+      getFuturesBalanceFn: async () => ({ availableUsdt: '0', equityUsdt: '0', marginUsedUsdt: '0', unrealizedPnlUsdt: '0' }),
+      getAllOpenPositionsFn: async () => { throw new Error('boom'); },
+      getAllOpenOrdersFn: async () => { throw new Error('boom'); },
+    });
+    expect(state.openPositions).toEqual([]);
+    expect(state.openOrders).toEqual([]);
+  });
 });

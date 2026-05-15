@@ -72,6 +72,7 @@ describe('runScopedPipeline', () => {
     expect(signalFn).toHaveBeenCalledWith(expect.objectContaining({
       allowedSymbols: ['BTC-USDT'],
     }));
+    expect(decisionFn).toHaveBeenCalledWith(expect.objectContaining({ autonomous: true }));
     expect(result.executedDecisionId).toBe('dec-1');
     expect(result.proposedCount).toBe(1);
     expect(result.executedCount).toBe(1);

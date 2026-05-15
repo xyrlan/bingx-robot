@@ -95,6 +95,13 @@ describe('runUserTick', () => {
     expect(loadPortfolioSpy).toHaveBeenCalledWith({ __fake: true });
   });
 
+  it('calls decisionFn with autonomous: true so the autonomous tool surface is used', async () => {
+    const decisionSpy = vi.fn(p.decisionFn);
+    p.decisionFn = decisionSpy;
+    await runUserTick(p);
+    expect(decisionSpy).toHaveBeenCalledWith(expect.objectContaining({ autonomous: true }));
+  });
+
   it('skips when kill switch active at start', async () => {
     p.isKillSwitchActive = async () => true;
     const signalSpy = vi.spyOn(p, 'signalFn');

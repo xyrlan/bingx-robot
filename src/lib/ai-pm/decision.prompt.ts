@@ -140,6 +140,25 @@ export const ActionSchema = z.discriminatedUnion('type', [
   CancelAllOrdersActionSchema,
 ]);
 
+/**
+ * Autonomous action surface — direct exchange orders only. Excludes the bot-management
+ * actions (create_bot/stop_bot/adjust_params/reallocate_capital) so the autonomous tick
+ * cannot create per-strategy bots whose configs it cannot fully populate.
+ */
+export const AutonomousActionSchema = z.discriminatedUnion('type', [
+  NoActionSchema,
+  PlaceMarketOrderActionSchema,
+  PlaceLimitOrderActionSchema,
+  PlaceStopOrderActionSchema,
+  PlaceTakeProfitActionSchema,
+  PlaceTrailingStopActionSchema,
+  ClosePositionActionSchema,
+  CancelOrderActionSchema,
+  CancelAllOrdersActionSchema,
+]);
+
+export type AutonomousAction = z.infer<typeof AutonomousActionSchema>;
+
 export const ProposeActionsSchema = z.object({
   actions: z.array(z.unknown()),
 });
@@ -176,6 +195,93 @@ export function buildSystemPrompt(): string {
     '',
     'If no candidate is compelling, return a single no_action with reasoning.',
   ].join('\n');
+}
+
+export function buildAutonomousSystemPrompt(): string {
+  return [
+    'You are a discretionary portfolio manager for a crypto futures trading account.',
+    'You operate by issuing direct trade orders against the live exchange — there are no bots.',
+    'Given Signal candidates, current open positions, current open orders, available margin and risk config, decide actions.',
+    '',
+    'Use the `propose_actions` tool. Return an `actions` array of typed objects.',
+    'Each action has a `type` field discriminating the shape:',
+    '',
+    '- place_market_order: open or add to a position at market. Fields: symbol, side (BUY/SELL), positionSide (LONG/SHORT), capitalUsdt, leverage, optional stopLossPercent, optional takeProfitPercent, reasoning.',
+    '- place_limit_order: rest a limit at price. Fields: symbol, side, positionSide, price, capitalUsdt, leverage, optional timeInForce, reasoning.',
+    '- place_stop_order: trigger market when stopPrice hit. Fields: symbol, side, positionSide, stopPrice, capitalUsdt, leverage, reasoning.',
+    '- place_take_profit: trigger market when stopPrice hit (in profit direction). Fields: symbol, side, positionSide, stopPrice, capitalUsdt, leverage, reasoning.',
+    '- place_trailing_stop: trail a stop by callbackRate. Fields: symbol, side, positionSide, capitalUsdt, leverage, callbackRate (0–1), reasoning.',
+    '- close_position: close all or part of an existing position. Fields: symbol, optional side (LONG/SHORT), optional percent (1–100), reasoning.',
+    '- cancel_order: cancel a specific resting order. Fields: symbol, orderId, reasoning.',
+    '- cancel_all_orders: cancel all resting orders, optionally for a single symbol. Fields: optional symbol, reasoning.',
+    '- no_action: skip this tick. Fields: reasoning.',
+    '',
+    'Constraints:',
+    '- Always reconcile your proposals with the reported open positions and open orders before acting — do not duplicate an existing position or stack redundant stop/TP orders.',
+    '- New or increased capital must fit within the account\'s real available margin — never propose more than "Effective spendable USDT" shown below.',
+    '- Total deployed capital must not exceed config.maxCapitalUsdt.',
+    '- Leverage must not exceed config.maxLeverage shown in the user prompt.',
+    '- Each action requires a one-sentence reasoning (plain English, no markdown).',
+    '',
+    'If no candidate is compelling and existing positions need no adjustment, return a single no_action with reasoning.',
+  ].join('\n');
+}
+
+export function buildAutonomousUserPrompt(input: {
+  candidates: SignalCandidate[];
+  portfolioState: PortfolioState;
+  config: DecisionConfig;
+}): string {
+  const candLines = input.candidates
+    .map((c) => `- ${c.symbol} regime=${c.regime} score=${c.score} reason=${c.reason}`)
+    .join('\n');
+
+  const posLines = (input.portfolioState.openPositions ?? [])
+    .map(
+      (p) =>
+        `- ${p.symbol} ${p.positionSide} entry=${p.entryPrice} qty=${p.positionAmt} pnl=${p.unrealizedPnl ?? 0} lev=${p.leverage ?? 'n/a'}${p.positionId ? ` id=${p.positionId}` : ''}`,
+    )
+    .join('\n');
+
+  const orderLines = (input.portfolioState.openOrders ?? [])
+    .map(
+      (o) =>
+        `- id=${o.orderId} ${o.symbol ?? '?'} type=${o.type ?? '?'} side=${o.side ?? '?'} positionSide=${o.positionSide ?? '?'} price=${o.price ?? '?'} stopPrice=${o.stopPrice ?? '?'} qty=${o.quantity ?? '?'}`,
+    )
+    .join('\n');
+
+  const avail = input.portfolioState.availableBalanceUsdt;
+  const lines = [
+    `Mode: ${input.config.mode}`,
+    `Max capital USDT: ${input.config.maxCapitalUsdt}`,
+    `Allowed strategies (advisory): ${input.config.allowedStrategies.join(', ')}`,
+    `Capital used USDT: ${input.portfolioState.capitalUsedUsdt}`,
+    `Real available margin USDT: ${avail ?? 'unknown'}`,
+  ];
+
+  if (typeof avail === 'number') {
+    const effectiveSpendable = Math.min(
+      input.config.maxCapitalUsdt - input.portfolioState.capitalUsedUsdt,
+      avail * MARGIN_HEADROOM_PCT,
+    );
+    lines.push(`Effective spendable USDT: ${effectiveSpendable}`);
+  }
+
+  lines.push(
+    '',
+    'Signal candidates:',
+    candLines || '(none)',
+    '',
+    'Open positions:',
+    posLines || '(none)',
+    '',
+    'Open orders:',
+    orderLines || '(none)',
+    '',
+    'Decide actions via `propose_actions` tool.',
+  );
+
+  return lines.join('\n');
 }
 
 export function buildUserPrompt(input: {
