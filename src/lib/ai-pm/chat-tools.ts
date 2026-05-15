@@ -360,6 +360,12 @@ async function createBotTool(args: z.infer<typeof CreateBotArgs>, ctx: ToolExecC
       config: { bingxApiKeyId: ctx.config.bingxApiKeyId, paperMode: ctx.config.paperMode },
       db: ctx.db,
     });
+    await finalizeChatDecision(
+      ctx.db,
+      validation.decisionId,
+      exec.status,
+      exec.status === 'EXECUTED' ? null : exec.reason ?? null,
+    );
     return {
       status: exec.status,
       decisionId: exec.decisionId,
@@ -369,10 +375,12 @@ async function createBotTool(args: z.infer<typeof CreateBotArgs>, ctx: ToolExecC
       payload: exec,
     };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await finalizeChatDecision(ctx.db, validation.decisionId, 'EXECUTION_FAILED', `create_bot threw: ${reason}`);
     return {
       status: 'EXECUTION_FAILED',
       decisionId: validation.decisionId,
-      summary: `create_bot threw: ${err instanceof Error ? err.message : String(err)}`,
+      summary: `create_bot threw: ${reason}`,
       payload: null,
     };
   }
@@ -413,6 +421,12 @@ async function stopBotTool(args: z.infer<typeof StopBotArgs>, ctx: ToolExecConte
       config: { bingxApiKeyId: ctx.config.bingxApiKeyId, paperMode: ctx.config.paperMode },
       db: ctx.db,
     });
+    await finalizeChatDecision(
+      ctx.db,
+      validation.decisionId,
+      exec.status,
+      exec.status === 'EXECUTED' ? null : exec.reason ?? null,
+    );
     return {
       status: exec.status,
       decisionId: exec.decisionId,
@@ -420,10 +434,12 @@ async function stopBotTool(args: z.infer<typeof StopBotArgs>, ctx: ToolExecConte
       payload: exec,
     };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await finalizeChatDecision(ctx.db, validation.decisionId, 'EXECUTION_FAILED', `stop_bot threw: ${reason}`);
     return {
       status: 'EXECUTION_FAILED',
       decisionId: validation.decisionId,
-      summary: `stop_bot threw: ${err instanceof Error ? err.message : String(err)}`,
+      summary: `stop_bot threw: ${reason}`,
       payload: null,
     };
   }
@@ -465,6 +481,12 @@ async function adjustParamsTool(args: z.infer<typeof AdjustParamsArgs>, ctx: Too
       db: ctx.db,
       bingxClient: ctx.bingxClient,
     });
+    await finalizeChatDecision(
+      ctx.db,
+      validation.decisionId,
+      exec.status,
+      exec.status === 'EXECUTED' ? null : exec.reason ?? null,
+    );
     return {
       status: exec.status,
       decisionId: exec.decisionId,
@@ -476,10 +498,12 @@ async function adjustParamsTool(args: z.infer<typeof AdjustParamsArgs>, ctx: Too
       payload: exec,
     };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await finalizeChatDecision(ctx.db, validation.decisionId, 'EXECUTION_FAILED', `adjust_params threw: ${reason}`);
     return {
       status: 'EXECUTION_FAILED',
       decisionId: validation.decisionId,
-      summary: `adjust_params threw: ${err instanceof Error ? err.message : String(err)}`,
+      summary: `adjust_params threw: ${reason}`,
       payload: null,
     };
   }
@@ -520,6 +544,12 @@ async function reallocateCapitalTool(args: z.infer<typeof ReallocateCapitalArgs>
       config: { bingxApiKeyId: ctx.config.bingxApiKeyId, paperMode: ctx.config.paperMode },
       db: ctx.db,
     });
+    await finalizeChatDecision(
+      ctx.db,
+      validation.decisionId,
+      exec.status,
+      exec.status === 'EXECUTED' ? null : exec.reason ?? null,
+    );
     return {
       status: exec.status,
       decisionId: exec.decisionId,
@@ -529,10 +559,12 @@ async function reallocateCapitalTool(args: z.infer<typeof ReallocateCapitalArgs>
       payload: exec,
     };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await finalizeChatDecision(ctx.db, validation.decisionId, 'EXECUTION_FAILED', `reallocate_capital threw: ${reason}`);
     return {
       status: 'EXECUTION_FAILED',
       decisionId: validation.decisionId,
-      summary: `reallocate_capital threw: ${err instanceof Error ? err.message : String(err)}`,
+      summary: `reallocate_capital threw: ${reason}`,
       payload: null,
     };
   }
@@ -592,6 +624,22 @@ async function readOpenOrdersTool(args: z.infer<typeof ReadOpenOrdersArgs>, ctx:
   }
 }
 
+async function finalizeChatDecision(
+  database: typeof Db,
+  decisionId: string,
+  status: 'EXECUTED' | 'EXECUTION_FAILED',
+  reason: string | null,
+): Promise<void> {
+  await database
+    .update(aiDecisions)
+    .set({
+      status,
+      rejectionReason: reason,
+      executedAt: status === 'EXECUTED' ? new Date() : null,
+    })
+    .where(eq(aiDecisions.id, decisionId));
+}
+
 async function dispatchMutatingAction(
   args: { reasoning: string },
   action: ProposedAction,
@@ -635,6 +683,12 @@ async function dispatchMutatingAction(
       bingxClient: ctx.bingxClient,
       getContractInfoFn: ctx.bingxClient ? makeGetContractInfoFn(ctx.bingxClient) : undefined,
     });
+    await finalizeChatDecision(
+      ctx.db,
+      validation.decisionId,
+      exec.status,
+      exec.status === 'EXECUTED' ? null : exec.reason ?? null,
+    );
     return {
       status: exec.status,
       decisionId: exec.decisionId,
@@ -644,10 +698,12 @@ async function dispatchMutatingAction(
       payload: exec,
     };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    await finalizeChatDecision(ctx.db, validation.decisionId, 'EXECUTION_FAILED', `${toolName} threw: ${reason}`);
     return {
       status: 'EXECUTION_FAILED',
       decisionId: validation.decisionId,
-      summary: `${toolName} threw: ${err instanceof Error ? err.message : String(err)}`,
+      summary: `${toolName} threw: ${reason}`,
       payload: null,
     };
   }
