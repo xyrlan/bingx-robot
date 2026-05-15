@@ -186,7 +186,15 @@
         "reasoning": "推理",
         "rejection": "拒绝原因",
         "signal": "信号快照",
-        "noSignal": "通过聊天发起，无信号",
+        "noSignal": "无信号",
+        "noSignalByTrigger": {
+          "CRON_TICK": "定时执行，无信号",
+          "EVENT_DRAWDOWN": "回撤事件，无信号",
+          "EVENT_FUNDING_FLIP": "资金费率反转，无信号",
+          "EVENT_FILL": "成交事件，无信号",
+          "EVENT_ERROR": "错误事件，无信号",
+          "CHAT": "通过聊天发起，无信号"
+        },
         "params": "参数",
         "linkedBot": "关联机器人",
         "linkedPaperBot": "关联模拟机器人",

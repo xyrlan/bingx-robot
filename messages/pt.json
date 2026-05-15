@@ -187,7 +187,15 @@
         "reasoning": "Raciocínio",
         "rejection": "Motivo da rejeição",
         "signal": "Snapshot do sinal",
-        "noSignal": "iniciada via chat, sem sinal",
+        "noSignal": "sem sinal",
+        "noSignalByTrigger": {
+          "CRON_TICK": "tick agendado, sem sinal",
+          "EVENT_DRAWDOWN": "evento de drawdown, sem sinal",
+          "EVENT_FUNDING_FLIP": "virada do funding, sem sinal",
+          "EVENT_FILL": "evento de execução, sem sinal",
+          "EVENT_ERROR": "evento de erro, sem sinal",
+          "CHAT": "iniciada via chat, sem sinal"
+        },
         "params": "Parâmetros",
         "linkedBot": "Bot vinculado",
         "linkedPaperBot": "Bot de papel vinculado",

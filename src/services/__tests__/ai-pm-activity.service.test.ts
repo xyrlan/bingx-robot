@@ -9,6 +9,7 @@ import {
   getLastTickAt,
   listDecisions,
   decodeCursor,
+  ALL_ACTION_TYPES,
 } from '@/services/ai-pm-activity.service';
 
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000040';
@@ -218,6 +219,25 @@ describe('ai-pm-activity service', () => {
     await seedDecisions(6);
     const got = await listDecisions({ userId: TEST_USER_ID, actionType: ['CREATE_BOT'] });
     expect(got.decisions.every((d) => d.actionType === 'CREATE_BOT')).toBe(true);
+  });
+
+  it('ALL_ACTION_TYPES exposes all 13 enum members including direct-order types', () => {
+    expect(ALL_ACTION_TYPES).toEqual(expect.arrayContaining([
+      'CREATE_BOT', 'STOP_BOT', 'ADJUST_PARAMS', 'REALLOCATE_CAPITAL', 'NO_ACTION',
+      'PLACE_MARKET_ORDER', 'PLACE_LIMIT_ORDER', 'PLACE_STOP_ORDER', 'PLACE_TAKE_PROFIT',
+      'PLACE_TRAILING_STOP', 'CLOSE_POSITION', 'CANCEL_ORDER', 'CANCEL_ALL_ORDERS',
+    ]));
+    expect(ALL_ACTION_TYPES).toHaveLength(13);
+  });
+
+  it('listDecisions filters by direct-order actionType (PLACE_MARKET_ORDER)', async () => {
+    await db.insert(aiDecisions).values([
+      { userId: TEST_USER_ID, triggeredBy: 'CHAT', actionType: 'PLACE_MARKET_ORDER', status: 'EXECUTED', symbol: 'BTC-USDT' },
+      { userId: TEST_USER_ID, triggeredBy: 'CRON_TICK', actionType: 'NO_ACTION', status: 'EXECUTED' },
+    ]);
+    const got = await listDecisions({ userId: TEST_USER_ID, actionType: ['PLACE_MARKET_ORDER'] });
+    expect(got.decisions).toHaveLength(1);
+    expect(got.decisions[0].actionType).toBe('PLACE_MARKET_ORDER');
   });
 
   it('listDecisions filters by symbol (uppercased)', async () => {
