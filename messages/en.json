@@ -187,7 +187,15 @@
         "reasoning": "Reasoning",
         "rejection": "Rejection reason",
         "signal": "Signal snapshot",
-        "noSignal": "chat-initiated, no signal",
+        "noSignal": "no signal",
+        "noSignalByTrigger": {
+          "CRON_TICK": "scheduled tick, no signal",
+          "EVENT_DRAWDOWN": "drawdown event, no signal",
+          "EVENT_FUNDING_FLIP": "funding flip event, no signal",
+          "EVENT_FILL": "fill event, no signal",
+          "EVENT_ERROR": "error event, no signal",
+          "CHAT": "chat-initiated, no signal"
+        },
         "params": "Params",
         "linkedBot": "Linked bot",
         "linkedPaperBot": "Linked paper bot",

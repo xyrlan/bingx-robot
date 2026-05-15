@@ -14,6 +14,7 @@ function isEmpty(value: unknown): boolean {
 
 export function DecisionDetail({ decision }: { decision: AiDecisionPublic }) {
   const t = useTranslations('AiPm.Activity.detail');
+  const tTrigger = useTranslations('AiPm.Activity.detail.noSignalByTrigger');
 
   const hasSignal = !isEmpty(decision.signalSnapshot);
   const hasParams = !isEmpty(decision.params);
@@ -43,7 +44,7 @@ export function DecisionDetail({ decision }: { decision: AiDecisionPublic }) {
           </details>
         ) : (
           <div className="text-xs font-semibold uppercase text-muted">
-            {t('signal')} <span className="font-normal normal-case">— {t('noSignal')}</span>
+            {t('signal')} <span className="font-normal normal-case">— {tTrigger(decision.triggeredBy)}</span>
           </div>
         )}
       </section>

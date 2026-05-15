@@ -124,7 +124,23 @@ export type AiActionType =
   | 'STOP_BOT'
   | 'ADJUST_PARAMS'
   | 'REALLOCATE_CAPITAL'
-  | 'NO_ACTION';
+  | 'NO_ACTION'
+  | 'PLACE_MARKET_ORDER'
+  | 'PLACE_LIMIT_ORDER'
+  | 'PLACE_STOP_ORDER'
+  | 'PLACE_TAKE_PROFIT'
+  | 'PLACE_TRAILING_STOP'
+  | 'CLOSE_POSITION'
+  | 'CANCEL_ORDER'
+  | 'CANCEL_ALL_ORDERS';
+
+export type AiTriggerSource =
+  | 'CRON_TICK'
+  | 'EVENT_DRAWDOWN'
+  | 'EVENT_FUNDING_FLIP'
+  | 'EVENT_FILL'
+  | 'EVENT_ERROR'
+  | 'CHAT';
 
 export const ALL_STATUSES: AiDecisionStatus[] = [
   'PROPOSED',
@@ -141,6 +157,14 @@ export const ALL_ACTION_TYPES: AiActionType[] = [
   'ADJUST_PARAMS',
   'REALLOCATE_CAPITAL',
   'NO_ACTION',
+  'PLACE_MARKET_ORDER',
+  'PLACE_LIMIT_ORDER',
+  'PLACE_STOP_ORDER',
+  'PLACE_TAKE_PROFIT',
+  'PLACE_TRAILING_STOP',
+  'CLOSE_POSITION',
+  'CANCEL_ORDER',
+  'CANCEL_ALL_ORDERS',
 ];
 
 export interface ListDecisionsParams {
@@ -165,7 +189,7 @@ export interface PaperBotInline {
 
 export interface AiDecisionPublic {
   id: string;
-  triggeredBy: string;
+  triggeredBy: AiTriggerSource;
   triggerDetail: string | null;
   actionType: AiActionType;
   status: AiDecisionStatus;
@@ -288,7 +312,7 @@ export async function listDecisions(
 
   const decisions: AiDecisionPublic[] = kept.map((d) => ({
     id: d.id,
-    triggeredBy: d.triggeredBy,
+    triggeredBy: d.triggeredBy as AiTriggerSource,
     triggerDetail: d.triggerDetail,
     actionType: d.actionType as AiActionType,
     status: d.status as AiDecisionStatus,
