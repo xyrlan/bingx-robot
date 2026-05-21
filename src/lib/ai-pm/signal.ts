@@ -18,6 +18,7 @@ export interface SignalCandidate {
   regime: Regime;
   score: number;
   reason: string;
+  indicatorSnapshot?: IndicatorSnapshot;
 }
 
 export interface SignalResult {
@@ -94,6 +95,11 @@ export async function runSignal(params: RunSignalParams): Promise<SignalOutcome>
   }
 
   const snapshotsBySymbol = new Map(snapshots.map((s) => [s.symbol, s]));
+  const rankedWithSnapshot: SignalCandidate[] = ranked.map((c) => ({
+    ...c,
+    indicatorSnapshot: snapshotsBySymbol.get(c.symbol),
+  }));
+
   const rows = ranked.map((c) => ({
     userId: params.userId,
     symbol: c.symbol,
@@ -109,7 +115,7 @@ export async function runSignal(params: RunSignalParams): Promise<SignalOutcome>
   return {
     ok: true,
     result: {
-      candidates: ranked,
+      candidates: rankedWithSnapshot,
       signalIds,
       usage: llm.usage,
     },

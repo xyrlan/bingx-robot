@@ -4,10 +4,17 @@ import {
   rsi,
   atr,
   bollinger,
+  ema,
+  fairValueGaps,
+  swings,
   type Candle,
   type CloseCandle,
+  type FvgZone,
 } from '@/lib/ai-pm/indicators';
 import type { Kline } from '@/services/bingx.service';
+
+const SWING_LOOKBACK = 5;
+const FVG_MAX_PER_SIDE = 3;
 
 export const REGIME_VALUES = ['range', 'trend_up', 'trend_down', 'volatile'] as const;
 export type Regime = (typeof REGIME_VALUES)[number];
@@ -30,9 +37,17 @@ export interface IndicatorSnapshot {
   lastClose: number;
   sma20: number | null;
   sma50: number | null;
+  ema20: number | null;
+  ema50: number | null;
   rsi14: number | null;
   atr14: number | null;
   bollingerWidth: number | null;
+  fvgBullish: FvgZone[];
+  fvgBearish: FvgZone[];
+  swingHigh: number | null;
+  swingLow: number | null;
+  stopDistanceAtrLong: number | null;
+  stopDistanceAtrShort: number | null;
 }
 
 export function buildIndicatorSnapshot(symbol: string, candles: Kline[]): IndicatorSnapshot {
@@ -43,15 +58,39 @@ export function buildIndicatorSnapshot(symbol: string, candles: Kline[]): Indica
   const bollingerWidth =
     bb && bb.middle !== 0 ? (bb.upper - bb.lower) / bb.middle : null;
 
+  const atr14 = atr(fullCandles, 14);
+  const { swingHigh, swingLow } = swings(fullCandles, SWING_LOOKBACK);
+  const fvgs = fairValueGaps(fullCandles);
+
+  const stopDistanceAtrLong =
+    atr14 && atr14 > 0 && swingLow !== null ? (lastClose - swingLow) / atr14 : null;
+  const stopDistanceAtrShort =
+    atr14 && atr14 > 0 && swingHigh !== null ? (swingHigh - lastClose) / atr14 : null;
+
   return {
     symbol,
     lastClose,
     sma20: sma(closeCandles, 20),
     sma50: sma(closeCandles, 50),
+    ema20: ema(closeCandles, 20),
+    ema50: ema(closeCandles, 50),
     rsi14: rsi(closeCandles, 14),
-    atr14: atr(fullCandles, 14),
+    atr14,
     bollingerWidth,
+    fvgBullish: fvgs.bullish.slice(-FVG_MAX_PER_SIDE),
+    fvgBearish: fvgs.bearish.slice(-FVG_MAX_PER_SIDE),
+    swingHigh,
+    swingLow,
+    stopDistanceAtrLong,
+    stopDistanceAtrShort,
   };
+}
+
+function formatFvgs(zones: FvgZone[]): string {
+  if (zones.length === 0) return '[]';
+  return zones
+    .map((z) => `[${z.low.toFixed(4)}-${z.high.toFixed(4)} age=${z.ageBars}]`)
+    .join(',');
 }
 
 export function buildSystemPrompt(): string {
@@ -82,9 +121,17 @@ export function buildUserPrompt(snapshots: IndicatorSnapshot[]): string {
         `last=${s.lastClose.toFixed(4)}`,
         `sma20=${fmt(s.sma20)}`,
         `sma50=${fmt(s.sma50)}`,
+        `ema20=${fmt(s.ema20)}`,
+        `ema50=${fmt(s.ema50)}`,
         `rsi14=${fmt(s.rsi14)}`,
         `atr14=${fmt(s.atr14)}`,
         `bbWidth=${fmt(s.bollingerWidth)}`,
+        `swingHigh=${fmt(s.swingHigh)}`,
+        `swingLow=${fmt(s.swingLow)}`,
+        `stopAtrLong=${fmt(s.stopDistanceAtrLong)}`,
+        `stopAtrShort=${fmt(s.stopDistanceAtrShort)}`,
+        `fvgBull=${formatFvgs(s.fvgBullish)}`,
+        `fvgBear=${formatFvgs(s.fvgBearish)}`,
       ].join(' ');
     })
     .join('\n');

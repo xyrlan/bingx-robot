@@ -100,6 +100,115 @@ export function bollinger(
   };
 }
 
+export function ema(candles: readonly CloseCandle[], period: number): number | null {
+  if (period <= 0 || candles.length < period) return null;
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += candles[i].close;
+  let val = sum / period;
+  const alpha = 2 / (period + 1);
+  for (let i = period; i < candles.length; i++) {
+    val = val + alpha * (candles[i].close - val);
+  }
+  return val;
+}
+
+export interface FvgZone {
+  low: number;
+  high: number;
+  ageBars: number;
+}
+
+export interface FairValueGapsResult {
+  bullish: FvgZone[];
+  bearish: FvgZone[];
+}
+
+export function fairValueGaps(candles: readonly Candle[]): FairValueGapsResult {
+  const n = candles.length;
+  if (n < 3) return { bullish: [], bearish: [] };
+
+  const latest = n - 1;
+  const bullish: FvgZone[] = [];
+  const bearish: FvgZone[] = [];
+
+  for (let i = 2; i < n; i++) {
+    const prev2 = candles[i - 2];
+    const cur = candles[i];
+
+    if (prev2.high < cur.low) {
+      const zoneLow = prev2.high;
+      const zoneHigh = cur.low;
+      let filled = false;
+      for (let j = i + 1; j < n; j++) {
+        if (candles[j].low <= zoneHigh) {
+          filled = true;
+          break;
+        }
+      }
+      if (!filled) {
+        bullish.push({ low: zoneLow, high: zoneHigh, ageBars: latest - i });
+      }
+    }
+
+    if (prev2.low > cur.high) {
+      const zoneLow = cur.high;
+      const zoneHigh = prev2.low;
+      let filled = false;
+      for (let j = i + 1; j < n; j++) {
+        if (candles[j].high >= zoneLow) {
+          filled = true;
+          break;
+        }
+      }
+      if (!filled) {
+        bearish.push({ low: zoneLow, high: zoneHigh, ageBars: latest - i });
+      }
+    }
+  }
+
+  return { bullish, bearish };
+}
+
+export interface SwingsResult {
+  swingHigh: number | null;
+  swingLow: number | null;
+}
+
+export function swings(candles: readonly Candle[], lookback: number): SwingsResult {
+  const n = candles.length;
+  if (lookback <= 0 || n < 2 * lookback + 1) return { swingHigh: null, swingLow: null };
+
+  let swingHigh: number | null = null;
+  let swingLow: number | null = null;
+
+  for (let i = n - 1 - lookback; i >= lookback; i--) {
+    const cur = candles[i];
+    if (swingHigh === null) {
+      let isHigh = true;
+      for (let j = 1; j <= lookback; j++) {
+        if (candles[i - j].high >= cur.high || candles[i + j].high >= cur.high) {
+          isHigh = false;
+          break;
+        }
+      }
+      if (isHigh) swingHigh = cur.high;
+    }
+    if (swingLow === null) {
+      let isLow = true;
+      for (let j = 1; j <= lookback; j++) {
+        if (candles[i - j].low <= cur.low || candles[i + j].low <= cur.low) {
+          isLow = false;
+          break;
+        }
+      }
+      if (isLow) swingLow = cur.low;
+    }
+    if (swingHigh !== null && swingLow !== null) break;
+  }
+
+  return { swingHigh, swingLow };
+}
+
 export function crossoverState(
   shortSeries: readonly number[],
   longSeries: readonly number[],

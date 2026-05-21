@@ -299,6 +299,74 @@ describe('buildAutonomousUserPrompt', () => {
     });
     expect(prompt).not.toContain('Running AI bots');
   });
+
+  it('renders indicator snapshot fields (ema, swings, fvg, atr-stop) when provided on candidate', () => {
+    const candidatesWithSnapshot: SignalCandidate[] = [
+      {
+        symbol: 'ETH-USDT',
+        regime: 'trend_up',
+        score: 80,
+        reason: 'higher highs',
+        indicatorSnapshot: {
+          symbol: 'ETH-USDT',
+          lastClose: 3000,
+          sma20: 2950,
+          sma50: 2900,
+          ema20: 2960,
+          ema50: 2910,
+          rsi14: 60,
+          atr14: 50,
+          bollingerWidth: 0.05,
+          fvgBullish: [{ low: 2940, high: 2950, ageBars: 2 }],
+          fvgBearish: [],
+          swingHigh: 3050,
+          swingLow: 2880,
+          stopDistanceAtrLong: 2.4,
+          stopDistanceAtrShort: 1.0,
+        },
+      },
+    ];
+    const prompt = buildAutonomousUserPrompt({
+      candidates: candidatesWithSnapshot,
+      portfolioState: stateWithLive,
+      config: baseConfig,
+    });
+    expect(prompt).toContain('ema20=');
+    expect(prompt).toContain('ema50=');
+    expect(prompt).toContain('swingHigh=');
+    expect(prompt).toContain('swingLow=');
+    expect(prompt).toContain('stopAtrLong=');
+    expect(prompt).toContain('stopAtrShort=');
+    expect(prompt).toMatch(/fvgBull=/);
+    expect(prompt).toMatch(/fvgBear=/);
+    expect(prompt).toContain('2940');
+  });
+});
+
+describe('buildAutonomousSystemPrompt', () => {
+  it('teaches EMA stack bias rule', () => {
+    const sys = buildAutonomousSystemPrompt();
+    expect(sys).toMatch(/ema20.*ema50|EMA stack/i);
+    expect(sys).toMatch(/bias/i);
+  });
+
+  it('teaches FVG entry rule', () => {
+    const sys = buildAutonomousSystemPrompt();
+    expect(sys).toMatch(/fair value gap|fvg/i);
+  });
+
+  it('teaches swing-based stop and RR minimum', () => {
+    const sys = buildAutonomousSystemPrompt();
+    expect(sys).toMatch(/swing/i);
+    expect(sys).toMatch(/risk[- ]?reward|RR/i);
+    expect(sys).toMatch(/1\.5/);
+  });
+
+  it('teaches ATR cap on stop distance', () => {
+    const sys = buildAutonomousSystemPrompt();
+    expect(sys).toMatch(/atr/i);
+    expect(sys).toMatch(/3/);
+  });
 });
 
 describe('AutonomousActionSchema', () => {
