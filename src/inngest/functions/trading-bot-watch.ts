@@ -14,14 +14,23 @@ import {
   getOpenOrders,
   hasTakeProfitForPosition,
   placeBatchOrders,
+  cancelBatchOrders,
   buildGridEntryPayload,
-  updateGridLevelOrderId,
-  updateGridLevelTpOrderId,
+  updateGridLevelById,
+  orderMatchesPriceLevel,
   toPrecision,
   toSafeIdString,
   recordTrade,
 } from '@/services/bingx.service';
 import { buildGridShortEntryPayload } from '@/services/bots/grid-short.service';
+import {
+  buildEntryCid,
+  buildTpCid,
+  entryCidBotPrefix,
+  makeNonce,
+  parseLevelShortId,
+  shortId,
+} from '@/services/bots/grid-cid';
 
 const POSITION_ENTRY_TOLERANCE_PCT = 0.005;
 
@@ -46,13 +55,49 @@ function isClosestLevelForPosition(
 }
 
 /** Minimal level fields for step payload (reduces Fast Origin Transfer) */
-type MinimalLevel = { priceLevel: string; orderId: string | null; tpOrderId: string | null; isActive: boolean };
+type MinimalLevel = {
+  id: string;
+  priceLevel: string;
+  orderId: string | null;
+  tpOrderId: string | null;
+  isActive: boolean;
+  entryClientOrderId: string | null;
+  tpClientOrderId: string | null;
+};
 
 /** Minimal position fields for step payload */
 type MinimalPosition = { positionId?: string; entryPrice: number; positionAmt: number; positionSide: string };
 
 /** Minimal order fields for step payload */
-type MinimalOrder = { orderId: string; type?: string; side?: string; positionSide?: string; price?: number | string; stopPrice?: number | string; positionId?: string };
+type MinimalOrder = {
+  orderId: string;
+  type?: string;
+  side?: string;
+  positionSide?: string;
+  price?: number | string;
+  stopPrice?: number | string;
+  positionId?: string;
+  clientOrderId?: string;
+};
+
+type PendingEntry = { levelId: string; levelPrice: string; clientOrderId: string; payload: Record<string, unknown> };
+type PendingTP = { levelId: string; levelPrice: string; clientOrderId: string; positionId?: string; payload: Record<string, unknown> };
+type OrphanAdoption = { levelId: string; orderId: string; clientOrderId?: string };
+type CompletedCycle = {
+  entryOrderId: string;
+  tpOrderId: string;
+  entryPrice: number;
+  exitPrice: number;
+  exitType: 'EXIT_TP' | 'EXIT_MANUAL';
+  qty: number;
+  pnl: number;
+};
+
+function isEntryTypeAndSide(order: MinimalOrder, expectedSide: string): boolean {
+  const type = String(order.type ?? '').toUpperCase();
+  if (type !== 'LIMIT' && type !== 'TRIGGER_LIMIT') return false;
+  return String(order.side ?? '').toUpperCase() === expectedSide;
+}
 
 export const tradingBotWatch = inngest.createFunction(
   {
@@ -127,10 +172,13 @@ export const tradingBotWatch = inngest.createFunction(
 
         // Minimal payload to reduce Fast Origin Transfer (CDN to Compute)
         const levelsMin: MinimalLevel[] = levels.map((l) => ({
+          id: l.id,
           priceLevel: String(l.priceLevel),
           orderId: l.orderId ?? null,
           tpOrderId: l.tpOrderId ?? null,
           isActive: l.isActive ?? true,
+          entryClientOrderId: l.entryClientOrderId ?? null,
+          tpClientOrderId: l.tpClientOrderId ?? null,
         }));
         const positionsMin: MinimalPosition[] = positions.map((p) => ({
           positionId: p.positionId,
@@ -146,6 +194,7 @@ export const tradingBotWatch = inngest.createFunction(
           price: o.price,
           stopPrice: o.stopPrice,
           positionId: o.positionId,
+          clientOrderId: o.clientOrderId,
         }));
 
         return {
@@ -169,40 +218,46 @@ export const tradingBotWatch = inngest.createFunction(
 
       if (!setup.ok) continue;
 
-      const processResult = await step.run(`process-levels-${bot.id}`, async () => {
+      // === Pure analysis — zero side effects, memoized by Inngest. The CIDs
+      // generated here are stable across retries of the downstream steps; that
+      // stability is what makes retried placements adoptable instead of duplicated.
+      const analysis = await step.run(`analyze-${bot.id}`, async () => {
         const {
           symbol, levels, openOrderIds, orders, positions,
-          pricePrecision, quantityPrecision, minQty, minUsdt,
+          pricePrecision, minQty, minUsdt,
           currentPrice, positionSizeUsdt, takeProfitPct, positionSide, botType,
         } = setup;
         const isShort = botType === 'GRID_SHORT';
-
-        const client = bot.apiKeyId
-          ? await getBingxClientByApiKeyId(bot.apiKeyId)
-          : await getBingxClient(bot.userId);
-        if (!client) return { processed: 0 };
-
+        const expectedEntrySide = isShort ? 'SELL' : 'BUY';
         const openOrderIdsSet = new Set(openOrderIds);
+        const nonce = makeNonce();
+        const botCidPrefix = entryCidBotPrefix(bot.id);
 
-        // === PHASE 1: Analysis (no side effects) ===
-        type PendingEntry = { levelPrice: string; payload: Record<string, unknown> };
-        type PendingTP = { levelPrice: string; positionId?: string; payload: Record<string, unknown> };
         const pendingEntries: PendingEntry[] = [];
         const pendingTPs: PendingTP[] = [];
-        const orphanUpdates: Array<{ levelPrice: string; orderId: string }> = [];
+        const orphanAdoptions: OrphanAdoption[] = [];
+        const completedCycles: CompletedCycle[] = [];
 
         for (const level of levels) {
           const priceLevel = Number(level.priceLevel);
 
-          // Check if entry order still open
+          // Check if tracked entry order still open
           if (level.orderId && openOrderIdsSet.has(level.orderId)) {
             const order = orders.find((o) => String(o.orderId) === level.orderId);
-            const expectedEntrySide = isShort ? 'SELL' : 'BUY';
-            const isEntryOrder =
-              order &&
-              ['LIMIT', 'TRIGGER_LIMIT'].includes(String(order.type ?? '').toUpperCase()) &&
-              String(order.side ?? '').toUpperCase() === expectedEntrySide;
-            if (isEntryOrder) continue; // SKIP_ORDER_OPEN
+            if (order && isEntryTypeAndSide(order, expectedEntrySide)) continue; // SKIP_ORDER_OPEN
+          }
+
+          // CID adoption: an open order carrying this level's entry CID is ours,
+          // even if the orderId write-back failed (retry/crash) — adopt it.
+          const levelCidPrefix = botCidPrefix + shortId(level.id);
+          const cidOrder = orders.find(
+            (o) => o.clientOrderId != null && o.clientOrderId.startsWith(levelCidPrefix)
+          );
+          if (cidOrder) {
+            if (level.orderId !== cidOrder.orderId) {
+              orphanAdoptions.push({ levelId: level.id, orderId: cidOrder.orderId, clientOrderId: cidOrder.clientOrderId });
+            }
+            continue;
           }
 
           // Check for positions at this level
@@ -220,6 +275,7 @@ export const tradingBotWatch = inngest.createFunction(
 
           if (positionsAtLevel.length > 0) {
             // NEEDS_TP: Check if TP exists for each position
+            let tpIdx = 0;
             for (const pos of positionsAtLevel) {
               const stopPrice = isShort
                 ? priceLevel * (1 - takeProfitPct)
@@ -233,6 +289,8 @@ export const tradingBotWatch = inngest.createFunction(
               const posSide = pos.positionSide.toUpperCase();
               const hasTp =
                 (level.tpOrderId && openOrderIdsSet.has(level.tpOrderId)) ||
+                (level.tpClientOrderId != null &&
+                  orders.some((o) => o.clientOrderId === level.tpClientOrderId)) ||
                 hasTakeProfitForPosition(
                   orders,
                   symbol,
@@ -245,6 +303,8 @@ export const tradingBotWatch = inngest.createFunction(
               if (!hasTp) {
                 const tpSide = isShort ? 'BUY' : 'SELL';
                 const positionIdStr = toSafeIdString(pos.positionId);
+                const tpCid = buildTpCid(bot.id, level.id, nonce) + (tpIdx > 0 ? String(tpIdx) : '');
+                tpIdx++;
                 const tpPayload: Record<string, unknown> = {
                   symbol,
                   side: tpSide,
@@ -252,6 +312,7 @@ export const tradingBotWatch = inngest.createFunction(
                   positionSide: posSide,
                   stopPrice: parseFloat(stopPriceStr),
                   workingType: 'MARK_PRICE',
+                  clientOrderID: tpCid,
                 };
                 if (positionIdStr != null) {
                   tpPayload.positionId = positionIdStr;
@@ -259,7 +320,13 @@ export const tradingBotWatch = inngest.createFunction(
                 } else {
                   tpPayload.quantity = parseFloat(toPrecision(pos.positionAmt, 8));
                 }
-                pendingTPs.push({ levelPrice: String(level.priceLevel), positionId: positionIdStr ?? undefined, payload: tpPayload });
+                pendingTPs.push({
+                  levelId: level.id,
+                  levelPrice: String(level.priceLevel),
+                  clientOrderId: tpCid,
+                  positionId: positionIdStr ?? undefined,
+                  payload: tpPayload,
+                });
               }
             }
             continue;
@@ -282,18 +349,19 @@ export const tradingBotWatch = inngest.createFunction(
               : currentPrice >= tpPrice);
 
             const exitPrice = tpLikelyFilled ? tpPrice : (currentPrice ?? entryPrice);
-            const exitType = tpLikelyFilled ? 'EXIT_TP' : 'EXIT_MANUAL';
+            const exitType = tpLikelyFilled ? 'EXIT_TP' as const : 'EXIT_MANUAL' as const;
             const pnl = isShort
               ? (entryPrice - exitPrice) * qty
               : (exitPrice - entryPrice) * qty;
 
-            await recordTrade({
-              botId: bot.id, symbol, side: positionSide as 'LONG' | 'SHORT',
-              type: 'ENTRY', price: entryPrice, quantity: qty, orderId: level.orderId,
-            });
-            await recordTrade({
-              botId: bot.id, symbol, side: positionSide as 'LONG' | 'SHORT',
-              type: exitType, price: exitPrice, quantity: qty, realizedPnl: pnl, orderId: level.tpOrderId,
+            completedCycles.push({
+              entryOrderId: level.orderId,
+              tpOrderId: level.tpOrderId,
+              entryPrice,
+              exitPrice,
+              exitType,
+              qty,
+              pnl,
             });
           }
 
@@ -305,116 +373,262 @@ export const tradingBotWatch = inngest.createFunction(
           const quantityBtc = positionSizeUsdt / priceLevel;
           if (quantityBtc < minQty) continue;
 
-          // Check for orphan orders matching this level price
-          const expectedOrphanSide = isShort ? 'SELL' : 'BUY';
+          // Legacy orphan adoption: CID-less (or foreign) entry orders at this
+          // level's tick-rounded price — orders placed before the CID rollout.
           const orphanOrder = orders.find((o) => {
-            if (String(o.side ?? '').toUpperCase() !== expectedOrphanSide) return false;
+            if (o.clientOrderId != null && o.clientOrderId.startsWith(botCidPrefix)) return false; // ours-by-CID handled above
+            if (!isEntryTypeAndSide(o, expectedEntrySide)) return false;
             if (String(o.positionSide ?? '').toUpperCase() !== positionSide.toUpperCase()) return false;
-            const orderType = String(o.type ?? '').toUpperCase();
-            if (orderType !== 'LIMIT' && orderType !== 'TRIGGER_LIMIT') return false;
-            const price = Number(o.price ?? 0);
-            const stopPrice = Number(o.stopPrice ?? 0);
-            return Math.abs(price - priceLevel) < 0.0001 || Math.abs(stopPrice - priceLevel) < 0.0001;
+            return orderMatchesPriceLevel(o, priceLevel, pricePrecision);
           });
 
           if (orphanOrder) {
-            orphanUpdates.push({ levelPrice: String(level.priceLevel), orderId: orphanOrder.orderId });
+            orphanAdoptions.push({ levelId: level.id, orderId: orphanOrder.orderId, clientOrderId: orphanOrder.clientOrderId });
             continue;
           }
 
-          // NEEDS_ENTRY: Build entry payload
+          // NEEDS_ENTRY: Build entry payload with deterministic CID
+          const clientOrderId = buildEntryCid(bot.id, level.id, nonce);
           const entryPayload = isShort
             ? buildGridShortEntryPayload({
                 symbol, priceLevel, quantity: quantityBtc, takeProfitPct,
-                pricePrecision, quantityPrecision, currentPrice,
+                pricePrecision, quantityPrecision: setup.quantityPrecision, currentPrice, clientOrderId,
               })
             : buildGridEntryPayload({
                 symbol, priceLevel, quantity: quantityBtc, takeProfitPct,
-                pricePrecision, quantityPrecision, positionSide, currentPrice,
+                pricePrecision, quantityPrecision: setup.quantityPrecision, positionSide, currentPrice, clientOrderId,
               });
 
-          pendingEntries.push({ levelPrice: String(level.priceLevel), payload: entryPayload });
+          pendingEntries.push({ levelId: level.id, levelPrice: String(level.priceLevel), clientOrderId, payload: entryPayload });
         }
 
-        // Process orphan adoptions (DB only, no API calls)
-        for (const orphan of orphanUpdates) {
-          await updateGridLevelOrderId(bot.id, orphan.levelPrice, orphan.orderId);
-          await updateGridLevelTpOrderId(bot.id, orphan.levelPrice, null);
+        // === Reconciliation sweep: entry orders on the exchange that no active
+        // level accounts for. Each level keeps exactly one order (tracked or
+        // adopted); our-CID orders beyond that — and our-CID orders pointing at
+        // levels that no longer exist (post-edit ghosts) — get cancelled.
+        // CID-less orders are only swept when the level already has a keeper,
+        // so manual orders at unrelated prices are never touched.
+        const keeperByLevelId = new Map<string, string>();
+        for (const l of levels) {
+          if (l.orderId && openOrderIdsSet.has(l.orderId)) keeperByLevelId.set(l.id, l.orderId);
+        }
+        for (const a of orphanAdoptions) keeperByLevelId.set(a.levelId, a.orderId);
+
+        const staleEntryOrderIds: string[] = [];
+        for (const o of orders) {
+          if (!isEntryTypeAndSide(o, expectedEntrySide)) continue;
+          if (String(o.positionSide ?? '').toUpperCase() !== positionSide.toUpperCase()) continue;
+
+          const cid = o.clientOrderId;
+          let levelId: string | null = null;
+          if (cid != null && cid.startsWith(botCidPrefix)) {
+            const lvl8 = parseLevelShortId(cid, bot.id);
+            levelId = levels.find((l) => shortId(l.id) === lvl8)?.id ?? null;
+            if (levelId == null) {
+              staleEntryOrderIds.push(o.orderId); // ghost: level deleted by an edit
+              continue;
+            }
+          } else {
+            levelId = levels.find((l) => orderMatchesPriceLevel(o, Number(l.priceLevel), pricePrecision))?.id ?? null;
+            if (levelId == null) continue; // unknown order at an unrelated price — leave it alone
+          }
+
+          const keeper = keeperByLevelId.get(levelId);
+          if (keeper != null && keeper !== o.orderId) staleEntryOrderIds.push(o.orderId);
         }
 
-        // === Short-circuit: nothing to place ===
-        if (pendingEntries.length === 0 && pendingTPs.length === 0) {
-          return { processed: orphanUpdates.length };
+        return { pendingEntries, pendingTPs, orphanAdoptions, completedCycles, staleEntryOrderIds };
+      });
+
+      const { symbol, pricePrecision, positionSide } = setup;
+      const isShort = setup.botType === 'GRID_SHORT';
+      const expectedEntrySide = isShort ? 'SELL' : 'BUY';
+
+      // === Record completed cycles (recordTrade dedupes on botId+orderId+type,
+      // so a retry of this step cannot double-count P&L).
+      await step.run(`record-trades-${bot.id}`, async () => {
+        for (const cycle of analysis.completedCycles) {
+          await recordTrade({
+            botId: bot.id, symbol, side: positionSide as 'LONG' | 'SHORT',
+            type: 'ENTRY', price: cycle.entryPrice, quantity: cycle.qty, orderId: cycle.entryOrderId,
+          });
+          await recordTrade({
+            botId: bot.id, symbol, side: positionSide as 'LONG' | 'SHORT',
+            type: cycle.exitType, price: cycle.exitPrice, quantity: cycle.qty,
+            realizedPnl: cycle.pnl, orderId: cycle.tpOrderId,
+          });
+        }
+        return { recorded: analysis.completedCycles.length };
+      });
+
+      // === Reconcile: adopt orphans into levels, cancel stale/duplicate entries.
+      const reconcileResult = await step.run(`reconcile-${bot.id}`, async () => {
+        if (analysis.orphanAdoptions.length === 0 && analysis.staleEntryOrderIds.length === 0) {
+          return { adopted: 0, cancelled: 0 };
         }
 
-        // === PHASE 2: Fresh validation + Batch execution ===
+        for (const adoption of analysis.orphanAdoptions) {
+          await updateGridLevelById(adoption.levelId, {
+            orderId: adoption.orderId,
+            entryClientOrderId: adoption.clientOrderId ?? null,
+            tpOrderId: null,
+          });
+        }
+
+        if (analysis.staleEntryOrderIds.length > 0) {
+          const client = bot.apiKeyId
+            ? await getBingxClientByApiKeyId(bot.apiKeyId)
+            : await getBingxClient(bot.userId);
+          if (client) {
+            try {
+              await cancelBatchOrders(client, symbol, analysis.staleEntryOrderIds);
+            } catch (err) {
+              // Orders may have filled/been cancelled since the snapshot — fine.
+              logger.warn(`[Reconcile] cancel stale entries for bot ${bot.id}:`, err);
+            }
+          }
+        }
+
+        return { adopted: analysis.orphanAdoptions.length, cancelled: analysis.staleEntryOrderIds.length };
+      });
+
+      // === Place entries. Re-checks bot status and the exchange before placing:
+      // a retry of this step finds the CIDs from the previous attempt on the
+      // exchange and adopts them instead of re-placing.
+      const entryResult = await step.run(`place-entries-${bot.id}`, async () => {
+        if (analysis.pendingEntries.length === 0) return { placed: 0 };
+
+        const freshBot = await getBotById(bot.id, bot.userId);
+        if (!freshBot || freshBot.status !== 'RUNNING') return { placed: 0 };
+
+        const client = bot.apiKeyId
+          ? await getBingxClientByApiKeyId(bot.apiKeyId)
+          : await getBingxClient(bot.userId);
+        if (!client) return { placed: 0 };
+
+        const freshOrders = await getOpenOrders(client, symbol);
+        let placed = 0;
+
+        const toPlace: PendingEntry[] = [];
+        for (const entry of analysis.pendingEntries) {
+          const own = freshOrders.find((o) => o.clientOrderId === entry.clientOrderId);
+          if (own) {
+            // Previous attempt placed it — adopt.
+            await updateGridLevelById(entry.levelId, {
+              orderId: own.orderId, entryClientOrderId: entry.clientOrderId, tpOrderId: null,
+            });
+            placed++;
+            continue;
+          }
+          const levelCidPrefix = entryCidBotPrefix(bot.id) + shortId(entry.levelId);
+          const covered = freshOrders.some((o) =>
+            (o.clientOrderId != null && o.clientOrderId.startsWith(levelCidPrefix)) ||
+            (isEntryTypeAndSide(o, expectedEntrySide) &&
+              orderMatchesPriceLevel(o, Number(entry.levelPrice), pricePrecision))
+          );
+          if (covered) continue; // an order already works this level
+          toPlace.push(entry);
+        }
+
+        if (toPlace.length === 0) return { placed };
+
+        const results = await placeBatchOrders(client, toPlace.map((e) => e.payload));
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i];
+          const entry =
+            (result.clientOrderId
+              ? toPlace.find((e) => e.clientOrderId === result.clientOrderId)
+              : toPlace[i]) ?? toPlace[i];
+          if (result.orderId) {
+            const affected = await updateGridLevelById(entry.levelId, {
+              orderId: result.orderId, entryClientOrderId: entry.clientOrderId, tpOrderId: null,
+            });
+            if (affected === 0) {
+              // Level vanished mid-tick (concurrent edit) — cancel instead of orphaning.
+              logger.warn(`[BatchEntry] Level ${entry.levelPrice} gone, cancelling order ${result.orderId}`);
+              try {
+                await cancelBatchOrders(client, symbol, [result.orderId]);
+              } catch (err) {
+                logger.warn(`[BatchEntry] Failed to cancel orphan ${result.orderId}:`, err);
+              }
+            } else {
+              placed++;
+            }
+          } else if (result.error) {
+            logger.warn(`[BatchEntry] Level ${entry.levelPrice} failed: ${result.error}`);
+          }
+        }
+
+        return { placed };
+      });
+
+      // === Place TPs — same adopt-before-place pattern.
+      const tpResult = await step.run(`place-tps-${bot.id}`, async () => {
+        if (analysis.pendingTPs.length === 0) return { placed: 0 };
+
+        const client = bot.apiKeyId
+          ? await getBingxClientByApiKeyId(bot.apiKeyId)
+          : await getBingxClient(bot.userId);
+        if (!client) return { placed: 0 };
+
         const freshOrders = await getOpenOrders(client, symbol);
         const freshPositions = await getOpenPositions(client, symbol);
-        // Filter entries: skip if an order now exists at that price
-        const validEntries = pendingEntries.filter((entry) => {
-          const priceLevel = Number(entry.levelPrice);
-          const expectedSide = isShort ? 'SELL' : 'BUY';
-          const alreadyExists = freshOrders.some((o) => {
-            if (String(o.side ?? '').toUpperCase() !== expectedSide) return false;
-            const orderType = String(o.type ?? '').toUpperCase();
-            if (orderType !== 'LIMIT' && orderType !== 'TRIGGER_LIMIT') return false;
-            const price = Number(o.price ?? 0);
-            const stopPrice = Number(o.stopPrice ?? 0);
-            return Math.abs(price - priceLevel) < 0.0001 || Math.abs(stopPrice - priceLevel) < 0.0001;
-          });
-          return !alreadyExists;
-        });
+        let placed = 0;
 
-        // Filter TPs: skip if position no longer exists or TP was placed
-        const validTPs = pendingTPs.filter((tp) => {
-          const priceLevel = Number(tp.levelPrice);
+        const toPlace: PendingTP[] = [];
+        for (const tp of analysis.pendingTPs) {
+          const own = freshOrders.find((o) => o.clientOrderId === tp.clientOrderId);
+          if (own) {
+            await updateGridLevelById(tp.levelId, { tpOrderId: own.orderId, tpClientOrderId: tp.clientOrderId });
+            placed++;
+            continue;
+          }
+
           const posSide = String(tp.payload.positionSide);
           const hasPosition = freshPositions.some((p) => {
             const side = p.positionSide.toUpperCase();
-            return side === posSide && positionMatchesLevel(p.entryPrice, priceLevel);
+            return side === posSide && positionMatchesLevel(p.entryPrice, Number(tp.levelPrice));
           });
-          if (!hasPosition) return false;
+          if (!hasPosition) continue;
 
           const stopPrice = Number(tp.payload.stopPrice);
-          const hasTp = hasTakeProfitForPosition(freshOrders, symbol, posSide, stopPrice, 0.001, tp.positionId);
-          return !hasTp;
-        });
+          if (hasTakeProfitForPosition(freshOrders, symbol, posSide, stopPrice, 0.001, tp.positionId)) continue;
 
-        let processed = orphanUpdates.length;
+          toPlace.push(tp);
+        }
 
-        // Batch place entry orders
-        if (validEntries.length > 0) {
-          const entryResults = await placeBatchOrders(client, validEntries.map((e) => e.payload));
-          for (let i = 0; i < entryResults.length; i++) {
-            const { orderId, error } = entryResults[i];
-            if (orderId) {
-              await updateGridLevelOrderId(bot.id, validEntries[i].levelPrice, orderId);
-              await updateGridLevelTpOrderId(bot.id, validEntries[i].levelPrice, null);
-              processed++;
-            } else if (error) {
-              console.warn(`[BatchEntry] Level ${validEntries[i].levelPrice} failed: ${error}`);
+        if (toPlace.length === 0) return { placed };
+
+        const results = await placeBatchOrders(client, toPlace.map((t) => t.payload));
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i];
+          const tp =
+            (result.clientOrderId
+              ? toPlace.find((t) => t.clientOrderId === result.clientOrderId)
+              : toPlace[i]) ?? toPlace[i];
+          if (result.orderId) {
+            const affected = await updateGridLevelById(tp.levelId, {
+              tpOrderId: result.orderId, tpClientOrderId: tp.clientOrderId,
+            });
+            if (affected === 0) {
+              logger.warn(`[BatchTP] Level ${tp.levelPrice} gone, cancelling TP ${result.orderId}`);
+              try {
+                await cancelBatchOrders(client, symbol, [result.orderId]);
+              } catch (err) {
+                logger.warn(`[BatchTP] Failed to cancel orphan TP ${result.orderId}:`, err);
+              }
+            } else {
+              placed++;
             }
+          } else if (result.error) {
+            logger.warn(`[BatchTP] Level ${tp.levelPrice} failed: ${result.error}`);
           }
         }
 
-        // Batch place TP orders
-        if (validTPs.length > 0) {
-          const tpResults = await placeBatchOrders(client, validTPs.map((t) => t.payload));
-          for (let i = 0; i < tpResults.length; i++) {
-            const { orderId, error } = tpResults[i];
-            if (orderId) {
-              await updateGridLevelTpOrderId(bot.id, validTPs[i].levelPrice, orderId);
-              processed++;
-            } else if (error) {
-              console.warn(`[BatchTP] Level ${validTPs[i].levelPrice} failed: ${error}`);
-            }
-          }
-        }
-
-        return { processed };
+        return { placed };
       });
 
-      processed += processResult?.processed ?? 0;
+      processed += reconcileResult.adopted + entryResult.placed + tpResult.placed;
     }
 
     return { processed };
