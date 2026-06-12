@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { bingxApiKeys, tradingBots, gridLevels, botTrades } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
 import { createBingxClient, type BingxClient } from '@/lib/bingx/client';
+import { entryCidBotPrefix } from '@/services/bots/grid-cid';
 import type { InferSelectModel } from 'drizzle-orm';
 import { maybeEmitFillEvent } from '@/lib/ai-pm/emit-events';
 import { inngest } from '@/inngest/client';
@@ -933,19 +934,24 @@ export async function placeBatchOrders(
 }
 
 /**
- * Clear only orderId (entry orders) for all grid levels of a bot.
+ * Clear only entry-order tracking for all grid levels of a bot.
  * Does NOT clear tpOrderId — Take Profits stay active on BingX ("Let it Ride").
  */
 export async function clearGridLevelEntryOrders(botId: string): Promise<void> {
   await db
     .update(gridLevels)
-    .set({ orderId: null, updatedAt: new Date() })
+    .set({ orderId: null, entryClientOrderId: null, updatedAt: new Date() })
     .where(eq(gridLevels.botId, botId));
 }
 
 /**
  * Stop bot with surgical cancellation: cancel only entry orders (Buy Limits),
  * leave positions and Take Profit orders active on BingX ("Let it Ride").
+ *
+ * Cancels the union of DB-tracked orderIds and open orders carrying this bot's
+ * entry-CID prefix — orders the DB lost track of (failed write-back, edit race)
+ * are cancelled too, not orphaned. Throws if any of them survives cancellation,
+ * so callers never proceed believing the book is clean when it isn't.
  */
 export async function stopBotAndCancelEntries(
   client: BingxClient,
@@ -953,15 +959,45 @@ export async function stopBotAndCancelEntries(
   symbol: string
 ): Promise<void> {
   const levels = await getGridLevelsByBotId(botId);
-  const entryOrderIds = levels
+  const dbOrderIds = levels
     .map((l) => l.orderId)
     .filter((id): id is string => id != null && id.trim() !== '');
 
-  if (entryOrderIds.length > 0) {
+  const cidPrefix = entryCidBotPrefix(botId);
+  let openOrders: OpenOrderInfo[] = [];
+  try {
+    openOrders = await getOpenOrders(client, symbol);
+  } catch (err) {
+    console.warn('[BingX] Could not list open orders before cancel:', err);
+  }
+  const cidOrderIds = openOrders
+    .filter((o) => o.clientOrderId != null && o.clientOrderId.startsWith(cidPrefix))
+    .map((o) => o.orderId);
+
+  const toCancel = Array.from(new Set([...dbOrderIds, ...cidOrderIds]));
+
+  if (toCancel.length > 0) {
     try {
-      await cancelBatchOrders(client, symbol, entryOrderIds);
+      await cancelBatchOrders(client, symbol, toCancel);
     } catch (err) {
       console.warn('[BingX] Some entry orders may already be filled/cancelled:', err);
+    }
+
+    // Verify: an order that filled meanwhile disappears from openOrders and
+    // passes; an order still sitting in the book did NOT get cancelled.
+    const after = await getOpenOrders(client, symbol);
+    const cancelSet = new Set(toCancel);
+    const survivors = after.filter(
+      (o) =>
+        cancelSet.has(o.orderId) ||
+        (o.clientOrderId != null && o.clientOrderId.startsWith(cidPrefix))
+    );
+    if (survivors.length > 0) {
+      throw new Error(
+        `Failed to cancel ${survivors.length} entry order(s) on BingX: ${survivors
+          .map((o) => o.orderId)
+          .join(', ')}`
+      );
     }
   }
 
@@ -995,38 +1031,52 @@ export async function editActiveBot(
   }
 
   const symbol = String(bot.symbol ?? '').trim().toUpperCase() || bot.symbol;
+  const positionSide = bot.botType === 'GRID_SHORT' ? 'SHORT' : 'LONG';
 
-  // 1. Cancel all entry orders on BingX and clear orderId in DB
+  // 1. Stop first: the watcher re-checks status before placing, so a tick that
+  //    is already in flight cannot place orders for the old grid mid-surgery.
+  await setBotStatus(botId, userId, 'STOPPED');
+
+  // 2. Cancel all entry orders (DB-tracked + CID-tagged) with post-cancel
+  //    verification. On failure the bot stays STOPPED with the old config —
+  //    consistent state; restart or retry the edit manually.
   await stopBotAndCancelEntries(client, botId, symbol);
 
-  // 2. Delete empty levels (no position/TP running)
-  await db
-    .delete(gridLevels)
-    .where(and(eq(gridLevels.botId, botId), isNull(gridLevels.tpOrderId)));
+  // 3. DB surgery, atomically.
+  await db.transaction(async (tx) => {
+    // Delete levels with no live TP (nothing on the exchange references them)
+    await tx
+      .delete(gridLevels)
+      .where(and(eq(gridLevels.botId, botId), isNull(gridLevels.tpOrderId)));
 
-  // 3. Mark remaining levels (with open positions) as legacy (isActive = false)
-  await db
-    .update(gridLevels)
-    .set({ isActive: false, updatedAt: new Date() })
-    .where(eq(gridLevels.botId, botId));
+    // Remaining levels (open position/TP) become legacy
+    await tx
+      .update(gridLevels)
+      .set({ isActive: false, orderId: null, entryClientOrderId: null, updatedAt: new Date() })
+      .where(eq(gridLevels.botId, botId));
 
-  // 4. Update bot config with new params
-  await db
-    .update(tradingBots)
-    .set({
-      priceMin: params.priceMin,
-      priceMax: params.priceMax,
-      gridCount: params.gridCount,
-      positionSizeUsdt: params.positionSizeUsdt,
-      takeProfitPercentage: params.takeProfitPercentage,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)));
-
-  // 5. Generate and insert new grid levels (skip conflicts with legacy levels)
-  await createGridLevels(botId, params.priceMin, params.priceMax, params.gridCount, {
-    onConflictDoNothing: true,
+    await tx
+      .update(tradingBots)
+      .set({
+        priceMin: params.priceMin,
+        priceMax: params.priceMax,
+        gridCount: params.gridCount,
+        positionSizeUsdt: params.positionSizeUsdt,
+        takeProfitPercentage: params.takeProfitPercentage,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)));
   });
+
+  // 4. New grid. A new price colliding with a legacy row reactivates that row
+  //    (keeping its live TP) instead of being silently dropped.
+  await createGridLevels(botId, params.priceMin, params.priceMax, params.gridCount, {
+    onConflictReactivate: true,
+    positionSide,
+  });
+
+  // 5. Resume.
+  await setBotStatus(botId, userId, 'RUNNING');
 }
 
 export async function getUserBots(userId: string): Promise<TradingBot[]> {
