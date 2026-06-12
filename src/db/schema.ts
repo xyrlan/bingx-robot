@@ -191,6 +191,9 @@ export const gridLevels = pgTable(
     priceLevel: decimal('price_level', { precision: 18, scale: 8 }).notNull(),
     orderId: text('order_id'),
     tpOrderId: text('tp_order_id'),
+    /** Deterministic clientOrderID sent with the entry order — exchange-side level↔order link */
+    entryClientOrderId: text('entry_client_order_id'),
+    tpClientOrderId: text('tp_client_order_id'),
     isActive: boolean('is_active').default(true).notNull(),
     positionSide: text('position_side').notNull().default('LONG'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
