@@ -10,11 +10,13 @@ export type PlaceGridShortEntryParams = {
   pricePrecision: number;
   quantityPrecision: number;
   currentPrice: number | null;
+  /** Deterministic clientOrderID (see grid-cid.ts) — exchange-side level↔order link */
+  clientOrderId?: string;
 };
 
 /** Build the order payload for a SHORT grid entry — no API call. */
 export function buildGridShortEntryPayload(params: Omit<PlaceGridShortEntryParams, 'client'>): Record<string, unknown> {
-  const { symbol, priceLevel, quantity, takeProfitPct, pricePrecision, quantityPrecision, currentPrice } = params;
+  const { symbol, priceLevel, quantity, takeProfitPct, pricePrecision, quantityPrecision, currentPrice, clientOrderId } = params;
 
   const priceStr = toPrecision(priceLevel, pricePrecision);
   const quantityStr = toQuantityPrecision(quantity, quantityPrecision);
@@ -31,6 +33,10 @@ export function buildGridShortEntryPayload(params: Omit<PlaceGridShortEntryParam
     timeInForce: 'GTC',
     workingType: 'MARK_PRICE',
   };
+
+  if (clientOrderId) {
+    orderPayload.clientOrderID = clientOrderId;
+  }
 
   if (useTriggerLimit) {
     orderPayload.stopPrice = parseFloat(priceStr);

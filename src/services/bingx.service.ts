@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { bingxApiKeys, tradingBots, gridLevels, botTrades } from '@/db/schema';
 import { encryptSecret, decryptSecret } from '@/lib/bingx/encryption';
 import { createBingxClient, type BingxClient } from '@/lib/bingx/client';
+import { entryCidBotPrefix } from '@/services/bots/grid-cid';
 import type { InferSelectModel } from 'drizzle-orm';
 import { maybeEmitFillEvent } from '@/lib/ai-pm/emit-events';
 import { inngest } from '@/inngest/client';
@@ -219,7 +220,7 @@ export async function createGridLevels(
   priceMin: string,
   priceMax: string,
   gridCount: number,
-  options?: { onConflictDoNothing?: boolean; positionSide?: string }
+  options?: { onConflictDoNothing?: boolean; onConflictReactivate?: boolean; positionSide?: string }
 ): Promise<GridLevel[]> {
   const min = parseFloat(priceMin);
   const max = parseFloat(priceMax);
@@ -229,6 +230,25 @@ export async function createGridLevels(
     priceLevel: String(priceLevel),
     positionSide: options?.positionSide ?? 'LONG',
   }));
+  if (options?.onConflictReactivate) {
+    // A new grid price colliding with a legacy (isActive=false) row must bring that
+    // row back into the grid instead of being silently dropped. tpOrderId is kept —
+    // the TP may still be live on the exchange; entry tracking is reset.
+    return await db
+      .insert(gridLevels)
+      .values(inserts)
+      .onConflictDoUpdate({
+        target: [gridLevels.botId, gridLevels.priceLevel],
+        set: {
+          isActive: true,
+          positionSide: options?.positionSide ?? 'LONG',
+          orderId: null,
+          entryClientOrderId: null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+  }
   if (options?.onConflictDoNothing) {
     return await db
       .insert(gridLevels)
@@ -254,6 +274,28 @@ export async function updateGridLevelOrderId(
     .update(gridLevels)
     .set({ orderId, updatedAt: new Date() })
     .where(and(eq(gridLevels.botId, botId), eq(gridLevels.priceLevel, priceLevel)));
+}
+
+/**
+ * Update order-tracking fields by level id. Returns the affected row count:
+ * 0 means the level vanished mid-tick (concurrent edit deleted/recreated it) —
+ * the caller MUST cancel the order it just placed instead of orphaning it.
+ */
+export async function updateGridLevelById(
+  levelId: string,
+  fields: Partial<{
+    orderId: string | null;
+    tpOrderId: string | null;
+    entryClientOrderId: string | null;
+    tpClientOrderId: string | null;
+  }>
+): Promise<number> {
+  const rows = await db
+    .update(gridLevels)
+    .set({ ...fields, updatedAt: new Date() })
+    .where(eq(gridLevels.id, levelId))
+    .returning({ id: gridLevels.id });
+  return rows.length;
 }
 
 export async function updateGridLevelTpOrderId(
@@ -372,6 +414,25 @@ export function toPrecision(value: number, decimals: number): string {
 export function toQuantityPrecision(value: number, decimals: number): string {
   const factor = 10 ** decimals;
   return (Math.ceil(value * factor) / factor).toFixed(decimals);
+}
+
+/**
+ * True if an exchange order's price (already tick-rounded by the exchange) corresponds
+ * to a raw DB priceLevel. Orders are placed at toPrecision(priceLevel, pricePrecision),
+ * so comparing against the unrounded level with a fixed absolute tolerance fails for
+ * any level the grid math doesn't align to the tick — compare against the rounded
+ * value with half-tick tolerance instead. Checks both price and stopPrice (TRIGGER_LIMIT).
+ */
+export function orderMatchesPriceLevel(
+  order: { price?: number | string; stopPrice?: number | string },
+  priceLevel: number,
+  pricePrecision: number
+): boolean {
+  const expected = Number(toPrecision(priceLevel, pricePrecision));
+  const tolerance = 10 ** -pricePrecision / 2;
+  const price = order.price != null ? Number(order.price) : NaN;
+  const stopPrice = order.stopPrice != null ? Number(order.stopPrice) : NaN;
+  return Math.abs(price - expected) < tolerance || Math.abs(stopPrice - expected) < tolerance;
 }
 
 /**
@@ -533,7 +594,15 @@ export type OpenOrderInfo = {
   quantity?: number | string;
   /** Always string to avoid JS BigInt/precision loss with exchange IDs */
   positionId?: string;
+  /** Echo of the clientOrderID we sent (BingX responses use both casings) */
+  clientOrderId?: string;
 };
+
+/** BingX payloads carry clientOrderID or clientOrderId depending on endpoint. */
+function readClientOrderId(o: Record<string, unknown>): string | undefined {
+  const raw = o.clientOrderID ?? o.clientOrderId ?? o.origClientOrderId;
+  return raw != null && raw !== '' ? String(raw) : undefined;
+}
 
 export async function getOpenOrders(client: BingxClient, symbol: string): Promise<OpenOrderInfo[]> {
   let data: { orders?: OpenOrderInfo[] } | OpenOrderInfo[];
@@ -565,6 +634,7 @@ export async function getOpenOrders(client: BingxClient, symbol: string): Promis
       ...o,
       orderId: toSafeIdString(rawOrderId) ?? (rawOrderId != null ? String(rawOrderId) : ''),
       positionId: toSafeIdString(rawPositionId),
+      clientOrderId: readClientOrderId(o as Record<string, unknown>),
     } as OpenOrderInfo;
   });
 }
@@ -593,6 +663,7 @@ export async function getAllOpenOrders(client: BingxClient): Promise<OpenOrderIn
         price: o.price as number | string | undefined,
         stopPrice: o.stopPrice as number | string | undefined,
         positionId: toSafeIdString(rawPositionId),
+        clientOrderId: readClientOrderId(o),
         ...(rawQty != null ? { quantity: rawQty } : {}),
       } as OpenOrderInfo;
     });
@@ -640,11 +711,13 @@ export type PlaceGridEntryOrderParams = {
   quantityPrecision: number;
   positionSide: string;
   currentPrice: number | null;
+  /** Deterministic clientOrderID (see grid-cid.ts) — exchange-side level↔order link */
+  clientOrderId?: string;
 };
 
 /** Build the order payload for a LONG grid entry — no API call. */
 export function buildGridEntryPayload(params: Omit<PlaceGridEntryOrderParams, 'client'>): Record<string, unknown> {
-  const { symbol, priceLevel, quantity, takeProfitPct, pricePrecision, quantityPrecision, positionSide, currentPrice } = params;
+  const { symbol, priceLevel, quantity, takeProfitPct, pricePrecision, quantityPrecision, positionSide, currentPrice, clientOrderId } = params;
 
   const priceStr = toPrecision(priceLevel, pricePrecision);
   const quantityStr = toQuantityPrecision(quantity, quantityPrecision);
@@ -661,6 +734,10 @@ export function buildGridEntryPayload(params: Omit<PlaceGridEntryOrderParams, 'c
     timeInForce: 'GTC',
     workingType: 'MARK_PRICE',
   };
+
+  if (clientOrderId) {
+    orderPayload.clientOrderID = clientOrderId;
+  }
 
   if (useTriggerLimit) {
     orderPayload.stopPrice = parseFloat(priceStr);
@@ -782,16 +859,19 @@ export async function cancelBatchOrders(
 export async function placeBatchOrders(
   client: BingxClient,
   orders: Record<string, unknown>[]
-): Promise<Array<{ orderId: string | null; error?: string }>> {
+): Promise<Array<{ orderId: string | null; clientOrderId?: string; error?: string }>> {
   const BATCH_SIZE = 5;
   if (orders.length === 0) return [];
 
-  const results: Array<{ orderId: string | null; error?: string }> = [];
+  const results: Array<{ orderId: string | null; clientOrderId?: string; error?: string }> = [];
 
   for (let i = 0; i < orders.length; i += BATCH_SIZE) {
     if (i > 0) await new Promise((r) => setTimeout(r, 400)); // Rate limit between chunks
     const chunk = orders.slice(i, i + BATCH_SIZE);
     const batchOrdersParam = JSON.stringify(chunk);
+    const chunkCids = chunk.map((o) =>
+      typeof o.clientOrderID === 'string' && o.clientOrderID ? o.clientOrderID : undefined
+    );
 
     try {
       const response = (await client.post(
@@ -799,25 +879,53 @@ export async function placeBatchOrders(
         { batchOrders: batchOrdersParam },
         true
       )) as {
-        orders?: Array<{ orderId?: string | number; order?: { orderId?: string | number } }>;
+        orders?: Array<{
+          orderId?: string | number;
+          clientOrderID?: string;
+          clientOrderId?: string;
+          order?: { orderId?: string | number; clientOrderID?: string; clientOrderId?: string };
+        }>;
         errors?: Array<{ msg?: string; code?: number }>;
       };
 
       const successOrders = response?.orders ?? [];
       const errorOrders = response?.errors ?? [];
 
-      for (const order of successOrders) {
-        const raw = order?.orderId ?? order?.order?.orderId;
-        results.push({ orderId: raw != null ? toSafeIdString(raw) ?? null : null });
-      }
-
-      for (const err of errorOrders) {
-        results.push({ orderId: null, error: err?.msg ?? `Error code ${err?.code}` });
+      if (chunkCids.every((cid) => cid != null)) {
+        // Index-independent: a partial failure must not shift orderIds onto the
+        // wrong requests (the old success-then-error ordering did exactly that).
+        const byCid = new Map<string, string | null>();
+        for (const order of successOrders) {
+          const raw = order?.orderId ?? order?.order?.orderId;
+          const cid =
+            order?.clientOrderID ?? order?.clientOrderId ??
+            order?.order?.clientOrderID ?? order?.order?.clientOrderId;
+          if (cid != null) byCid.set(String(cid), raw != null ? toSafeIdString(raw) ?? null : null);
+        }
+        const errorMsg = errorOrders
+          .map((e) => e?.msg ?? `Error code ${e?.code}`)
+          .join('; ');
+        for (const cid of chunkCids as string[]) {
+          if (byCid.has(cid)) {
+            results.push({ orderId: byCid.get(cid) ?? null, clientOrderId: cid });
+          } else {
+            results.push({ orderId: null, clientOrderId: cid, error: errorMsg || 'Order missing from batch response' });
+          }
+        }
+      } else {
+        // Legacy positional behavior for CID-less calls
+        for (const order of successOrders) {
+          const raw = order?.orderId ?? order?.order?.orderId;
+          results.push({ orderId: raw != null ? toSafeIdString(raw) ?? null : null });
+        }
+        for (const err of errorOrders) {
+          results.push({ orderId: null, error: err?.msg ?? `Error code ${err?.code}` });
+        }
       }
     } catch (err) {
       // Entire chunk failed — mark all as failed
       for (let j = 0; j < chunk.length; j++) {
-        results.push({ orderId: null, error: String(err) });
+        results.push({ orderId: null, clientOrderId: chunkCids[j], error: String(err) });
       }
     }
   }
@@ -826,19 +934,24 @@ export async function placeBatchOrders(
 }
 
 /**
- * Clear only orderId (entry orders) for all grid levels of a bot.
+ * Clear only entry-order tracking for all grid levels of a bot.
  * Does NOT clear tpOrderId — Take Profits stay active on BingX ("Let it Ride").
  */
 export async function clearGridLevelEntryOrders(botId: string): Promise<void> {
   await db
     .update(gridLevels)
-    .set({ orderId: null, updatedAt: new Date() })
+    .set({ orderId: null, entryClientOrderId: null, updatedAt: new Date() })
     .where(eq(gridLevels.botId, botId));
 }
 
 /**
  * Stop bot with surgical cancellation: cancel only entry orders (Buy Limits),
  * leave positions and Take Profit orders active on BingX ("Let it Ride").
+ *
+ * Cancels the union of DB-tracked orderIds and open orders carrying this bot's
+ * entry-CID prefix — orders the DB lost track of (failed write-back, edit race)
+ * are cancelled too, not orphaned. Throws if any of them survives cancellation,
+ * so callers never proceed believing the book is clean when it isn't.
  */
 export async function stopBotAndCancelEntries(
   client: BingxClient,
@@ -846,15 +959,45 @@ export async function stopBotAndCancelEntries(
   symbol: string
 ): Promise<void> {
   const levels = await getGridLevelsByBotId(botId);
-  const entryOrderIds = levels
+  const dbOrderIds = levels
     .map((l) => l.orderId)
     .filter((id): id is string => id != null && id.trim() !== '');
 
-  if (entryOrderIds.length > 0) {
+  const cidPrefix = entryCidBotPrefix(botId);
+  let openOrders: OpenOrderInfo[] = [];
+  try {
+    openOrders = await getOpenOrders(client, symbol);
+  } catch (err) {
+    console.warn('[BingX] Could not list open orders before cancel:', err);
+  }
+  const cidOrderIds = openOrders
+    .filter((o) => o.clientOrderId != null && o.clientOrderId.startsWith(cidPrefix))
+    .map((o) => o.orderId);
+
+  const toCancel = Array.from(new Set([...dbOrderIds, ...cidOrderIds]));
+
+  if (toCancel.length > 0) {
     try {
-      await cancelBatchOrders(client, symbol, entryOrderIds);
+      await cancelBatchOrders(client, symbol, toCancel);
     } catch (err) {
       console.warn('[BingX] Some entry orders may already be filled/cancelled:', err);
+    }
+
+    // Verify: an order that filled meanwhile disappears from openOrders and
+    // passes; an order still sitting in the book did NOT get cancelled.
+    const after = await getOpenOrders(client, symbol);
+    const cancelSet = new Set(toCancel);
+    const survivors = after.filter(
+      (o) =>
+        cancelSet.has(o.orderId) ||
+        (o.clientOrderId != null && o.clientOrderId.startsWith(cidPrefix))
+    );
+    if (survivors.length > 0) {
+      throw new Error(
+        `Failed to cancel ${survivors.length} entry order(s) on BingX: ${survivors
+          .map((o) => o.orderId)
+          .join(', ')}`
+      );
     }
   }
 
@@ -888,38 +1031,52 @@ export async function editActiveBot(
   }
 
   const symbol = String(bot.symbol ?? '').trim().toUpperCase() || bot.symbol;
+  const positionSide = bot.botType === 'GRID_SHORT' ? 'SHORT' : 'LONG';
 
-  // 1. Cancel all entry orders on BingX and clear orderId in DB
+  // 1. Stop first: the watcher re-checks status before placing, so a tick that
+  //    is already in flight cannot place orders for the old grid mid-surgery.
+  await setBotStatus(botId, userId, 'STOPPED');
+
+  // 2. Cancel all entry orders (DB-tracked + CID-tagged) with post-cancel
+  //    verification. On failure the bot stays STOPPED with the old config —
+  //    consistent state; restart or retry the edit manually.
   await stopBotAndCancelEntries(client, botId, symbol);
 
-  // 2. Delete empty levels (no position/TP running)
-  await db
-    .delete(gridLevels)
-    .where(and(eq(gridLevels.botId, botId), isNull(gridLevels.tpOrderId)));
+  // 3. DB surgery, atomically.
+  await db.transaction(async (tx) => {
+    // Delete levels with no live TP (nothing on the exchange references them)
+    await tx
+      .delete(gridLevels)
+      .where(and(eq(gridLevels.botId, botId), isNull(gridLevels.tpOrderId)));
 
-  // 3. Mark remaining levels (with open positions) as legacy (isActive = false)
-  await db
-    .update(gridLevels)
-    .set({ isActive: false, updatedAt: new Date() })
-    .where(eq(gridLevels.botId, botId));
+    // Remaining levels (open position/TP) become legacy
+    await tx
+      .update(gridLevels)
+      .set({ isActive: false, orderId: null, entryClientOrderId: null, updatedAt: new Date() })
+      .where(eq(gridLevels.botId, botId));
 
-  // 4. Update bot config with new params
-  await db
-    .update(tradingBots)
-    .set({
-      priceMin: params.priceMin,
-      priceMax: params.priceMax,
-      gridCount: params.gridCount,
-      positionSizeUsdt: params.positionSizeUsdt,
-      takeProfitPercentage: params.takeProfitPercentage,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)));
-
-  // 5. Generate and insert new grid levels (skip conflicts with legacy levels)
-  await createGridLevels(botId, params.priceMin, params.priceMax, params.gridCount, {
-    onConflictDoNothing: true,
+    await tx
+      .update(tradingBots)
+      .set({
+        priceMin: params.priceMin,
+        priceMax: params.priceMax,
+        gridCount: params.gridCount,
+        positionSizeUsdt: params.positionSizeUsdt,
+        takeProfitPercentage: params.takeProfitPercentage,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)));
   });
+
+  // 4. New grid. A new price colliding with a legacy row reactivates that row
+  //    (keeping its live TP) instead of being silently dropped.
+  await createGridLevels(botId, params.priceMin, params.priceMax, params.gridCount, {
+    onConflictReactivate: true,
+    positionSide,
+  });
+
+  // 5. Resume.
+  await setBotStatus(botId, userId, 'RUNNING');
 }
 
 export async function getUserBots(userId: string): Promise<TradingBot[]> {
