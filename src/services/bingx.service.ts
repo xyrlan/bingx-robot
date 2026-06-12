@@ -375,6 +375,25 @@ export function toQuantityPrecision(value: number, decimals: number): string {
 }
 
 /**
+ * True if an exchange order's price (already tick-rounded by the exchange) corresponds
+ * to a raw DB priceLevel. Orders are placed at toPrecision(priceLevel, pricePrecision),
+ * so comparing against the unrounded level with a fixed absolute tolerance fails for
+ * any level the grid math doesn't align to the tick — compare against the rounded
+ * value with half-tick tolerance instead. Checks both price and stopPrice (TRIGGER_LIMIT).
+ */
+export function orderMatchesPriceLevel(
+  order: { price?: number | string; stopPrice?: number | string },
+  priceLevel: number,
+  pricePrecision: number
+): boolean {
+  const expected = Number(toPrecision(priceLevel, pricePrecision));
+  const tolerance = 10 ** -pricePrecision / 2;
+  const price = order.price != null ? Number(order.price) : NaN;
+  const stopPrice = order.stopPrice != null ? Number(order.stopPrice) : NaN;
+  return Math.abs(price - expected) < tolerance || Math.abs(stopPrice - expected) < tolerance;
+}
+
+/**
  * Converts positionId/orderId to exact string without precision loss.
  * NEVER use parseInt() or Number() - exchange IDs can exceed JS safe integer range.
  */
