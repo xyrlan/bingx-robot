@@ -115,7 +115,7 @@ describe('masterTick dispatch logic', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not dispatch DCA when managedByAi is false (non-GRID requires AI scope)', async () => {
+  it('dispatches DCA even when managedByAi is false (DCA is enabled for manual users)', async () => {
     // Seed a manual key (not AI-managed)
     const [manualKey] = await db.insert(bingxApiKeys).values({
       userId: TEST_USER_ID,
@@ -143,7 +143,32 @@ describe('masterTick dispatch logic', () => {
     const handler = (masterTick as unknown as { fn: Handler }).fn;
     await handler({ step: fakeStep, logger: fakeLogger });
 
-    expect(sent.find(e => e.name === 'bot.tick.DCA')).toBeUndefined();
+    expect(sent.find(e => e.name === 'bot.tick.DCA')).toBeDefined();
+    vi.restoreAllMocks();
+  });
+
+  it('does not dispatch disabled bot types (TRAILING_STOP) even when running', async () => {
+    const key = await seedKey(); // managedByAi: true
+    await seedBot(key.id, 'TRAILING_STOP');
+
+    const sent: { name: string; data: unknown }[] = [];
+    const fakeStep = {
+      run: async <T>(_id: string, fn: () => Promise<T>) => fn(),
+      sendEvent: async (_id: string, events: { name: string; data: unknown }[]) => {
+        sent.push(...events);
+      },
+    };
+    const fakeLogger = { info: () => {} };
+
+    const now = 5 * 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+
+    const { masterTick } = await import('@/inngest/functions/master-tick');
+    type Handler = (ctx: { step: unknown; logger: unknown }) => Promise<unknown>;
+    const handler = (masterTick as unknown as { fn: Handler }).fn;
+    await handler({ step: fakeStep, logger: fakeLogger });
+
+    expect(sent.length).toBe(0);
     vi.restoreAllMocks();
   });
 
