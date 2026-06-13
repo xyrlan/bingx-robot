@@ -8,18 +8,12 @@ import {
   Bot,
   KeyRound,
   Settings,
-  Sparkles,
-  Activity,
-  MessageSquare,
 } from 'lucide-react';
 import { AccountSwitcher } from './account-switcher';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, labelKey: 'overview' },
   { href: '/dashboard/bots', icon: Bot, labelKey: 'bots' },
-  { href: '/dashboard/ai-pm', icon: Sparkles, labelKey: 'aiPm' },
-  { href: '/dashboard/ai-pm/activity', icon: Activity, labelKey: 'aiActivity' },
-  { href: '/dashboard/ai-pm/chat', icon: MessageSquare, labelKey: 'aiChat' },
   { href: '/dashboard/accounts', icon: KeyRound, labelKey: 'accounts' },
   { href: '/dashboard/settings', icon: Settings, labelKey: 'settings' },
 ] as const;
@@ -30,7 +24,6 @@ export function Sidebar() {
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
-    if (href === '/dashboard/ai-pm') return pathname === '/dashboard/ai-pm';
     return pathname.startsWith(href);
   };
 

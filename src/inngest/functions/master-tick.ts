@@ -1,6 +1,6 @@
 import { inngest } from '@/inngest/client';
 import { db } from '@/db';
-import { tradingBots, bingxApiKeys } from '@/db/schema';
+import { tradingBots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { shouldDispatch } from '@/inngest/cadence';
 import type { BotType } from '@/services/bots/types';
@@ -15,10 +15,14 @@ const TYPE_TO_EVENT: Record<BotType, BotTickEventName> = {
   SMA_CROSSOVER: 'bot.tick.SMA_CROSSOVER',
 };
 
+// Only these bot types run. AI PM and the extra strategies (TRAILING_STOP,
+// DCA_SPOT, SMA_CROSSOVER) are disabled — any RUNNING rows of those types are
+// ignored here. Re-enable by adding the type back to this set.
+const ENABLED_BOT_TYPES = new Set<BotType>(['GRID_LONG', 'GRID_SHORT', 'DCA']);
+
 interface BotRow {
   id: string;
   botType: BotType;
-  managedByAi: boolean | null;
 }
 
 export const masterTick = inngest.createFunction(
@@ -38,10 +42,8 @@ export const masterTick = inngest.createFunction(
         .select({
           id: tradingBots.id,
           botType: tradingBots.botType,
-          managedByAi: bingxApiKeys.managedByAi,
         })
         .from(tradingBots)
-        .leftJoin(bingxApiKeys, eq(tradingBots.apiKeyId, bingxApiKeys.id))
         .where(eq(tradingBots.status, 'RUNNING'));
       return rows;
     });
@@ -56,9 +58,8 @@ export const masterTick = inngest.createFunction(
       const eventName = TYPE_TO_EVENT[bot.botType];
       if (!eventName) continue;
 
-      // GRID stays available to all bots; non-GRID strategies require managed_by_ai = true
-      const isGrid = bot.botType === 'GRID_LONG' || bot.botType === 'GRID_SHORT';
-      if (!isGrid && bot.managedByAi !== true) continue;
+      // Skip disabled bot types regardless of managed_by_ai state.
+      if (!ENABLED_BOT_TYPES.has(bot.botType)) continue;
 
       // Cadence is keyed off the source bot type, not the target event.
       // GRID_LONG and GRID_SHORT share cadence (5 min). Either one in the group is sufficient.

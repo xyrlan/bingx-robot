@@ -4,19 +4,16 @@ import { useState } from 'react';
 import { BotConfigForm } from './bot-config-form';
 import { DCAConfigForm } from './dca-config-form';
 import { GridShortConfigForm } from './grid-short-config-form';
-import { TrailingStopConfigForm } from './trailing-stop-config-form';
-import { DCASpotConfigForm } from './dca-spot-config-form';
-import { SMACrossoverConfigForm } from './sma-crossover-config-form';
 
-type BotType = 'GRID_LONG' | 'GRID_SHORT' | 'DCA' | 'TRAILING_STOP' | 'DCA_SPOT' | 'SMA_CROSSOVER';
+// Only Grid Long, Grid Short and DCA are enabled. The extra strategies
+// (Trailing Stop, DCA Spot, SMA Crossover) are disabled — their forms still
+// exist; add their entries back here to re-enable.
+type BotType = 'GRID_LONG' | 'GRID_SHORT' | 'DCA';
 
 const botTypes: { key: BotType; label: string; description: string }[] = [
   { key: 'GRID_LONG', label: 'Grid Long', description: 'Buy low, sell high in a range' },
   { key: 'GRID_SHORT', label: 'Grid Short', description: 'Short high, cover low in a range' },
   { key: 'DCA', label: 'DCA', description: 'Buy at regular intervals' },
-  { key: 'TRAILING_STOP', label: 'Trailing Stop', description: 'Follow price, sell on reversal' },
-  { key: 'DCA_SPOT', label: 'DCA Spot', description: 'DCA on spot market (no leverage)' },
-  { key: 'SMA_CROSSOVER', label: 'SMA Crossover', description: 'Trade SMA 3/20/150 crossovers' },
 ];
 
 export function BotTypeSelector() {
@@ -24,7 +21,7 @@ export function BotTypeSelector() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {botTypes.map((type) => (
           <button
             key={type.key}
@@ -44,9 +41,6 @@ export function BotTypeSelector() {
       {selected === 'GRID_LONG' && <BotConfigForm />}
       {selected === 'GRID_SHORT' && <GridShortConfigForm />}
       {selected === 'DCA' && <DCAConfigForm />}
-      {selected === 'TRAILING_STOP' && <TrailingStopConfigForm />}
-      {selected === 'DCA_SPOT' && <DCASpotConfigForm />}
-      {selected === 'SMA_CROSSOVER' && <SMACrossoverConfigForm />}
     </div>
   );
 }
