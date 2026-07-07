@@ -245,6 +245,55 @@
       "killSwitchMidLoop": "Kill switch flipped mid-conversation; stopped."
     }
   },
+  "Bots": {
+    "title": "Bots",
+    "createNew": "Create New Bot",
+    "running": "Running",
+    "stopped": "Stopped",
+    "refresh": "Refresh",
+    "noBots": "No bots yet. Create one above!",
+    "noRunning": "No running bots.",
+    "noStopped": "No stopped bots.",
+    "noOrdersPositions": "No open orders or positions",
+    "runningFor": "Running for {runtime}",
+    "grids": "grids",
+    "edit": "Edit",
+    "stop": "Stop",
+    "restart": "Restart",
+    "botStopped": "Bot stopped",
+    "botRestarted": "Bot restarted",
+    "botUpdated": "Bot updated",
+    "networkError": "Network error",
+    "entryOrders": "Entry Orders",
+    "tpOrders": "Take-Profit Orders",
+    "open": "open",
+    "filled": "filled",
+    "range": "Range",
+    "periods": {
+      "7d": "7D",
+      "30d": "30D",
+      "60d": "60D",
+      "90d": "90D",
+      "180d": "180D",
+      "all": "All"
+    },
+    "stats": {
+      "realized": "Realized",
+      "unrealized": "Unrealized",
+      "totalPnl": "Total P&L",
+      "projected": "Projected",
+      "projectedTitle": "Profit if all take-profit orders execute",
+      "winRate": "Win rate",
+      "trades": "Trades",
+      "avgPerCycle": "Avg/cycle",
+      "roi": "ROI",
+      "last90Days": "last 90 days"
+    },
+    "source": {
+      "estimated": "estimated",
+      "real": "real"
+    }
+  },
   "Dashboard": {
     "balance": "Balance",
     "equity": "Equity",

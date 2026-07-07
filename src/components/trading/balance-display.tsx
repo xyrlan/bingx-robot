@@ -4,15 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card, Button, toast } from '@heroui/react';
 import { parseBalanceData, getNum } from '@/lib/balance';
 import { useActiveAccount } from '@/contexts/active-account';
-
-function formatUsdt(value: number): string {
-  return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
-}
-
-function formatPnl(value: number): string {
-  const sign = value >= 0 ? '+' : '';
-  return `${sign}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
-}
+import { formatPnl, formatUsdt } from '@/lib/format-pnl';
 
 export function BalanceDisplay() {
   const { activeAccountId } = useActiveAccount();
