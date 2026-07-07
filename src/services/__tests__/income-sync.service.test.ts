@@ -269,6 +269,22 @@ describe('income-sync.service', () => {
       expect(updated).toBe(0);
     });
 
+    it('considers legacy bots without api_key_id via the key owner (pre-multi-key era)', async () => {
+      const key = await makeApiKey();
+      const bot = await makeBot(key.id);
+      await db.update(tradingBots)
+        .set({ apiKeyId: null, createdAt: new Date(NOW - 100 * DAY), status: 'STOPPED', updatedAt: new Date(NOW - 20 * DAY) })
+        .where(eq(tradingBots.id, bot.id));
+      await seedOrphan(key.id, { incomeTime: new Date(NOW - 50 * DAY) });
+
+      const { attributeOrphanIncome } = await import('@/services/income-sync.service');
+      const updated = await attributeOrphanIncome(key.id);
+
+      expect(updated).toBe(1);
+      const rows = await db.query.botIncomeRecords.findMany({ where: eq(botIncomeRecords.apiKeyId, key.id) });
+      expect(rows[0].botId).toBe(bot.id);
+    });
+
     it('matches by symbol', async () => {
       const key = await makeApiKey();
       const bot = await makeBot(key.id, 'ETH-USDT');
@@ -280,6 +296,22 @@ describe('income-sync.service', () => {
 
       expect(updated).toBe(0);
     });
+  });
+
+  it('ignoreCursor re-syncs the full lookback window', async () => {
+    const key = await makeApiKey();
+    await makeBot(key.id);
+    mocked.getOrderHistory.mockResolvedValue([
+      order({ orderId: 'o1', profit: 1, updateTime: NOW - 2 * HOUR }),
+    ]);
+    await syncIncomeForApiKey(key.id, { now: NOW, lookbackDays: 30 });
+
+    mocked.getOrderHistory.mockClear();
+    mocked.getOrderHistory.mockResolvedValue([]);
+    await syncIncomeForApiKey(key.id, { now: NOW, lookbackDays: 30, ignoreCursor: true });
+
+    const startTimes = mocked.getOrderHistory.mock.calls.map((c) => c[2] as number);
+    expect(Math.min(...startTimes)).toBe(NOW - 30 * DAY);
   });
 
   it('carries positionId attribution across windows within one run', async () => {
