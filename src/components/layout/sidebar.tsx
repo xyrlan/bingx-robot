@@ -10,6 +10,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { AccountSwitcher } from './account-switcher';
+import { MegaBrainLogo } from '@/components/brand/mega-brain-logo';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, labelKey: 'overview' },
@@ -31,8 +32,9 @@ export function Sidebar() {
     <>
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:inset-y-0 border-r border-default-200 bg-background z-40">
-        <div className="flex items-center h-16 px-6 border-b border-default-200">
-          <span className="text-lg font-bold text-foreground">BingX Bot</span>
+        <div className="flex items-center gap-2.5 h-16 px-6 border-b border-default-200">
+          <MegaBrainLogo className="w-8 h-8" />
+          <span className="text-lg font-bold text-foreground">Mega Brain</span>
         </div>
         <AccountSwitcher />
         <nav className="flex-1 px-3 py-4 space-y-1">
