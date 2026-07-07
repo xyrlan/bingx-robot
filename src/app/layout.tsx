@@ -19,8 +19,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BingX Trading Bot",
-  description: "A trading bot for the BingX exchange",
+  title: "Mega Brain",
+  description: "Automated grid trading bots for the BingX exchange",
 };
 
 export const viewport: Viewport = {
