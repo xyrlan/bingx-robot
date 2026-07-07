@@ -244,6 +244,55 @@
       "killSwitchMidLoop": "对话中 Kill switch 被触发；停止。"
     }
   },
+  "Bots": {
+    "title": "机器人",
+    "createNew": "创建新机器人",
+    "running": "运行中",
+    "stopped": "已停止",
+    "refresh": "刷新",
+    "noBots": "还没有机器人。在上方创建一个！",
+    "noRunning": "没有运行中的机器人。",
+    "noStopped": "没有已停止的机器人。",
+    "noOrdersPositions": "没有未结订单或持仓",
+    "runningFor": "已运行 {runtime}",
+    "grids": "网格",
+    "edit": "编辑",
+    "stop": "停止",
+    "restart": "重启",
+    "botStopped": "机器人已停止",
+    "botRestarted": "机器人已重启",
+    "botUpdated": "机器人已更新",
+    "networkError": "网络错误",
+    "entryOrders": "入场订单",
+    "tpOrders": "止盈订单",
+    "open": "挂单",
+    "filled": "已成交",
+    "range": "区间",
+    "periods": {
+      "7d": "7天",
+      "30d": "30天",
+      "60d": "60天",
+      "90d": "90天",
+      "180d": "180天",
+      "all": "全部"
+    },
+    "stats": {
+      "realized": "已实现",
+      "unrealized": "未实现",
+      "totalPnl": "总盈亏",
+      "projected": "预计",
+      "projectedTitle": "所有止盈订单成交后的利润",
+      "winRate": "胜率",
+      "trades": "交易数",
+      "avgPerCycle": "每周期平均",
+      "roi": "回报率",
+      "last90Days": "最近90天"
+    },
+    "source": {
+      "estimated": "估算",
+      "real": "真实"
+    }
+  },
   "Dashboard": {
     "balance": "余额",
     "equity": "权益",
