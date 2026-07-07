@@ -41,7 +41,7 @@ export function resolveBotByCid(
   return bots.find((b) => shortId(b.id) === match[1])?.id ?? null;
 }
 
-export type SyncResult = { inserted: number; windows: number; orders: number };
+export type SyncResult = { inserted: number; windows: number; orders: number; attributed: number };
 
 export async function syncIncomeForApiKey(
   apiKeyId: string,
@@ -54,10 +54,10 @@ export async function syncIncomeForApiKey(
     .select({ id: tradingBots.id, symbol: tradingBots.symbol })
     .from(tradingBots)
     .where(eq(tradingBots.apiKeyId, apiKeyId));
-  if (bots.length === 0) return { inserted: 0, windows: 0, orders: 0 };
+  if (bots.length === 0) return { inserted: 0, windows: 0, orders: 0, attributed: 0 };
 
   const client = await getBingxClientByApiKeyId(apiKeyId);
-  if (!client) return { inserted: 0, windows: 0, orders: 0 };
+  if (!client) return { inserted: 0, windows: 0, orders: 0, attributed: 0 };
 
   const botSymbols = [...new Set(bots.map((b) => normalizeSymbol(b.symbol)))];
 
@@ -144,7 +144,39 @@ export async function syncIncomeForApiKey(
     }
   }
 
-  return { inserted, windows, orders: orderCount };
+  const attributed = await attributeOrphanIncome(apiKeyId);
+
+  return { inserted, windows, orders: orderCount, attributed };
+}
+
+/**
+ * Exclusivity fallback for income that CID/positionId attribution could not
+ * claim (orders placed before the CID rollout, or manual closes): an orphan
+ * row is assigned to a bot iff EXACTLY ONE bot of the API key traded that
+ * symbol and was active (created before the fill; still running or stopped
+ * after it) at the fill time. Ambiguous rows stay null — no guessing.
+ * Idempotent; runs at the end of every sync so history converges.
+ */
+export async function attributeOrphanIncome(apiKeyId: string): Promise<number> {
+  const result = await db.execute(sql`
+    WITH candidates AS (
+      SELECT r.id AS record_id, MIN(b.id::text)::uuid AS bot_id
+      FROM ${botIncomeRecords} r
+      JOIN ${tradingBots} b
+        ON b.api_key_id = r.api_key_id
+       AND UPPER(REPLACE(b.symbol, ' ', '')) = r.symbol
+       AND b.created_at <= r.income_time
+       AND (b.status = 'RUNNING' OR b.updated_at >= r.income_time)
+      WHERE r.bot_id IS NULL AND r.api_key_id = ${apiKeyId}
+      GROUP BY r.id
+      HAVING COUNT(*) = 1
+    )
+    UPDATE ${botIncomeRecords} r
+    SET bot_id = c.bot_id
+    FROM candidates c
+    WHERE r.id = c.record_id
+  `);
+  return Number((result as unknown as { count?: number }).count ?? 0);
 }
 
 /** Distinct apiKeyIds that own bots touched in the last `days` days. */

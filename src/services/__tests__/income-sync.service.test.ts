@@ -210,6 +210,78 @@ describe('income-sync.service', () => {
     }
   });
 
+  describe('attributeOrphanIncome (exclusivity fallback)', () => {
+    async function seedOrphan(apiKeyId: string, opts: { symbol?: string; incomeTime: Date; tradeId?: string }) {
+      await db.insert(botIncomeRecords).values({
+        apiKeyId,
+        botId: null,
+        symbol: opts.symbol ?? 'BTC-USDT',
+        incomeType: 'REALIZED_PNL',
+        amount: '1',
+        tradeId: opts.tradeId ?? `t-${Math.random().toString(36).slice(2)}`,
+        incomeTime: opts.incomeTime,
+      });
+    }
+
+    it('attributes orphans when exactly one bot covers symbol+time', async () => {
+      const key = await makeApiKey();
+      const bot = await makeBot(key.id); // RUNNING, created now
+      await db.update(tradingBots).set({ createdAt: new Date(NOW - 100 * DAY) }).where(eq(tradingBots.id, bot.id));
+      await seedOrphan(key.id, { incomeTime: new Date(NOW - 50 * DAY) });
+
+      const { attributeOrphanIncome } = await import('@/services/income-sync.service');
+      const updated = await attributeOrphanIncome(key.id);
+
+      expect(updated).toBe(1);
+      const rows = await db.query.botIncomeRecords.findMany({ where: eq(botIncomeRecords.apiKeyId, key.id) });
+      expect(rows[0].botId).toBe(bot.id);
+    });
+
+    it('leaves orphans null when two bots overlap on the symbol', async () => {
+      const key = await makeApiKey();
+      const botA = await makeBot(key.id);
+      const botB = await makeBot(key.id);
+      await db.update(tradingBots).set({ createdAt: new Date(NOW - 100 * DAY) }).where(eq(tradingBots.id, botA.id));
+      await db.update(tradingBots).set({ createdAt: new Date(NOW - 90 * DAY) }).where(eq(tradingBots.id, botB.id));
+      await seedOrphan(key.id, { incomeTime: new Date(NOW - 50 * DAY) });
+
+      const { attributeOrphanIncome } = await import('@/services/income-sync.service');
+      const updated = await attributeOrphanIncome(key.id);
+
+      expect(updated).toBe(0);
+      const rows = await db.query.botIncomeRecords.findMany({ where: eq(botIncomeRecords.apiKeyId, key.id) });
+      expect(rows[0].botId).toBeNull();
+    });
+
+    it('excludes bots created after the income or stopped before it', async () => {
+      const key = await makeApiKey();
+      const late = await makeBot(key.id);   // created after the income
+      const early = await makeBot(key.id);  // stopped before the income
+      await db.update(tradingBots).set({ createdAt: new Date(NOW - 10 * DAY) }).where(eq(tradingBots.id, late.id));
+      await db.update(tradingBots)
+        .set({ createdAt: new Date(NOW - 100 * DAY), status: 'STOPPED', updatedAt: new Date(NOW - 80 * DAY) })
+        .where(eq(tradingBots.id, early.id));
+      await seedOrphan(key.id, { incomeTime: new Date(NOW - 50 * DAY) });
+
+      const { attributeOrphanIncome } = await import('@/services/income-sync.service');
+      const updated = await attributeOrphanIncome(key.id);
+
+      expect(updated).toBe(0);
+    });
+
+    it('matches by symbol', async () => {
+      const key = await makeApiKey();
+      const bot = await makeBot(key.id, 'ETH-USDT');
+      await db.update(tradingBots).set({ createdAt: new Date(NOW - 100 * DAY) }).where(eq(tradingBots.id, bot.id));
+      await seedOrphan(key.id, { symbol: 'BTC-USDT', incomeTime: new Date(NOW - 50 * DAY) });
+
+      const { attributeOrphanIncome } = await import('@/services/income-sync.service');
+      const updated = await attributeOrphanIncome(key.id);
+
+      expect(updated).toBe(0);
+    });
+  });
+
   it('carries positionId attribution across windows within one run', async () => {
     const key = await makeApiKey();
     const bot = await makeBot(key.id);
