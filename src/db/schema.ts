@@ -229,6 +229,38 @@ export const botTrades = pgTable(
 );
 
 // ==========================================
+// 5d. BOT INCOME RECORDS (real exchange P&L)
+// ==========================================
+
+/**
+ * Per-fill realized P&L and fees synced from the exchange
+ * (allFillOrders + allOrders). Attributed to a bot via the grid
+ * clientOrderID prefix; unattributed fills keep botId null.
+ */
+export const botIncomeRecords = pgTable(
+  'bot_income_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    apiKeyId: uuid('api_key_id')
+      .references(() => bingxApiKeys.id, { onDelete: 'cascade' })
+      .notNull(),
+    botId: uuid('bot_id').references(() => tradingBots.id, { onDelete: 'set null' }),
+    symbol: text('symbol').notNull(),
+    incomeType: text('income_type').notNull(), // 'REALIZED_PNL' | 'FEE'
+    amount: decimal('amount', { precision: 18, scale: 8 }).notNull(),
+    tradeId: text('trade_id').notNull(),
+    orderId: text('order_id'),
+    clientOrderId: text('client_order_id'),
+    incomeTime: timestamp('income_time').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('bot_income_key_trade_type_idx').on(table.apiKeyId, table.tradeId, table.incomeType),
+    index('bot_income_bot_time_idx').on(table.botId, table.incomeTime),
+  ]
+);
+
+// ==========================================
 // 6. AI PORTFOLIO MANAGER
 // ==========================================
 

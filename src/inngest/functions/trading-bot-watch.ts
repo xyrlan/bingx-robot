@@ -12,6 +12,7 @@ import {
   getCurrentPrice,
   getOpenPositions,
   getOpenOrders,
+  findTakeProfitForPosition,
   hasTakeProfitForPosition,
   placeBatchOrders,
   cancelBatchOrders,
@@ -83,6 +84,7 @@ type MinimalOrder = {
 type PendingEntry = { levelId: string; levelPrice: string; clientOrderId: string; payload: Record<string, unknown> };
 type PendingTP = { levelId: string; levelPrice: string; clientOrderId: string; positionId?: string; payload: Record<string, unknown> };
 type OrphanAdoption = { levelId: string; orderId: string; clientOrderId?: string };
+type TpAdoption = { levelId: string; tpOrderId: string; tpClientOrderId: string | null };
 type CompletedCycle = {
   entryOrderId: string;
   tpOrderId: string;
@@ -236,6 +238,7 @@ export const tradingBotWatch = inngest.createFunction(
         const pendingEntries: PendingEntry[] = [];
         const pendingTPs: PendingTP[] = [];
         const orphanAdoptions: OrphanAdoption[] = [];
+        const tpAdoptions: TpAdoption[] = [];
         const completedCycles: CompletedCycle[] = [];
 
         for (const level of levels) {
@@ -281,26 +284,39 @@ export const tradingBotWatch = inngest.createFunction(
                 ? priceLevel * (1 - takeProfitPct)
                 : priceLevel * (1 + takeProfitPct);
               const stopPriceStr = toPrecision(stopPrice, pricePrecision);
+
+              const posSide = pos.positionSide.toUpperCase();
+
+              // Locate the live TP: tracked by orderId, matched by our CID, or
+              // created by the exchange itself (entry payloads embed takeProfit,
+              // so BingX spawns the TP when the entry fills — we never placed
+              // it). Adopting its orderId is what arms the completed-cycle
+              // detector below; without it realized P&L is never recorded.
+              const trackedTp = level.tpOrderId && openOrderIdsSet.has(level.tpOrderId)
+                ? orders.find((o) => String(o.orderId) === level.tpOrderId) ?? null
+                : null;
+              const cidTp = trackedTp == null && level.tpClientOrderId != null
+                ? orders.find((o) => o.clientOrderId === level.tpClientOrderId) ?? null
+                : null;
+              const exchangeTp = trackedTp == null && cidTp == null
+                ? findTakeProfitForPosition(orders, symbol, posSide, stopPrice, 0.001, pos.positionId)
+                : null;
+              const liveTp = trackedTp ?? cidTp ?? exchangeTp;
+
+              if (liveTp && String(liveTp.orderId) !== level.tpOrderId) {
+                tpAdoptions.push({
+                  levelId: level.id,
+                  tpOrderId: String(liveTp.orderId),
+                  tpClientOrderId: liveTp.clientOrderId ?? null,
+                });
+              }
+
               const skipTp = isShort
                 ? (currentPrice != null && stopPrice >= currentPrice)
                 : (currentPrice != null && stopPrice <= currentPrice);
               if (skipTp) continue;
 
-              const posSide = pos.positionSide.toUpperCase();
-              const hasTp =
-                (level.tpOrderId && openOrderIdsSet.has(level.tpOrderId)) ||
-                (level.tpClientOrderId != null &&
-                  orders.some((o) => o.clientOrderId === level.tpClientOrderId)) ||
-                hasTakeProfitForPosition(
-                  orders,
-                  symbol,
-                  posSide,
-                  stopPrice,
-                  0.001,
-                  pos.positionId
-                );
-
-              if (!hasTp) {
+              if (!liveTp) {
                 const tpSide = isShort ? 'BUY' : 'SELL';
                 const positionIdStr = toSafeIdString(pos.positionId);
                 const tpCid = buildTpCid(bot.id, level.id, nonce) + (tpIdx > 0 ? String(tpIdx) : '');
@@ -437,7 +453,7 @@ export const tradingBotWatch = inngest.createFunction(
           if (keeper != null && keeper !== o.orderId) staleEntryOrderIds.push(o.orderId);
         }
 
-        return { pendingEntries, pendingTPs, orphanAdoptions, completedCycles, staleEntryOrderIds };
+        return { pendingEntries, pendingTPs, orphanAdoptions, tpAdoptions, completedCycles, staleEntryOrderIds };
       });
 
       const { symbol, pricePrecision, positionSide } = setup;
@@ -463,7 +479,11 @@ export const tradingBotWatch = inngest.createFunction(
 
       // === Reconcile: adopt orphans into levels, cancel stale/duplicate entries.
       const reconcileResult = await step.run(`reconcile-${bot.id}`, async () => {
-        if (analysis.orphanAdoptions.length === 0 && analysis.staleEntryOrderIds.length === 0) {
+        if (
+          analysis.orphanAdoptions.length === 0 &&
+          analysis.tpAdoptions.length === 0 &&
+          analysis.staleEntryOrderIds.length === 0
+        ) {
           return { adopted: 0, cancelled: 0 };
         }
 
@@ -472,6 +492,15 @@ export const tradingBotWatch = inngest.createFunction(
             orderId: adoption.orderId,
             entryClientOrderId: adoption.clientOrderId ?? null,
             tpOrderId: null,
+          });
+        }
+
+        // Exchange-created (or retry-lost) TPs: persist their orderId so the
+        // completed-cycle detector can see the TP disappear later.
+        for (const tp of analysis.tpAdoptions) {
+          await updateGridLevelById(tp.levelId, {
+            tpOrderId: tp.tpOrderId,
+            tpClientOrderId: tp.tpClientOrderId,
           });
         }
 
