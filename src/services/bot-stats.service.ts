@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { botTrades } from '@/db/schema';
+import { botIncomeRecords, botTrades } from '@/db/schema';
 import { and, gte, inArray, sql } from 'drizzle-orm';
 import {
   STAT_WINDOW_KEYS,
@@ -114,23 +114,113 @@ export async function getBotDailyPnl(
   return result;
 }
 
-/** Composed stats for the bots page: windows + daily series, zero-filled per requested bot. */
+/**
+ * Real income aggregates from bot_income_records (synced exchange fills).
+ * pnl is fee-inclusive (SUM of all income types); trades/wins count only
+ * REALIZED_PNL rows.
+ */
+export async function getBotRealWindowedStats(
+  botIds: string[]
+): Promise<Record<string, BotWindowedStats>> {
+  if (botIds.length === 0) return {};
+
+  const isPnl = sql`${botIncomeRecords.incomeType} = 'REALIZED_PNL'`;
+  const windowSelects: Record<string, ReturnType<typeof sql<string>>> = {};
+  for (const [key, days] of Object.entries(WINDOW_DAYS)) {
+    const cutoff = sql`now() - make_interval(days => ${days})`;
+    windowSelects[`pnl_${key}`] = sql<string>`COALESCE(SUM(${botIncomeRecords.amount}) FILTER (WHERE ${botIncomeRecords.incomeTime} >= ${cutoff}), 0)`;
+    windowSelects[`trades_${key}`] = sql<string>`COUNT(*) FILTER (WHERE ${isPnl} AND ${botIncomeRecords.incomeTime} >= ${cutoff})`;
+    windowSelects[`wins_${key}`] = sql<string>`COUNT(*) FILTER (WHERE ${isPnl} AND ${botIncomeRecords.amount} > 0 AND ${botIncomeRecords.incomeTime} >= ${cutoff})`;
+  }
+
+  const rows = await db
+    .select({
+      botId: sql<string>`${botIncomeRecords.botId}`,
+      pnl_all: sql<string>`COALESCE(SUM(${botIncomeRecords.amount}), 0)`,
+      trades_all: sql<string>`COUNT(*) FILTER (WHERE ${isPnl})`,
+      wins_all: sql<string>`COUNT(*) FILTER (WHERE ${isPnl} AND ${botIncomeRecords.amount} > 0)`,
+      ...windowSelects,
+    })
+    .from(botIncomeRecords)
+    .where(inArray(botIncomeRecords.botId, botIds))
+    .groupBy(botIncomeRecords.botId);
+
+  const result: Record<string, BotWindowedStats> = {};
+  for (const row of rows) {
+    const windows = emptyWindowedStats();
+    for (const key of STAT_WINDOW_KEYS) {
+      const raw = row as unknown as Record<string, string>;
+      windows[key] = {
+        pnl: Number(raw[`pnl_${key}`] ?? 0),
+        trades: Number(raw[`trades_${key}`] ?? 0),
+        wins: Number(raw[`wins_${key}`] ?? 0),
+      };
+    }
+    result[row.botId] = windows;
+  }
+  return result;
+}
+
+/** Sparse per-day fee-inclusive real P&L series over the last `days` days. */
+export async function getBotRealDailyPnl(
+  botIds: string[],
+  days = 90
+): Promise<Record<string, BotDailyPnlPoint[]>> {
+  if (botIds.length === 0) return {};
+
+  const day = sql<string>`date_trunc('day', ${botIncomeRecords.incomeTime})`;
+  const rows = await db
+    .select({
+      botId: sql<string>`${botIncomeRecords.botId}`,
+      day,
+      pnl: sql<string>`SUM(${botIncomeRecords.amount})`,
+    })
+    .from(botIncomeRecords)
+    .where(
+      and(
+        inArray(botIncomeRecords.botId, botIds),
+        gte(botIncomeRecords.incomeTime, sql`now() - make_interval(days => ${days})`)
+      )
+    )
+    .groupBy(sql`${botIncomeRecords.botId}`, day)
+    .orderBy(day);
+
+  const result: Record<string, BotDailyPnlPoint[]> = {};
+  for (const row of rows) {
+    (result[row.botId] ??= []).push({
+      date: new Date(row.day).toISOString().slice(0, 10),
+      pnl: Number(row.pnl),
+    });
+  }
+  return result;
+}
+
+/**
+ * Composed stats for the bots page, zero-filled per requested bot.
+ * Bots with synced exchange income use it (source 'real', fee-inclusive);
+ * the rest fall back to watcher estimates from bot_trades.
+ */
 export async function getBotsStats(botIds: string[]): Promise<Record<string, BotStats>> {
   if (botIds.length === 0) return {};
 
-  const [windowed, daily] = await Promise.all([
+  const [windowed, daily, realWindowed, realDaily] = await Promise.all([
     getBotWindowedStats(botIds),
     getBotDailyPnl(botIds),
+    getBotRealWindowedStats(botIds),
+    getBotRealDailyPnl(botIds),
   ]);
 
   const result: Record<string, BotStats> = {};
   for (const botId of botIds) {
-    result[botId] = {
-      botId,
-      windows: windowed[botId] ?? emptyWindowedStats(),
-      daily: daily[botId] ?? [],
-      source: 'estimated',
-    };
+    const real = realWindowed[botId];
+    result[botId] = real
+      ? { botId, windows: real, daily: realDaily[botId] ?? [], source: 'real' }
+      : {
+          botId,
+          windows: windowed[botId] ?? emptyWindowedStats(),
+          daily: daily[botId] ?? [],
+          source: 'estimated',
+        };
   }
   return result;
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { db } from '@/db';
-import { botTrades, tradingBots, users } from '@/db/schema';
+import { bingxApiKeys, botIncomeRecords, botTrades, tradingBots, users } from '@/db/schema';
 import { getBotWindowedStats, getBotDailyPnl, getBotsStats } from '@/services/bot-stats.service';
 import { eq } from 'drizzle-orm';
 
@@ -11,6 +11,32 @@ async function ensureUser() {
     id: TEST_USER_ID,
     email: 'bot-stats-test@example.com',
   }).onConflictDoNothing();
+}
+
+async function makeApiKey() {
+  const [row] = await db.insert(bingxApiKeys).values({
+    userId: TEST_USER_ID,
+    label: 'stats-test',
+    apiKey: 'k',
+    secretKeyEncrypted: 's',
+  }).returning();
+  return row;
+}
+
+async function seedIncome(
+  apiKeyId: string,
+  botId: string | null,
+  opts: { type?: string; amount: string; createdAt?: Date; tradeId?: string },
+) {
+  await db.insert(botIncomeRecords).values({
+    apiKeyId,
+    botId,
+    symbol: 'BTC-USDT',
+    incomeType: opts.type ?? 'REALIZED_PNL',
+    amount: opts.amount,
+    tradeId: opts.tradeId ?? `t-${Math.random().toString(36).slice(2)}`,
+    incomeTime: opts.createdAt ?? new Date(),
+  });
 }
 
 async function makeBot() {
@@ -54,6 +80,7 @@ describe('bot-stats.service', () => {
 
   afterEach(async () => {
     await db.delete(tradingBots).where(eq(tradingBots.userId, TEST_USER_ID));
+    await db.delete(bingxApiKeys).where(eq(bingxApiKeys.userId, TEST_USER_ID));
   });
 
   describe('getBotWindowedStats', () => {
@@ -176,6 +203,40 @@ describe('bot-stats.service', () => {
       expect(stats[bot.id].windows['7d']).toEqual({ pnl: 2.5, trades: 1, wins: 1 });
       expect(stats[bot.id].daily).toHaveLength(1);
       expect(stats[bot.id].daily[0].pnl).toBe(2.5);
+    });
+
+    it('prefers real income over estimates when the bot has income rows', async () => {
+      const key = await makeApiKey();
+      const bot = await makeBot();
+      // Estimated trail says +99 — must be ignored once real rows exist.
+      await seedTrade(bot.id, { pnl: '99', createdAt: daysAgo(3) });
+      await seedIncome(key.id, bot.id, { type: 'REALIZED_PNL', amount: '5', createdAt: daysAgo(3) });
+      await seedIncome(key.id, bot.id, { type: 'FEE', amount: '-0.5', createdAt: daysAgo(3) });
+      await seedIncome(key.id, bot.id, { type: 'FEE', amount: '-0.1', createdAt: daysAgo(40) });
+
+      const stats = await getBotsStats([bot.id]);
+
+      expect(stats[bot.id].source).toBe('real');
+      // pnl is fee-inclusive; only REALIZED_PNL rows count as trades/wins
+      expect(stats[bot.id].windows['7d']).toEqual({ pnl: 4.5, trades: 1, wins: 1 });
+      expect(stats[bot.id].windows['60d'].pnl).toBeCloseTo(4.4, 8);
+      expect(stats[bot.id].windows['60d'].trades).toBe(1);
+      expect(stats[bot.id].daily.reduce((s, p) => s + p.pnl, 0)).toBeCloseTo(4.4, 8);
+    });
+
+    it('keeps estimates for bots without income rows even when others have them', async () => {
+      const key = await makeApiKey();
+      const realBot = await makeBot();
+      const estBot = await makeBot();
+      await seedIncome(key.id, realBot.id, { amount: '3', createdAt: daysAgo(1) });
+      await seedTrade(estBot.id, { pnl: '7', createdAt: daysAgo(1) });
+
+      const stats = await getBotsStats([realBot.id, estBot.id]);
+
+      expect(stats[realBot.id].source).toBe('real');
+      expect(stats[realBot.id].windows['7d'].pnl).toBe(3);
+      expect(stats[estBot.id].source).toBe('estimated');
+      expect(stats[estBot.id].windows['7d'].pnl).toBe(7);
     });
   });
 });

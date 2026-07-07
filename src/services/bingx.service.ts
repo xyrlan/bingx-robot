@@ -672,17 +672,17 @@ export async function getAllOpenOrders(client: BingxClient): Promise<OpenOrderIn
   }
 }
 
-export function hasTakeProfitForPosition(
+export function findTakeProfitForPosition(
   openOrders: OpenOrderInfo[],
   symbol: string,
   positionSide: string,
   stopPrice: number,
   tolerancePct = 0.001,
   positionId?: string | number
-): boolean {
+): OpenOrderInfo | null {
   const sym = symbol.toUpperCase().replace(/\s/g, '');
   const posIdStr = toSafeIdString(positionId);
-  return openOrders.some((o) => {
+  return openOrders.find((o) => {
     if (String(o.type ?? '').toUpperCase() !== 'TAKE_PROFIT_MARKET') return false;
     const orderSym = String(o.symbol ?? '').toUpperCase().replace(/\s/g, '');
     if (orderSym && orderSym !== sym) return false;
@@ -692,7 +692,18 @@ export function hasTakeProfitForPosition(
     const sp = Number(o.stopPrice ?? 0);
     const diff = Math.abs(sp - stopPrice) / (stopPrice || 1);
     return diff <= tolerancePct;
-  });
+  }) ?? null;
+}
+
+export function hasTakeProfitForPosition(
+  openOrders: OpenOrderInfo[],
+  symbol: string,
+  positionSide: string,
+  stopPrice: number,
+  tolerancePct = 0.001,
+  positionId?: string | number
+): boolean {
+  return findTakeProfitForPosition(openOrders, symbol, positionSide, stopPrice, tolerancePct, positionId) != null;
 }
 
 /**
@@ -1192,6 +1203,106 @@ export async function getIncome(
   } catch {
     return 0;
   }
+}
+
+export type HistoricalOrderInfo = {
+  orderId: string;
+  clientOrderId?: string;
+  symbol?: string;
+  type?: string;
+  side?: string;
+  positionSide?: string;
+  status?: string;
+  updateTime?: number;
+};
+
+/**
+ * Order history (/trade/allOrders) for one symbol. The API rejects ranges
+ * over 7 days (error 109400) — callers must window their queries.
+ * Used to map exchange orderIds back to our clientOrderIDs (grid CIDs).
+ */
+export async function getOrderHistory(
+  client: BingxClient,
+  symbol: string,
+  startTime: number,
+  endTime: number
+): Promise<HistoricalOrderInfo[]> {
+  const data = (await client.get('/openApi/swap/v2/trade/allOrders', {
+    symbol: symbol.toUpperCase().replace(/\s/g, ''),
+    startTime,
+    endTime,
+    limit: 1000,
+  })) as { orders?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>;
+
+  const rawOrders = Array.isArray(data) ? data : data?.orders ?? [];
+  return rawOrders.map((o) => {
+    const rawOrderId = o.orderId as string | number | bigint | null | undefined;
+    return {
+      orderId: toSafeIdString(rawOrderId) ?? (rawOrderId != null ? String(rawOrderId) : ''),
+      clientOrderId: readClientOrderId(o),
+      symbol: o.symbol as string | undefined,
+      type: o.type as string | undefined,
+      side: o.side as string | undefined,
+      positionSide: o.positionSide as string | undefined,
+      status: o.status as string | undefined,
+      updateTime: o.updateTime != null ? Number(o.updateTime) : undefined,
+    };
+  });
+}
+
+/** Fill timestamps arrive as ms epoch or as a datetime string depending on account region. */
+function parseFillTime(raw: unknown): number {
+  if (raw == null) return 0;
+  const n = Number(raw);
+  if (!Number.isNaN(n) && n > 0) return n;
+  const parsed = Date.parse(String(raw));
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+export type FillInfo = {
+  tradeId: string;
+  orderId: string;
+  symbol?: string;
+  realizedPnl: number;
+  fee: number;
+  price?: number;
+  qty?: number;
+  time: number;
+};
+
+/**
+ * Trade fill history (/trade/allFillOrders) across all symbols of the account.
+ * Each fill carries the exchange-computed realized PnL and fee — the source of
+ * truth for real bot income. startTs/endTs required; keep ranges ≤ 7 days.
+ */
+export async function getFillHistory(
+  client: BingxClient,
+  startTs: number,
+  endTs: number
+): Promise<FillInfo[]> {
+  const data = (await client.get('/openApi/swap/v2/trade/allFillOrders', {
+    tradingUnit: 'COIN',
+    startTs,
+    endTs,
+  })) as { fill_orders?: Array<Record<string, unknown>>; fillOrders?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>;
+
+  const rawFills = Array.isArray(data)
+    ? data
+    : data?.fill_orders ?? data?.fillOrders ?? [];
+  return rawFills.map((f) => {
+    const rawTradeId = (f.tradeId ?? f.trade_id) as string | number | bigint | null | undefined;
+    const rawOrderId = (f.orderId ?? f.order_id) as string | number | bigint | null | undefined;
+    return {
+      tradeId: toSafeIdString(rawTradeId) ?? (rawTradeId != null ? String(rawTradeId) : ''),
+      orderId: toSafeIdString(rawOrderId) ?? (rawOrderId != null ? String(rawOrderId) : ''),
+      symbol: f.symbol as string | undefined,
+      realizedPnl: Number(f.realizedPnl ?? f.realisedPNL ?? 0),
+      fee: Number(f.fee ?? f.commission ?? 0),
+      price: f.price != null ? Number(f.price) : undefined,
+      qty: f.qty != null ? Number(f.qty) : undefined,
+      time: parseFillTime(f.time ?? f.filledTm ?? (f as { filledTime?: unknown }).filledTime),
+    };
+  });
 }
 
 // ========== P&L Trade Recording ==========

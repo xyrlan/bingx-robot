@@ -261,6 +261,71 @@ describe('tradingBotWatch idempotent placement', () => {
     expect(trades.map((t) => t.type).sort()).toEqual(['ENTRY', 'EXIT_TP']);
   });
 
+  it('adopts the exchange-created TP into level.tpOrderId (entry payload embeds takeProfit)', async () => {
+    defaultMocks();
+    const bot = await makeBot();
+    const { createGridLevels } = await vi.importActual<typeof import('@/services/bingx.service')>('@/services/bingx.service');
+    const levels = await createGridLevels(bot.id, bot.priceMin, bot.priceMax, bot.gridCount);
+    const lower = levels.find((l) => Number(l.priceLevel) < 65500)!;
+    // Entry filled: orderId tracked but no longer among open orders.
+    await db.update(gridLevels).set({ orderId: 'e1' }).where(eq(gridLevels.id, lower.id));
+
+    // Position sits at the level; the only open order is the TP that BingX
+    // created itself from the embedded takeProfit — no CID, never tracked.
+    mocked.getOpenPositions.mockResolvedValue([
+      { positionId: 'p1', symbol: 'BTC-USDT', entryPrice: 64999.1, positionAmt: 0.0002, positionSide: 'LONG' },
+    ]);
+    mocked.getOpenOrders.mockResolvedValue([
+      {
+        orderId: 'tp9', type: 'TAKE_PROFIT_MARKET', side: 'SELL', positionSide: 'LONG',
+        stopPrice: 65649.1, positionId: 'p1',
+      },
+    ]);
+
+    const { step } = makeMemoStep();
+    await runWatch(bot.id, step);
+
+    const after = await db.query.gridLevels.findFirst({ where: eq(gridLevels.id, lower.id) });
+    expect(after?.tpOrderId).toBe('tp9');
+    // No duplicate TP placed — the exchange-created one is adopted, not replaced.
+    const tpPayloads = mocked.placeBatchOrders.mock.calls
+      .flatMap((c) => c[1])
+      .filter((p) => p.type === 'TAKE_PROFIT_MARKET');
+    expect(tpPayloads).toHaveLength(0);
+  });
+
+  it('records the cycle after an adopted exchange-created TP fills', async () => {
+    defaultMocks();
+    const bot = await makeBot();
+    const { createGridLevels } = await vi.importActual<typeof import('@/services/bingx.service')>('@/services/bingx.service');
+    const levels = await createGridLevels(bot.id, bot.priceMin, bot.priceMax, bot.gridCount);
+    const lower = levels.find((l) => Number(l.priceLevel) < 65500)!;
+    await db.update(gridLevels).set({ orderId: 'e1' }).where(eq(gridLevels.id, lower.id));
+
+    // Tick 1: position open, exchange-created TP live -> adoption.
+    mocked.getOpenPositions.mockResolvedValue([
+      { positionId: 'p1', symbol: 'BTC-USDT', entryPrice: 64999.1, positionAmt: 0.0002, positionSide: 'LONG' },
+    ]);
+    mocked.getOpenOrders.mockResolvedValue([
+      {
+        orderId: 'tp9', type: 'TAKE_PROFIT_MARKET', side: 'SELL', positionSide: 'LONG',
+        stopPrice: 65649.1, positionId: 'p1',
+      },
+    ]);
+    await runWatch(bot.id, makeMemoStep().step);
+
+    // Tick 2: TP filled -> position and TP both gone, price past the TP.
+    mocked.getOpenPositions.mockResolvedValue([]);
+    mocked.getOpenOrders.mockResolvedValue([]);
+    mocked.getCurrentPrice.mockResolvedValue(66600);
+    await runWatch(bot.id, makeMemoStep().step);
+
+    const trades = await db.query.botTrades.findMany({ where: eq(botTrades.botId, bot.id) });
+    expect(trades.map((t) => t.type).sort()).toEqual(['ENTRY', 'EXIT_TP']);
+    const exit = trades.find((t) => t.type === 'EXIT_TP')!;
+    expect(Number(exit.realizedPnl)).toBeGreaterThan(0);
+  });
+
   it('GRID_SHORT entries carry the bot CID prefix and SELL/SHORT semantics', async () => {
     defaultMocks();
     const bot = await makeBot({ botType: 'GRID_SHORT' });
