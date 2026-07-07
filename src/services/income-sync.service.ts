@@ -45,7 +45,7 @@ export type SyncResult = { inserted: number; windows: number; orders: number; at
 
 export async function syncIncomeForApiKey(
   apiKeyId: string,
-  opts: { now?: number; lookbackDays?: number } = {}
+  opts: { now?: number; lookbackDays?: number; ignoreCursor?: boolean } = {}
 ): Promise<SyncResult> {
   const now = opts.now ?? Date.now();
   const lookbackMs = (opts.lookbackDays ?? DEFAULT_LOOKBACK_DAYS) * 24 * 3600_000;
@@ -68,7 +68,10 @@ export async function syncIncomeForApiKey(
     })
     .from(botIncomeRecords)
     .where(eq(botIncomeRecords.apiKeyId, apiKeyId));
-  const cursor = cursorRow?.maxMs != null ? Number(cursorRow.maxMs) - OVERLAP_MS : null;
+  // ignoreCursor forces a full-lookback re-sync (historical backfill);
+  // onConflictDoNothing keeps already-synced windows idempotent.
+  const cursor =
+    !opts.ignoreCursor && cursorRow?.maxMs != null ? Number(cursorRow.maxMs) - OVERLAP_MS : null;
   const since = Math.max(cursor ?? now - lookbackMs, now - lookbackMs);
 
   // positionId -> botId, accumulated across windows so a TP filled this window
@@ -162,8 +165,14 @@ export async function attributeOrphanIncome(apiKeyId: string): Promise<number> {
     WITH candidates AS (
       SELECT r.id AS record_id, MIN(b.id::text)::uuid AS bot_id
       FROM ${botIncomeRecords} r
+      JOIN bingx_api_keys k ON k.id = r.api_key_id
       JOIN ${tradingBots} b
-        ON b.api_key_id = r.api_key_id
+        ON (
+          b.api_key_id = r.api_key_id
+          -- legacy bots predate multi-key support and carry no api_key_id;
+          -- they belong to the key owner
+          OR (b.api_key_id IS NULL AND b.user_id = k.user_id)
+        )
        AND UPPER(REPLACE(b.symbol, ' ', '')) = r.symbol
        AND b.created_at <= r.income_time
        AND (b.status = 'RUNNING' OR b.updated_at >= r.income_time)
