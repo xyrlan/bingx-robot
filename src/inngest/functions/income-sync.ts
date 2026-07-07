@@ -26,7 +26,7 @@ export const incomeSync = inngest.createFunction(
       inserted += result.inserted;
       if (result.inserted > 0) {
         logger.info(
-          `[IncomeSync] key ${apiKeyId}: +${result.inserted} records (${result.fills} fills, ${result.windows} windows)`
+          `[IncomeSync] key ${apiKeyId}: +${result.inserted} records (${result.orders} orders, ${result.windows} windows)`
         );
       }
     }

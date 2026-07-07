@@ -1213,13 +1213,22 @@ export type HistoricalOrderInfo = {
   side?: string;
   positionSide?: string;
   status?: string;
+  /** Exchange-computed realized PnL of the order (nonzero on closing orders). */
+  profit?: number;
+  /** Trading fee, negative when paid. */
+  commission?: number;
+  positionId?: string;
+  avgPrice?: number;
+  time?: number;
   updateTime?: number;
 };
 
 /**
  * Order history (/trade/allOrders) for one symbol. The API rejects ranges
  * over 7 days (error 109400) — callers must window their queries.
- * Used to map exchange orderIds back to our clientOrderIDs (grid CIDs).
+ * FILLED orders carry profit/commission (real income) plus the clientOrderID
+ * and positionId used to attribute them to a bot. (allFillOrders is NOT used:
+ * its response carries neither tradeId nor realized PnL in practice.)
  */
 export async function getOrderHistory(
   client: BingxClient,
@@ -1237,6 +1246,8 @@ export async function getOrderHistory(
   const rawOrders = Array.isArray(data) ? data : data?.orders ?? [];
   return rawOrders.map((o) => {
     const rawOrderId = o.orderId as string | number | bigint | null | undefined;
+    const rawPositionId = (o.positionID ?? o.positionId ?? (o as { position_id?: unknown }).position_id) as
+      | string | number | bigint | null | undefined;
     return {
       orderId: toSafeIdString(rawOrderId) ?? (rawOrderId != null ? String(rawOrderId) : ''),
       clientOrderId: readClientOrderId(o),
@@ -1245,62 +1256,12 @@ export async function getOrderHistory(
       side: o.side as string | undefined,
       positionSide: o.positionSide as string | undefined,
       status: o.status as string | undefined,
+      profit: o.profit != null ? Number(o.profit) : undefined,
+      commission: o.commission != null ? Number(o.commission) : undefined,
+      positionId: toSafeIdString(rawPositionId),
+      avgPrice: o.avgPrice != null ? Number(o.avgPrice) : undefined,
+      time: o.time != null ? Number(o.time) : undefined,
       updateTime: o.updateTime != null ? Number(o.updateTime) : undefined,
-    };
-  });
-}
-
-/** Fill timestamps arrive as ms epoch or as a datetime string depending on account region. */
-function parseFillTime(raw: unknown): number {
-  if (raw == null) return 0;
-  const n = Number(raw);
-  if (!Number.isNaN(n) && n > 0) return n;
-  const parsed = Date.parse(String(raw));
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-export type FillInfo = {
-  tradeId: string;
-  orderId: string;
-  symbol?: string;
-  realizedPnl: number;
-  fee: number;
-  price?: number;
-  qty?: number;
-  time: number;
-};
-
-/**
- * Trade fill history (/trade/allFillOrders) across all symbols of the account.
- * Each fill carries the exchange-computed realized PnL and fee — the source of
- * truth for real bot income. startTs/endTs required; keep ranges ≤ 7 days.
- */
-export async function getFillHistory(
-  client: BingxClient,
-  startTs: number,
-  endTs: number
-): Promise<FillInfo[]> {
-  const data = (await client.get('/openApi/swap/v2/trade/allFillOrders', {
-    tradingUnit: 'COIN',
-    startTs,
-    endTs,
-  })) as { fill_orders?: Array<Record<string, unknown>>; fillOrders?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>;
-
-  const rawFills = Array.isArray(data)
-    ? data
-    : data?.fill_orders ?? data?.fillOrders ?? [];
-  return rawFills.map((f) => {
-    const rawTradeId = (f.tradeId ?? f.trade_id) as string | number | bigint | null | undefined;
-    const rawOrderId = (f.orderId ?? f.order_id) as string | number | bigint | null | undefined;
-    return {
-      tradeId: toSafeIdString(rawTradeId) ?? (rawTradeId != null ? String(rawTradeId) : ''),
-      orderId: toSafeIdString(rawOrderId) ?? (rawOrderId != null ? String(rawOrderId) : ''),
-      symbol: f.symbol as string | undefined,
-      realizedPnl: Number(f.realizedPnl ?? f.realisedPNL ?? 0),
-      fee: Number(f.fee ?? f.commission ?? 0),
-      price: f.price != null ? Number(f.price) : undefined,
-      qty: f.qty != null ? Number(f.qty) : undefined,
-      time: parseFillTime(f.time ?? f.filledTm ?? (f as { filledTime?: unknown }).filledTime),
     };
   });
 }

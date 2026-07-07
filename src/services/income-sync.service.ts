@@ -3,22 +3,28 @@ import { botIncomeRecords, tradingBots } from '@/db/schema';
 import { and, eq, gt, isNotNull, sql } from 'drizzle-orm';
 import {
   getBingxClientByApiKeyId,
-  getFillHistory,
   getOrderHistory,
+  type HistoricalOrderInfo,
 } from '@/services/bingx.service';
 import { shortId } from '@/services/bots/grid-cid';
 
 /**
- * Syncs real exchange income (per-fill realized PnL + fees) into
- * bot_income_records and attributes each fill to a bot via the grid
- * clientOrderID scheme (ge/gt + bot8). Unlike the /user/income endpoint,
- * fills join to orders and orders echo our CIDs — attribution stays exact
- * even when several bots trade the same symbol on the same API key.
+ * Syncs real exchange income (per-order realized PnL + fees from FILLED
+ * orders in /trade/allOrders) into bot_income_records.
+ *
+ * Attribution, in order:
+ * 1. The order's own clientOrderID matches the grid CID scheme (ge/gt + bot8)
+ *    — entries always carry it.
+ * 2. The order shares a positionId with a CID-attributed order — this covers
+ *    TP orders, which BingX creates itself (from the entry's embedded
+ *    takeProfit) with an empty clientOrderID.
+ * Anything else is stored with botId null. This stays exact even when several
+ * bots trade the same symbol on one API key.
  */
 
-/** allOrders/allFillOrders reject ranges over 7 days; stay a minute under. */
+/** allOrders rejects ranges over 7 days (error 109400); stay a minute under. */
 const WINDOW_MS = 7 * 24 * 3600_000 - 60_000;
-/** Re-read this much before the cursor to absorb clock skew / late fills. */
+/** Re-read this much before the cursor to absorb clock skew / late updates. */
 const OVERLAP_MS = 3600_000;
 const DEFAULT_LOOKBACK_DAYS = 90;
 
@@ -35,7 +41,7 @@ export function resolveBotByCid(
   return bots.find((b) => shortId(b.id) === match[1])?.id ?? null;
 }
 
-export type SyncResult = { inserted: number; windows: number; fills: number };
+export type SyncResult = { inserted: number; windows: number; orders: number };
 
 export async function syncIncomeForApiKey(
   apiKeyId: string,
@@ -48,12 +54,12 @@ export async function syncIncomeForApiKey(
     .select({ id: tradingBots.id, symbol: tradingBots.symbol })
     .from(tradingBots)
     .where(eq(tradingBots.apiKeyId, apiKeyId));
-  if (bots.length === 0) return { inserted: 0, windows: 0, fills: 0 };
+  if (bots.length === 0) return { inserted: 0, windows: 0, orders: 0 };
 
   const client = await getBingxClientByApiKeyId(apiKeyId);
-  if (!client) return { inserted: 0, windows: 0, fills: 0 };
+  if (!client) return { inserted: 0, windows: 0, orders: 0 };
 
-  const botSymbols = new Set(bots.map((b) => normalizeSymbol(b.symbol)));
+  const botSymbols = [...new Set(bots.map((b) => normalizeSymbol(b.symbol)))];
 
   // EPOCH extraction sidesteps naive-timestamp/timezone parsing pitfalls.
   const [cursorRow] = await db
@@ -65,55 +71,66 @@ export async function syncIncomeForApiKey(
   const cursor = cursorRow?.maxMs != null ? Number(cursorRow.maxMs) - OVERLAP_MS : null;
   const since = Math.max(cursor ?? now - lookbackMs, now - lookbackMs);
 
+  // positionId -> botId, accumulated across windows so a TP filled this window
+  // inherits the bot of an entry filled in an earlier one.
+  const botByPositionId = new Map<string, string>();
+
+  // Context pass: when resuming from a cursor, one earlier window seeds the
+  // position map for TPs whose entries filled before the cursor. Read-only.
+  if (cursor != null && since > now - lookbackMs) {
+    const contextFrom = Math.max(since - WINDOW_MS, now - lookbackMs);
+    if (contextFrom < since) {
+      await collectOrders(client, botSymbols, contextFrom, since, (order) => {
+        rememberPosition(order, bots, botByPositionId);
+      });
+    }
+  }
+
   let inserted = 0;
   let windows = 0;
-  let fillCount = 0;
+  let orderCount = 0;
 
   for (let from = since; from < now; from += WINDOW_MS) {
     const to = Math.min(from + WINDOW_MS, now);
-    if (windows > 0) await rateLimitPause();
     windows++;
 
-    const fills = (await getFillHistory(client, from, to)).filter(
-      (f) => f.symbol != null && botSymbols.has(normalizeSymbol(f.symbol))
-    );
-    if (fills.length === 0) continue;
-    fillCount += fills.length;
+    const filled: HistoricalOrderInfo[] = [];
+    await collectOrders(client, botSymbols, from, to, (order) => {
+      if (order.status !== 'FILLED') return;
+      rememberPosition(order, bots, botByPositionId);
+      filled.push(order);
+    });
+    if (filled.length === 0) continue;
+    orderCount += filled.length;
 
-    // Map orderId -> clientOrderId for this window, per symbol we trade.
-    const cidByOrderId = new Map<string, string>();
-    for (const symbol of botSymbols) {
-      try {
-        await rateLimitPause();
-        const history = await getOrderHistory(client, symbol, from, to);
-        for (const order of history) {
-          if (order.clientOrderId) cidByOrderId.set(order.orderId, order.clientOrderId);
-        }
-      } catch (err) {
-        // Order history is only needed for attribution — keep the fills
-        // (unattributed) rather than losing the window.
-        console.warn(`[IncomeSync] order history failed for ${symbol}:`, err);
-      }
-    }
+    // Oldest first so an entry registers its positionId before its TP resolves.
+    filled.sort((a, b) => (a.updateTime ?? 0) - (b.updateTime ?? 0));
 
     const rows: (typeof botIncomeRecords.$inferInsert)[] = [];
-    for (const fill of fills) {
-      if (!fill.tradeId || fill.time <= 0) continue;
-      const clientOrderId = cidByOrderId.get(fill.orderId) ?? null;
+    for (const order of filled) {
+      const fillTime = order.updateTime ?? order.time ?? 0;
+      if (!order.orderId || fillTime <= 0) continue;
+
+      const botId =
+        resolveBotByCid(order.clientOrderId, bots) ??
+        (order.positionId != null ? botByPositionId.get(order.positionId) ?? null : null);
+
       const base = {
         apiKeyId,
-        botId: resolveBotByCid(clientOrderId, bots),
-        symbol: normalizeSymbol(fill.symbol ?? ''),
-        tradeId: fill.tradeId,
-        orderId: fill.orderId || null,
-        clientOrderId,
-        incomeTime: new Date(fill.time),
+        botId,
+        symbol: normalizeSymbol(order.symbol ?? ''),
+        tradeId: order.orderId, // one income row pair per order
+        orderId: order.orderId,
+        clientOrderId: order.clientOrderId || null,
+        incomeTime: new Date(fillTime),
       };
-      if (fill.realizedPnl !== 0) {
-        rows.push({ ...base, incomeType: 'REALIZED_PNL', amount: String(fill.realizedPnl) });
+      const profit = order.profit ?? 0;
+      const commission = order.commission ?? 0;
+      if (profit !== 0) {
+        rows.push({ ...base, incomeType: 'REALIZED_PNL', amount: String(profit) });
       }
-      if (fill.fee !== 0) {
-        rows.push({ ...base, incomeType: 'FEE', amount: String(fill.fee) });
+      if (commission !== 0) {
+        rows.push({ ...base, incomeType: 'FEE', amount: String(commission) });
       }
     }
 
@@ -127,7 +144,7 @@ export async function syncIncomeForApiKey(
     }
   }
 
-  return { inserted, windows, fills: fillCount };
+  return { inserted, windows, orders: orderCount };
 }
 
 /** Distinct apiKeyIds that own bots touched in the last `days` days. */
@@ -142,6 +159,34 @@ export async function listApiKeyIdsForIncomeSync(days = 180): Promise<string[]> 
       )
     );
   return rows.map((r) => r.apiKeyId).filter((id): id is string => id != null);
+}
+
+async function collectOrders(
+  client: NonNullable<Awaited<ReturnType<typeof getBingxClientByApiKeyId>>>,
+  symbols: string[],
+  from: number,
+  to: number,
+  onOrder: (order: HistoricalOrderInfo) => void
+): Promise<void> {
+  for (const symbol of symbols) {
+    try {
+      await rateLimitPause();
+      const history = await getOrderHistory(client, symbol, from, to);
+      for (const order of history) onOrder(order);
+    } catch (err) {
+      console.warn(`[IncomeSync] order history failed for ${symbol}:`, err);
+    }
+  }
+}
+
+function rememberPosition(
+  order: HistoricalOrderInfo,
+  bots: Array<{ id: string }>,
+  botByPositionId: Map<string, string>
+): void {
+  if (order.positionId == null) return;
+  const botId = resolveBotByCid(order.clientOrderId, bots);
+  if (botId != null) botByPositionId.set(order.positionId, botId);
 }
 
 function normalizeSymbol(symbol: string): string {
