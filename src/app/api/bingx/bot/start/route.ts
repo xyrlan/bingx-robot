@@ -10,6 +10,8 @@ import {
   setBotStatus,
 } from '@/services/bingx.service';
 import { getAvailableMargin } from '@/lib/balance';
+import { getContractInfo } from '@/services/bingx.service';
+import { checkMinOrderSize } from '@/services/bots/min-order-size';
 import { dcaConfigSchema, trailingStopConfigSchema, smaConfigSchema } from '@/lib/validations/bot-schemas';
 import { createEmptySymbolState } from '@/services/bots/sma-crossover.service';
 import type { SMAConfig } from '@/services/bots/types';
@@ -277,6 +279,27 @@ export async function POST(request: Request) {
         { error: 'Failed to fetch symbol config (margin type, leverage)' },
         { status: 500 }
       );
+    }
+
+    // Reject a per-level size the exchange would refuse. The watcher skips
+    // such levels with a silent `continue`, so without this the bot would sit
+    // in RUNNING placing nothing, with no error anywhere. Checked at priceMax:
+    // quantity is notional/price, so the top of the grid breaches the quantity
+    // floor first.
+    try {
+      const contract = await getContractInfo(client, symbol);
+      const minCheck = checkMinOrderSize({
+        positionSizeUsdt: posSize,
+        priceLevel: max,
+        contract,
+        symbol,
+      });
+      if (!minCheck.ok) {
+        return NextResponse.json({ error: minCheck.message }, { status: 400 });
+      }
+    } catch {
+      // Contract info unavailable — fail open, matching the watcher, which
+      // defaults both minimums to 0 when the fetch fails.
     }
 
     const totalMarginNeeded = (posSize / leverageNum) * gridCountNum;

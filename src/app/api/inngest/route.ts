@@ -4,6 +4,7 @@ import { masterTick } from "@/inngest/functions/master-tick";
 import { tradingBotWatch } from "@/inngest/functions/trading-bot-watch";
 import { dcaBotWatch } from "@/inngest/functions/dca-bot-watch";
 import { incomeSync } from "@/inngest/functions/income-sync";
+import { botStart } from "@/inngest/functions/bot-start";
 
 // Only Grid (long/short) and DCA watchers are registered. AI PM
 // (aiPmTick/aiPmEventHandler/aiPmMonitor) and the extra strategy watchers
@@ -12,6 +13,7 @@ import { incomeSync } from "@/inngest/functions/income-sync";
 // run a manual Resync in the Inngest dashboard.
 const functions = [
   masterTick,
+  botStart,
   tradingBotWatch,
   dcaBotWatch,
   incomeSync,
