@@ -2,7 +2,7 @@ import { inngest } from '@/inngest/client';
 import { db } from '@/db';
 import { tradingBots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { shouldDispatch } from '@/inngest/cadence';
+import { shouldDispatch, MASTER_TICK_CRON } from '@/inngest/cadence';
 import type { BotType } from '@/services/bots/types';
 import type { BotTickEventName, BotTickEventPayload } from '@/inngest/events';
 
@@ -32,7 +32,7 @@ export const masterTick = inngest.createFunction(
     retries: 3,
     concurrency: { limit: 1 },
   },
-  { cron: '*/1 * * * *' },
+  { cron: MASTER_TICK_CRON },
   async ({ step, logger }) => {
     const now = Date.now();
     const tickNumber = Math.floor(now / 60_000);
