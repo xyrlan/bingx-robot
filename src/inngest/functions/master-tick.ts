@@ -2,18 +2,10 @@ import { inngest } from '@/inngest/client';
 import { db } from '@/db';
 import { tradingBots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { shouldDispatch } from '@/inngest/cadence';
+import { shouldDispatch, MASTER_TICK_CRON } from '@/inngest/cadence';
 import type { BotType } from '@/services/bots/types';
 import type { BotTickEventName, BotTickEventPayload } from '@/inngest/events';
-
-const TYPE_TO_EVENT: Record<BotType, BotTickEventName> = {
-  GRID_LONG: 'bot.tick.GRID',
-  GRID_SHORT: 'bot.tick.GRID',
-  DCA: 'bot.tick.DCA',
-  DCA_SPOT: 'bot.tick.DCA_SPOT',
-  TRAILING_STOP: 'bot.tick.TRAILING',
-  SMA_CROSSOVER: 'bot.tick.SMA_CROSSOVER',
-};
+import { TYPE_TO_EVENT } from '@/inngest/bot-events';
 
 // Only these bot types run. AI PM and the extra strategies (TRAILING_STOP,
 // DCA_SPOT, SMA_CROSSOVER) are disabled — any RUNNING rows of those types are
@@ -32,7 +24,7 @@ export const masterTick = inngest.createFunction(
     retries: 3,
     concurrency: { limit: 1 },
   },
-  { cron: '*/1 * * * *' },
+  { cron: MASTER_TICK_CRON },
   async ({ step, logger }) => {
     const now = Date.now();
     const tickNumber = Math.floor(now / 60_000);

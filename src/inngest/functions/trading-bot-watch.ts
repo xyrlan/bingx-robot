@@ -240,6 +240,9 @@ export const tradingBotWatch = inngest.createFunction(
         const orphanAdoptions: OrphanAdoption[] = [];
         const tpAdoptions: TpAdoption[] = [];
         const completedCycles: CompletedCycle[] = [];
+        // Levels the exchange minimums put out of reach — reported below so a
+        // bot that can never place an order says so instead of looking idle.
+        let skippedBelowMinimum = 0;
 
         for (const level of levels) {
           const priceLevel = Number(level.priceLevel);
@@ -384,10 +387,20 @@ export const tradingBotWatch = inngest.createFunction(
           // Skip inactive levels
           if (level.isActive === false) continue;
 
-          // Validate quantity
-          if (positionSizeUsdt < minUsdt) continue;
+          // Validate against exchange minimums. Creation-time validation in
+          // the start route rejects these configs up front, but bots created
+          // before that check (or whose symbol minimums later changed) can
+          // still hit this. Count them so the tick can report why it placed
+          // nothing instead of skipping in silence.
+          if (positionSizeUsdt < minUsdt) {
+            skippedBelowMinimum++;
+            continue;
+          }
           const quantityBtc = positionSizeUsdt / priceLevel;
-          if (quantityBtc < minQty) continue;
+          if (quantityBtc < minQty) {
+            skippedBelowMinimum++;
+            continue;
+          }
 
           // Legacy orphan adoption: CID-less (or foreign) entry orders at this
           // level's tick-rounded price — orders placed before the CID rollout.
@@ -453,7 +466,15 @@ export const tradingBotWatch = inngest.createFunction(
           if (keeper != null && keeper !== o.orderId) staleEntryOrderIds.push(o.orderId);
         }
 
-        return { pendingEntries, pendingTPs, orphanAdoptions, tpAdoptions, completedCycles, staleEntryOrderIds };
+        if (skippedBelowMinimum > 0) {
+          logger.warn(
+            `[Grid] bot ${bot.id} (${symbol}): ${skippedBelowMinimum}/${levels.length} levels skipped — ` +
+            `position size ${positionSizeUsdt} USDT is under the exchange minimum ` +
+            `(minUSDT ${minUsdt}, minQty ${minQty}). Raise the position size or the bot will place nothing.`
+          );
+        }
+
+        return { pendingEntries, pendingTPs, orphanAdoptions, tpAdoptions, completedCycles, staleEntryOrderIds, skippedBelowMinimum };
       });
 
       const { symbol, pricePrecision, positionSide } = setup;
